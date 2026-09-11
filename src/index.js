@@ -11,6 +11,7 @@ import { createExtractors, ExtractorRegistry } from './extractor/index.js';
 import { StreamResolver } from './utils/StreamResolver.js';
 import { ImdbId, TmdbId } from './utils/id.js';
 import { reanimeSegmentKey } from './utils/site-secrets.cjs';
+import { startWarmup } from './utils/warmup.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -90,7 +91,17 @@ app.get('/stream/:type/:id.json', async (req, res) => {
     const duration = Date.now() - startTime;
     logger.log(`[${ADDON_NAME}] ${type} ${id} → ${streams.length} streams in ${duration}ms`);
 
-    res.setHeader('Cache-Control', 'public, max-age=300');
+    // Starved-response cache hint: when a response carries fewer streams than
+    // the resolver had sources available, the request almost certainly hit the
+    // global deadline before slow sources finished (cold start, free-tier CPU
+    // spike, upstream latency). Caching that starved result for 5 minutes
+    // (previous behavior) locked the user out of the full set — by the time a
+    // retry arrived, the per-source caches were warm but the app kept showing
+    // the cached starved response. A short TTL on starved responses only lets
+    // the next fetch pick up the now-warm per-source cached results. Fully
+    // populated responses keep the original 5-minute TTL (byte-identical).
+    const starved = streams.length < sources.length;
+    res.setHeader('Cache-Control', starved ? 'public, max-age=30' : 'public, max-age=300');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.json({ streams });
   } catch (err) {
@@ -1347,6 +1358,8 @@ app.listen(PORT, HOST, () => {
   logger.log(`[${ADDON_NAME}] manifest: http://${HOST}:${PORT}/manifest.json`);
   logger.log(`[${ADDON_NAME}] Sources: ${sources.length} (${sources.map(s => s.id).join(', ')})`);
   logger.log(`[${ADDON_NAME}] Extractors: ${extractors.length} (${extractors.map(e => e.id).join(', ')})`);
+  // Boot-time warmup — background only, never blocks or alters request handling.
+  startWarmup({ sources, fetcher, logger });
 });
 
 process.on('SIGTERM', () => process.exit(0));

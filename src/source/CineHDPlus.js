@@ -83,8 +83,11 @@ export class CineHDPlus extends Source {
     if (!tmdbId.season || !html.includes('vimeus.com')) return [];
 
     const viewKey = html.match(/view_key=([A-Za-z0-9_-]+)/)?.[1];
+    // 2026-09 upstream template change: tmdbRaw is now '<id>-<slug>'
+    // (e.g. var tmdbRaw = '1396-breaking-bad';) — capture the LEADING digits
+    // instead of requiring a pure-number literal. Pure-digit form still matches.
     const showTmdb = html.match(/var\s+tmdb\s*=\s*['"](\d+)['"]/)?.[1]
-      || html.match(/var\s+tmdbRaw\s*=\s*['"](\d+)['"]/)?.[1];
+      || html.match(/var\s+tmdbRaw\s*=\s*['"](\d+)[^'"]*['"]/)?.[1];
     if (!viewKey || !showTmdb) return [];
 
     const showTitle = html.match(/var\s+title\s*=\s*['"]([^'"]*)['"]/)?.[1] || title;
