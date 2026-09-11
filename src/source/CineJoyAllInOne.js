@@ -22,6 +22,7 @@ import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
 import { buildStreamResults } from './nuvioHelpers.js';
+import { TMDB_PRIMARY } from '../utils/site-secrets.cjs'; // central site-secret registry (env-overridable)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'cinejoy_all_in_one.cjs');
@@ -95,7 +96,7 @@ export class CineJoyAllInOne extends Source {
     let isAnime = false;
     if (tmdbId.season) {
       try {
-        const tmdbUrl = `https://api.themoviedb.org/3/tv/${tmdbId.id}?api_key=${process.env.TMDB_API_KEY || '439c478a771f35c05022f9feabcca01c'}`;
+        const tmdbUrl = `https://api.themoviedb.org/3/tv/${tmdbId.id}?api_key=${TMDB_PRIMARY}`;
         const { gotScraping } = await import('got-scraping');
         const r = await gotScraping.get(tmdbUrl, {
           headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },

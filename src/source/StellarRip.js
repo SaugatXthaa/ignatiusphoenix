@@ -18,6 +18,7 @@ import { createRequire } from 'module';
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
+import { TMDB_PRIMARY } from '../utils/site-secrets.cjs'; // central site-secret registry (env-overridable)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'stellarrip.cjs');
@@ -70,7 +71,7 @@ export class StellarRip extends Source {
     let isAnime = false;
     try {
       const type = tmdbId.season ? 'tv' : 'movie';
-      const url = `https://api.themoviedb.org/3/${type}/${tmdbId.id}?api_key=${process.env.TMDB_API_KEY || '439c478a771f35c05022f9feabcca01c'}`;
+      const url = `https://api.themoviedb.org/3/${type}/${tmdbId.id}?api_key=${TMDB_PRIMARY}`;
       const { gotScraping } = await import('got-scraping');
       const r = await gotScraping.get(url, {
         headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },

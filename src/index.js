@@ -10,6 +10,7 @@ import { createSources } from './source/index.js';
 import { createExtractors, ExtractorRegistry } from './extractor/index.js';
 import { StreamResolver } from './utils/StreamResolver.js';
 import { ImdbId, TmdbId } from './utils/id.js';
+import { reanimeSegmentKey } from './utils/site-secrets.cjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -177,6 +178,31 @@ app.get('/proxy', async (req, res) => {
   logger.log(`[${ADDON_NAME}] proxy ${targetUrl.hostname}${targetUrl.pathname.slice(0, 50)}`);
 
   try {
+    // ———— Opt-in decrypt mode (Stream Reverse Engineering guide §6) ————
+    // When xor= is present the upstream body is auto-detected and decrypted:
+    // WebP/PNG-disguised XOR segments, base64(+XOR) m3u8 playlists, or
+    // whole-body XOR (implementation: utils/stream-decrypt.cjs). Opt-in ONLY:
+    // without these params the original proxy path below runs unchanged.
+    // Params: xor=<b64|hex key>  strip=<n header bytes>  b64m3u8=1  ct=<mime>
+    if (req.query.xor) {
+      const { decryptProxyResponse } = await import('./utils/stream-decrypt.cjs');
+      return await decryptProxyResponse({
+        req, res, targetUrl,
+        rawXor: req.query.xor,
+        referer: rawReferer,
+        stripHint: req.query.strip,
+        expectBase64: req.query.b64m3u8 === '1',
+        ctOverride: req.query.ct,
+        logger,
+        addonName: ADDON_NAME,
+        rewrite: (text) => rewriteM3u8Urls(text, targetUrl, rawReferer, req, {
+          xor: req.query.xor,
+          ...(req.query.strip ? { strip: req.query.strip } : {}),
+          ...(req.query.ct ? { ct: req.query.ct } : {}),
+        }),
+      });
+    }
+
     const proxyHeaders = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       'Accept': '*/*',
@@ -844,8 +870,9 @@ app.get('/reanime-proxy/*', async (req, res) => {
       return res.status(502).send('Empty upstream response');
     }
 
-    // 16-byte XOR key for segment decryption
-    const SEGMENT_XOR_KEY = Buffer.from([157, 42, 241, 71, 179, 142, 92, 112, 166, 25, 228, 59, 216, 98, 15, 197]);
+    // 16-byte XOR key for segment decryption — central registry (shared with
+    // nuvio/reanime.cjs; previously byte-identical duplicates in both files).
+    const SEGMENT_XOR_KEY = reanimeSegmentKey();
 
     // 32-byte XOR key for m3u8 playlist decryption
     let xorKey = null;
@@ -989,9 +1016,22 @@ app.get('/reanime-proxy/*', async (req, res) => {
 // This ensures the player fetches variant playlists and segments through
 // the proxy with the correct Referer — without it, relative URLs resolve
 // against the proxy URL itself and return 404.
-function rewriteM3u8Urls(m3u8Text, baseUrl, referer, req) {
+function rewriteM3u8Urls(m3u8Text, baseUrl, referer, req, extraParams) {
   const lines = m3u8Text.split('\n');
   const proxyBase = `${req.protocol}://${req.get('host')}/proxy`;
+
+  // Optional decrypt-mode params (xor/strip/ct) propagated onto every
+  // rewritten /proxy URL so variant playlists and segments decrypt too
+  // (used by the opt-in ?xor= branch below; undefined for the normal path —
+  // existing callers pass 4 args and are unaffected).
+  const withExtra = (proxyUrl) => {
+    if (extraParams) {
+      for (const [k, v] of Object.entries(extraParams)) {
+        if (v !== undefined && v !== null && v !== '') proxyUrl.searchParams.set(k, String(v));
+      }
+    }
+    return proxyUrl;
+  };
 
   return lines.map(line => {
     const trimmed = line.trim();
@@ -1008,7 +1048,7 @@ function rewriteM3u8Urls(m3u8Text, baseUrl, referer, req) {
           const proxyUrl = new URL(proxyBase);
           proxyUrl.searchParams.set('url', absoluteUrl);
           if (referer) proxyUrl.searchParams.set('referer', referer);
-          return `URI="${proxyUrl.href}"`;
+          return `URI="${withExtra(proxyUrl).href}"`;
         });
       }
       return line;
@@ -1018,7 +1058,7 @@ function rewriteM3u8Urls(m3u8Text, baseUrl, referer, req) {
     const proxyUrl = new URL(proxyBase);
     proxyUrl.searchParams.set('url', absoluteUrl);
     if (referer) proxyUrl.searchParams.set('referer', referer);
-    return proxyUrl.href;
+    return withExtra(proxyUrl).href;
   }).join('\n');
 }
 

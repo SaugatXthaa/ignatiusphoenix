@@ -25,9 +25,10 @@
 "use strict";
 
 var crypto = require("crypto");
+var { ZXC_SALT, TMDB_TERTIARY } = require('../utils/site-secrets.cjs');
 
 var PROVIDER_NAME = "ZXCStream";
-var TMDB_API_KEY = "1c29a5198ee1854bd5eb45dbe8d17d92";
+var TMDB_API_KEY = TMDB_TERTIARY;
 var BASE_URL = "https://player.zxcstream.xyz";
 
 var USER_AGENT =
@@ -55,7 +56,7 @@ function getTMDBInfo(tmdbId, type) {
 // We use this when constructing the player page URL hash so the player page
 // can short-circuit its token POST request.
 function generateFrontendToken(tmdbId) {
-  var SECRET = "24356351231432574635345245245252324";
+  var SECRET = ZXC_SALT; // central registry — env ZXC_SALT overrides (site-secrets.cjs)
   var ts = Date.now();
   var input = ts + ":" + SECRET + ":" + tmdbId;
   var xt = crypto.createHash("sha512").update(input).digest("hex").slice(0, 64);

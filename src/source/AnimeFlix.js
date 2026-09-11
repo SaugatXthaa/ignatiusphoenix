@@ -1,7 +1,8 @@
 // src/source/AnimeFlix.js
-// animeflix.team — anime streaming site (series + anime movies)
+// 9animes.me.uk (formerly animeflix.team — site migrated, old domain's search
+// now only links here) — anime streaming site (series + anime movies)
 // Same WordPress structure as 9anime.cl:
-// Search: /?s={query} → anime page → episode links → episode page → base64 data-hash → embed URL
+// Search: /?s={query} → anime page → episode links → episode page → iframe / base64 data-hash → embed URL
 
 import * as cheerio from 'cheerio';
 import { CountryCode } from '../types.js';
@@ -15,7 +16,7 @@ export class AnimeFlix extends Source {
     this.label = 'AnimeFlix';
     this.contentTypes = ['movie', 'series'];
     this.countryCodes = [CountryCode.multi, CountryCode.ja];
-    this.baseUrl = 'https://animeflix.team';
+    this.baseUrl = 'https://9animes.me.uk';
     this.fetcher = fetcher;
   }
 

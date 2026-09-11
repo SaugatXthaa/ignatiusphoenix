@@ -40,6 +40,9 @@ import { VidFast } from './VidFast.js';
 import { VidLink } from './VidLink.js';
 import { VegaMovies } from './VegaMovies.js';
 // New sources (additive — no existing source modified)
+// streamxtv — streamxtv.sbs direct playable HLS via api.framextv.tech
+//   (20 providers, up to 4K, multi-language subtitles) + streamxtv.tech
+//   TMDB/AniList aggregator with megaplay anime (sub/dub) as fallback
 import { StreamXTV } from './StreamXTV.js';
 import { Anikoto } from './Anikoto.js';
 import { AniKage } from './AniKage.js';
@@ -105,12 +108,9 @@ import { KMMovies } from './KMMovies.js';
 // ─── Orphan sources (complete but never registered — batch add) ───
 // All verified as complete with unique source IDs. Some use Nuvio scrapers
 // (dahmermovies, dahmermovies4k), others use got-scraping or this.fetcher directly.
-import { Antova } from './Antova.js';
 import { CineHDPlus } from './CineHDPlus.js';
-import { Cuevana } from './Cuevana.js';
 import { DahmerMovies } from './DahmerMovies.js';
 import { DahmerMovies4k } from './DahmerMovies4k.js';
-import { FilmeOnlineHD } from './FilmeOnlineHD.js';
 import { Vidzee } from './Vidzee.js';
 import { VixSrc } from './VixSrc.js';
 import { AllWish } from './AllWish.js';
@@ -148,7 +148,8 @@ export const createSources = (fetcher) => {
     // Multi-region (acermovies.fun API — GDrive CDN movies)
     new AcerMovies(fetcher),
     // New sources (additive — no existing source modified)
-    // streamxtv.tech — TMDB + AniList aggregator with megaplay anime (sub/dub)
+    // streamxtv — streamxtv.sbs direct streams (api.framextv.tech, 20
+    // providers, up to 4K, multi-language subs) + megaplay anime (sub/dub)
     new StreamXTV(fetcher),
     // anikoto.cz — anime-only with sub/dub via megaplay.buzz
     new Anikoto(fetcher),
@@ -163,7 +164,6 @@ export const createSources = (fetcher) => {
     new AniDoor(fetcher),
     // nowhdtime.to — movies/series/anime/kdrama via nhdapi.com HLS proxy API
     new NowHDTime(fetcher),
-    // filmeonlinehd.digital — Hindi movies/series via linksdrive → HubCloud/GDFlix
     // pantyflix.org — movies/series/anime via /api/streamrip/download (direct MP4/MKV)
     new Pantyflix(fetcher),
     // animegg.org — anime sub+dub direct MP4 (720p/1080p)
@@ -248,18 +248,12 @@ export const createSources = (fetcher) => {
     // MoviesDrive v2 — movies/TV via new3.moviesdrive.christmas WP API (up to 4K)
     new MoviesDriveV2(fetcher),
     // ─── Orphan sources (registered in batch — all additive) ───
-    // antova — Russian-dub anime via AniLibria API
-    new Antova(fetcher),
     // cinehdplus — ES/MX series via cinehdplus.com
     new CineHDPlus(fetcher),
-    // cuevana — ES/MX via wv3.cuevana3.eu
-    new Cuevana(fetcher),
     // dahmermovies — movies via p.111477.xyz bulk API
     new DahmerMovies(fetcher),
     // dahmermovies4k — 4K movies via dahmermovies-4k
     new DahmerMovies4k(fetcher),
-    // filmeonlinehd — Hindi movies/series via linksdrive
-    new FilmeOnlineHD(fetcher),
     // vidzee — 8 servers, multi-language embeds
     new Vidzee(fetcher),
     // vixsrc — VixSrc embed (requires MediaFlowProxy)

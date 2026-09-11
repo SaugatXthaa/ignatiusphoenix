@@ -51,7 +51,10 @@ const UA_SIMPLE = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 
 // 16-byte XOR key used to decrypt segment payloads (extracted from FlixCloud's
 // hls.js fork at /artplayer-new/hls.js?v=103, XhrLoader/FetchLoader handlers).
-const SEGMENT_XOR_KEY = Buffer.from([157, 42, 241, 71, 179, 142, 92, 112, 166, 25, 228, 59, 216, 98, 15, 197]);
+// Central registry — env REANIME_SEG_KEY cannot change byte length semantics;
+// rotate the byte array in site-secrets.cjs (shared with /reanime-proxy in index.js).
+const { reanimeSegmentKey } = require('../utils/site-secrets.cjs');
+const SEGMENT_XOR_KEY = reanimeSegmentKey();
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 

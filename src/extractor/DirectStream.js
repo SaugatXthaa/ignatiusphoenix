@@ -35,7 +35,7 @@ const DIRECT_CDN_HOSTS = [
   // VidLink — direct MP4 on bcdn.hakunaymatata.com (plays without Referer)
   'bcdn.hakunaymatata.com',
   'hbcdn.hakunaymatata.com',
-  // FilmeOnlineHD — file hosts from linksdrive
+  // Generic file hosts (linksdrive-style direct download CDNs)
   'fastdl.zip',
   'vcloud.zip',
   'filebee.xyz',

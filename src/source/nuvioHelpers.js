@@ -55,6 +55,122 @@ export function parseSize(size) {
   return undefined;
 }
 
+// ─── Audio track metadata (API `audioTracks` field) ───
+// Providers such as api.framextv.tech attach optional per-source audio
+// metadata: `audioTracks` (array of language names/codes, a comma-separated
+// string, an array of objects, or null) and `hasMultipleAudio` (boolean).
+// These feed the language-flag system: buildStreamResults turns them into
+// meta.countryCodes, and StreamResolver renders the "Audio: …" line with
+// flags plus DUAL/MULTI special tags (parsed from the "Dual Audio …"
+// title marker appended by the source wrappers).
+
+// Lowercase alias → canonical display name. Canonical names intentionally
+// match src/utils/language.js so findCountryCodes() maps them to codes.
+const AUDIO_LANG_ALIASES = {
+  english: 'English', en: 'English', eng: 'English',
+  hindi: 'Hindi', hi: 'Hindi', hin: 'Hindi',
+  japanese: 'Japanese', ja: 'Japanese', jpn: 'Japanese', jp: 'Japanese',
+  korean: 'Korean', ko: 'Korean', kor: 'Korean',
+  tamil: 'Tamil', ta: 'Tamil', tam: 'Tamil',
+  telugu: 'Telugu', te: 'Telugu', tel: 'Telugu',
+  malayalam: 'Malayalam', ml: 'Malayalam', mal: 'Malayalam',
+  punjabi: 'Punjabi', pa: 'Punjabi', pan: 'Punjabi',
+  bengali: 'Bengali', bn: 'Bengali', ben: 'Bengali',
+  marathi: 'Marathi', mr: 'Marathi', mar: 'Marathi',
+  gujarati: 'Gujarati', gu: 'Gujarati', guj: 'Gujarati',
+  kannada: 'Kannada', kn: 'Kannada', kan: 'Kannada',
+  spanish: 'Spanish', es: 'Spanish', spa: 'Spanish',
+  french: 'French', fr: 'French', fra: 'French',
+  german: 'German', de: 'German', ger: 'German',
+  italian: 'Italian', it: 'Italian', ita: 'Italian',
+  portuguese: 'Portuguese', pt: 'Portuguese', por: 'Portuguese',
+  russian: 'Russian', ru: 'Russian', rus: 'Russian',
+  arabic: 'Arabic', ar: 'Arabic', ara: 'Arabic',
+  chinese: 'Chinese', mandarin: 'Chinese', zh: 'Chinese', chi: 'Chinese', zho: 'Chinese',
+  cantonese: 'Cantonese', yue: 'Cantonese',
+  turkish: 'Turkish', tr: 'Turkish', tur: 'Turkish',
+  indonesian: 'Indonesian', id: 'Indonesian', ind: 'Indonesian',
+  thai: 'Thai', th: 'Thai', tha: 'Thai',
+  vietnamese: 'Vietnamese', vi: 'Vietnamese', vie: 'Vietnamese',
+  filipino: 'Filipino', tagalog: 'Filipino', fil: 'Filipino', tl: 'Filipino',
+  persian: 'Persian', farsi: 'Persian', fa: 'Persian', fas: 'Persian',
+  hebrew: 'Hebrew', he: 'Hebrew', heb: 'Hebrew',
+  polish: 'Polish', pl: 'Polish', pol: 'Polish',
+  dutch: 'Dutch', nl: 'Dutch', nld: 'Dutch',
+  ukrainian: 'Ukrainian', uk: 'Ukrainian', ukr: 'Ukrainian',
+  urdu: 'Urdu', ur: 'Urdu',
+  nepali: 'Nepali', ne: 'Nepali',
+};
+
+/**
+ * Normalize a provider's raw `audioTracks` value into an array of canonical
+ * language display names (deduped, capped at 6).
+ *
+ * Accepted shapes (defensive — the field is sparsely populated and its exact
+ * shape varies by provider backend):
+ *   null / undefined / ''          → []
+ *   "Hindi,English"                → ['Hindi', 'English']
+ *   ["Hindi", "en"]                → ['Hindi', 'English']
+ *   [{ language: "Hindi" }, …]     → ['Hindi', …]
+ *   '["Hindi","English"]' (JSON)   → ['Hindi', 'English']
+ * Unknown language names are Title-Cased and passed through so the display
+ * label still shows something sensible.
+ */
+export function normalizeAudioTracks(raw) {
+  if (!raw) return [];
+  let list = raw;
+  if (typeof list === 'string') {
+    const s = list.trim();
+    if (!s) return [];
+    if (s.startsWith('[')) {
+      try { list = JSON.parse(s); } catch { list = [s]; }
+    } else {
+      list = s.split(/\s*[,+/&;|]\s*|\s+and\s+/i);
+    }
+  }
+  if (!Array.isArray(list)) return [];
+
+  const out = [];
+  const seen = new Set();
+  for (const item of list) {
+    let name = '';
+    if (typeof item === 'string') name = item;
+    else if (item && typeof item === 'object') {
+      name = item.language || item.lang || item.name || item.label || item.title
+        || item.code || item.iso639_1 || item.iso639 || '';
+    } else {
+      continue;
+    }
+    name = String(name).trim().toLowerCase().replace(/[\[\]"]/g, '');
+    if (!name || ['null', 'undefined', 'unknown', 'original', 'none', 'default'].includes(name)) continue;
+    const canonical = AUDIO_LANG_ALIASES[name] || name.replace(/\b\w/g, (c) => c.toUpperCase());
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    out.push(canonical);
+    if (out.length >= 6) break; // sanity cap
+  }
+  return out;
+}
+
+/**
+ * Build the dual-audio display label from normalized audio tracks.
+ *   2 tracks                  → "Dual Audio (Hindi + English)"  (parses to DUAL tag)
+ *   3+ tracks                 → "Multi Audio (Hindi + English + Tamil)" (parses to MULTI)
+ *   1 track                   → "Hindi"
+ *   0 tracks + hasMultipleAudio → "Dual Audio" (flag without a track list)
+ *   nothing                   → null (caller falls back to its default marker)
+ */
+export function buildAudioLabel(tracks, hasMultipleAudio) {
+  const list = Array.isArray(tracks) ? tracks : normalizeAudioTracks(tracks);
+  if (list.length >= 2) {
+    const kind = list.length === 2 ? 'Dual' : 'Multi';
+    return `${kind} Audio (${list.slice(0, 4).join(' + ')})`;
+  }
+  if (list.length === 1) return list[0];
+  if (hasMultipleAudio === true) return 'Dual Audio';
+  return null;
+}
+
 export function extractFilename(url) {
   const parts = url.pathname.split('/').filter(Boolean);
   if (parts.length === 0) return '';
@@ -186,7 +302,16 @@ export function buildStreamResults({ streams, title, sourceId, sourceLabel, coun
     // even if it's too cluttered for display)
     const metaFilename = filename;
 
-    const allCountryCodes = [...countryCodes, ...findCountryCodes(streamTitle + ' ' + s.name + ' ' + filename)];
+    // Language flags — meta.countryCodes feed StreamResolver's "Audio:" line
+    // and flag rendering. When the API reports explicit audio tracks for this
+    // stream, they are the authoritative audio and OVERRIDE the source-level
+    // defaults (which are just 'multi' + language guesses for the whole
+    // source). Otherwise fall back to the previous behavior: source defaults
+    // + languages found by name in the stream title/filename.
+    const audioTracks = normalizeAudioTracks(s.audioTracks);
+    const allCountryCodes = audioTracks.length > 0
+      ? [...new Set(['multi', ...findCountryCodes(audioTracks.join(' '))])]
+      : [...new Set([...(countryCodes || []), ...findCountryCodes(streamTitle + ' ' + s.name + ' ' + filename)])];
     const height = parseHeight(s.quality) || parseHeight(s.title) || parseHeight(filename);
     const fileSize = parseSize(s.size);
 

@@ -4,11 +4,12 @@
 import { createDecipheriv, createHash } from 'node:crypto';
 import { Format } from '../types.js';
 import { guessHeightFromPlaylist } from '../utils/index.js';
+import { VIDZEE_AES_SEED } from '../utils/site-secrets.cjs';
 import { Extractor } from './Extractor.js';
 
 const API_KEY_URL = 'https://core.vidzee.wtf/api-key';
 const SERVER_API_URL = 'https://player.vidzee.wtf/api/server';
-const ENCRYPTION_KEY_SECRET = '4f2a9c7d1e8b3a6f0d5c2e9a7b1f4d8c';
+const ENCRYPTION_KEY_SECRET = VIDZEE_AES_SEED; // central registry — env VIDZEE_AES_SEED overrides (site-secrets.cjs)
 
 // Cache the decrypted API key for 1 hour (simple in-memory cache replacing Cacheable)
 export const apiKeyCache = new Map();

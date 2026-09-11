@@ -79,7 +79,8 @@ function extractReleaseNameFromStream(urlResult) {
 //   - Audio Language: hindi-english, english, hindi, etc.
 //   - Size: 64.04GB, 17.5GB, etc.
 //   - Release Group: FraMeSToR, ROEN-Ionicboy (after ~ or -)
-function enrichMeta(urlResult) {
+// Exported for tests (test_audio_wiring.mjs) — additive, no behavior change.
+export function enrichMeta(urlResult) {
   const meta = { ...urlResult.meta };
   const title = meta.title || '';
   const url = urlResult.url?.href || '';
@@ -412,6 +413,8 @@ export class StreamResolver {
       'animeworldindia',
       // Itachi — VidHawk API (3 servers × resolve + play) takes 10-20s
       'itachi',
+      // StreamXTV — api.framextv.tech 20-provider sweep takes 10-25s
+      'streamxtv',
     ]);
     const sortedSources = [...sources].sort((a, b) => {
       const aPriority = PRIORITY_SOURCE_IDS.has(a.id) ? 0 : 1;
@@ -824,12 +827,20 @@ export class StreamResolver {
     // Line 3: File size
     if (meta.bytes) titleLines.push(`💾 ${bytes.format(meta.bytes)}`);
 
-    // Line 4: Audio languages
+    // Line 4: Audio languages with flags (e.g. "Audio: 🇮🇳 Hindi, 🇺🇸 English").
+    // meta.countryCodes is the language-flag system: sources set it directly
+    // or via buildStreamResults from the API's audioTracks field, and
+    // flagFromCountryCode maps each code to its emoji. Deduped — sources
+    // that merge defaults with title-parsed languages used to double up.
     if (meta.countryCodes && meta.countryCodes.length > 0) {
-      const langs = meta.countryCodes
+      const langs = [...new Set(meta.countryCodes
         .filter(cc => cc !== 'multi')
-        .map(cc => languageFromCountryCode(cc))
-        .filter(l => l && l !== 'Multi');
+        .map(cc => {
+          const lang = languageFromCountryCode(cc);
+          const flag = flagFromCountryCode(cc);
+          return lang && lang !== 'Multi' ? (flag ? `${flag} ${lang}` : lang) : '';
+        })
+        .filter(Boolean))];
       if (langs.length > 0) {
         titleLines.push(`Audio: ${langs.join(', ')}`);
       }

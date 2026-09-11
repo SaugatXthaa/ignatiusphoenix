@@ -16,11 +16,12 @@
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
+import { TMDB_PRIMARY } from '../utils/site-secrets.cjs'; // central site-secret registry (env-overridable)
 
 const BASE_URL = 'https://www.imdbplay.tech';
 const GARAGEBAND_API = 'https://proxy.garageband.rocks/vs_src.php';
 const VS_API = 'https://data.vidsrcme.ru/api.php';
-const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
+const TMDB_API_KEY = TMDB_PRIMARY;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 let _gotScraping = null;

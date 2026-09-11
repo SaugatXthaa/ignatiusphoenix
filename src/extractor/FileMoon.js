@@ -16,7 +16,9 @@ export class FileMoon extends Extractor {
 
   supports(_ctx, url) {
     return null !== url.host.match(/filemoon/) ||
-      ['furher.in', 'moonmov.pro', 'cinegrab.com'].includes(url.host);
+      // vimeos.net — vimeus.com embeds (cinehdplus) use the same
+      // packed-JW player pages as filemoon (verified 2025-09)
+      ['furher.in', 'moonmov.pro', 'cinegrab.com', 'vimeos.net'].includes(url.host);
   }
 
   async extractInternal(ctx, url, meta) {

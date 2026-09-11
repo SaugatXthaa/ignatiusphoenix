@@ -45,6 +45,10 @@ const NUVIO_SOURCE_IDS = new Set([
   'zxcstream', 'animezey', 'uhdmovies', 'moviesdrive', 'framextv', 'flystream', 'cinejoyaio',
   // nikastream — anime sub+dub HLS via Anivexa API (kryntal.top needs Referer)
   'nikastream',
+  // streamxtv — streamxtv.sbs direct HLS via api.framextv.tech (20 providers,
+  // up to 4K). Per-CDN Referer (player.videasy.to / yesmovies.ag / …) MUST be
+  // routed through /proxy or the CDNs return 403.
+  'streamxtv',
   // cinebyrocks — movies/TV/anime via VidRock API (multi-CDN direct m3u8/mp4)
   'cinebyrocks',
   // stellar — movies/TV/anime via PoW + AES-GCM (direct HLS, no Referer needed)

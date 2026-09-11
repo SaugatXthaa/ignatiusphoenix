@@ -23,13 +23,14 @@
 
 const { execFileSync } = require('child_process');
 const path = require('path');
+const { HINDMOVIE_TOKEN, TMDB_SECONDARY } = require('../utils/site-secrets.cjs');
 
 const PROVIDER_NAME = 'HindMovie';
-const TMDB_API_KEY = '8476a7ab80ad76f0936744df0430e67c';
+const TMDB_API_KEY = TMDB_SECONDARY;
 const SITE_BASE = 'https://hindmovie.fit';
 const IQSMART_API = 'https://streams.iqsmartgames.com';
 const IQSMART_PLAYER = 'https://pro.iqsmartgames.com';
-const IQSMART_KEY = 'e11a7debaaa4f5d25b671706ffe4d2acb56efbd4';
+const IQSMART_KEY = HINDMOVIE_TOKEN; // central registry — env HINDMOVIE_TOKEN overrides (site-secrets.cjs)
 const GDSHINE_API = 'https://gdshine.org';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 

@@ -174,6 +174,9 @@ async function resolveMagiclinks(magiclinksUrl) {
   const vikingfileMatch = html.match(/href="https:\/\/vikingfile\.com\/f\/([^"]+)"/);
   const gofileMatch = html.match(/href="https:\/\/gofile\.io\/d\/([^"]+)"/);
   const skydropMatch = html.match(/href="(https:\/\/w1\.skydrop\.sbs\/download\.php\?id=[^"]+)"/);
+  // NEW magiclinks layout (2025+): per-quality pages now link to
+  // HubCloud/GDFlix/GDTot/FilePress instead of the old R2+Pixeldrain set.
+  const hubcloudMatch = html.match(/href="(https:\/\/hubcloud\.[a-z.]+\/drive\/([^"]+))"/);
 
   // Start all resolvers in PARALLEL for maximum speed
   const promises = [];
@@ -217,6 +220,16 @@ async function resolveMagiclinks(magiclinksUrl) {
       const directUrl = await resolveSkydrop(skydropMatch[1]);
       return directUrl ? { url: directUrl, source: 'Skydrop', playable: true } : null;
     })());
+  }
+
+  // 6. HubCloud drive page — NEW magiclinks layout primary host. The URL is
+  //    a HubCloud drive PAGE, not a direct file: the addon's HubExtractor
+  //    claims it (HUB_HOST_PATTERN) and resolves it to a direct MKV at
+  //    stream time — the same proven path as 4KHDHub/HDHub4u streams.
+  //    GDTot/FilePress (token/login gated) and GDFlix (session-tokened CDN
+  //    links) stay unresolved on purpose.
+  if (hubcloudMatch) {
+    promises.push(Promise.resolve({ url: hubcloudMatch[1], source: 'HubCloud', playable: true }));
   }
 
   // Wait for all resolvers in parallel, filter out nulls

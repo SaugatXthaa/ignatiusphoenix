@@ -18,19 +18,11 @@ import { fileURLToPath } from 'url';
 import { CountryCode } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
-import { buildStreamResults } from './nuvioHelpers.js';
+import { buildStreamResults, parseHeight, callNuvioProvider, normalizeAudioTracks, buildAudioLabel } from './nuvioHelpers.js';
+import { TMDB_PRIMARY } from '../utils/site-secrets.cjs'; // central site-secret registry (env-overridable)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'framextv.cjs');
-
-// Parse quality string to height
-function parseHeight(q) {
-  if (!q) return undefined;
-  const s = String(q).toLowerCase();
-  if (s.includes('2160') || s.includes('4k') || s.includes('uhd')) return 2160;
-  const m = s.match(/(\d{3,4})p/);
-  return m ? parseInt(m[1]) : undefined;
-}
 
 export class FrameX extends Source {
   constructor(fetcher) {
@@ -61,7 +53,7 @@ export class FrameX extends Source {
     // Detect anime for metadata enrichment (Japanese audio marker)
     if (tmdbId.season) {
       try {
-        const tmdbUrl = `https://api.themoviedb.org/3/tv/${tmdbId.id}?api_key=${process.env.TMDB_API_KEY || '439c478a771f35c05022f9feabcca01c'}`;
+        const tmdbUrl = `https://api.themoviedb.org/3/tv/${tmdbId.id}?api_key=${TMDB_PRIMARY}`;
         const { gotScraping } = await import('got-scraping');
         const r = await gotScraping.get(tmdbUrl, {
           headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
@@ -80,7 +72,10 @@ export class FrameX extends Source {
       mediaType: apiType,
       season: tmdbId.season || null,
       episode: tmdbId.episode || null,
-      timeoutMs: 20000, // Movies/TV/anime all fast (~2-5s)
+      // 20-provider sweep: ~10-16s typical, 22s internal deadline (same
+      // strategy as streamxtv.cjs). Must stay under StreamResolver's 35s
+      // SOURCE_TIMEOUT with TMDB lookups included.
+      timeoutMs: 25000,
     });
 
     // Enrich streams with metadata markers for StreamResolver.enrichMeta
@@ -99,12 +94,12 @@ export class FrameX extends Source {
         else if (s.quality && s.quality.includes('1080')) markers.push('x264');
         else markers.push('x264');
 
-        // Audio language — anime is Japanese, others are English
-        if (isAnime) {
-          markers.push('Japanese');
-        } else {
-          markers.push('English');
-        }
+        // Audio language — prefer the API's own audioTracks metadata
+        // ("Dual Audio (Hindi + English)" / "Hindi" / …), which also drives
+        // the language flags + DUAL/MULTI tags via buildStreamResults;
+        // fall back to the anime/English default when absent.
+        markers.push(buildAudioLabel(normalizeAudioTracks(s.audioTracks), s.hasMultipleAudio)
+          || (isAnime ? 'Japanese' : 'English'));
 
         // Append markers to title for enrichMeta parsing
         s.title = (s.title || '') + ' ' + markers.join(' ');

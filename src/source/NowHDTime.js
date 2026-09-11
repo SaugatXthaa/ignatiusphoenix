@@ -17,10 +17,11 @@
 
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
+import { NOWHDTIME_API_KEY } from '../utils/site-secrets.cjs';
 import { Source } from './Source.js';
 
 const API_BASE = 'https://nhdapi.com/api';
-const API_KEY = '7d5239afc1d0a4fa374587d1d3feb1b0';
+const API_KEY = NOWHDTIME_API_KEY; // central registry — env NOWHDTIME_API_KEY overrides (site-secrets.cjs)
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 async function apiGet(path) {

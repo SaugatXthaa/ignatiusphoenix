@@ -71,6 +71,47 @@ const REDIRECT_STRATEGIES = [
   },
 ];
 
+// ─── JS href-override patching ─────────────────────────────────────────
+// HubCloud worker pages (2025+) hide the REAL download href behind a tiny
+// inline script: the static <a href> points at a dead DMCA honeypot file and
+// a script swaps in the live URL before the user clicks:
+//   <a id="pxl-1" href="https://pixeldrain.dev/u/DEADID">Download [PixelServer : 2]</a>
+//   <script> var pxl = "https://pixeldrain.dev/u/LIVEID";
+//            document.getElementById("pxl-1").href = pxl; </script>
+// Server-side parsing saw the dead href. applyJsHrefOverrides() rewrites the
+// anchor hrefs with their scripted values so every downstream category
+// extractor sees the real links. Conservative: no script → HTML unchanged.
+
+export function applyJsHrefOverrides(html) {
+  if (!html || !html.includes('getElementById')) return html;
+
+  // 1. Collect simple string assignments: var name = "url" (single/double quotes)
+  const varMap = new Map();
+  for (const m of html.matchAll(/var\s+(\w+)\s*=\s*(["'])([^"'"<>]{8,}?)\2/g)) {
+    varMap.set(m[1], m[3]);
+  }
+
+  // 2. Collect getElementById("id").href = "literal" | varName
+  const idToUrl = new Map();
+  for (const m of html.matchAll(/document\.getElementById\((["'])([^"']+)\1\)\.href\s*=\s*(?:["']([^"'"<>]+)["']|([\w$]+))/g)) {
+    const id = m[2];
+    const value = m[3] ?? varMap.get(m[4]);
+    if (value && /^https?:\/\/|^\//.test(value)) idToUrl.set(id, value);
+  }
+  if (idToUrl.size === 0) return html;
+
+  // 3. Rewrite the matching anchor's href (id attribute may precede or follow href)
+  let out = html;
+  for (const [id, url] of idToUrl) {
+    const anchorRe = new RegExp(`<a\\b[^>]*\\bid=["']${id}["'][^>]*>`);
+    const anchorMatch = out.match(anchorRe);
+    if (!anchorMatch) continue;
+    const patched = anchorMatch[0].replace(/(\shref=)(["'])[^"']*\2/i, `$1$2${url}$2`);
+    if (patched !== anchorMatch[0]) out = out.replace(anchorMatch[0], patched);
+  }
+  return out;
+}
+
 export class HubCloud extends Extractor {
   constructor(fetcher, logger) {
     super(fetcher, logger);
@@ -104,6 +145,7 @@ export class HubCloud extends Extractor {
     }
 
     let linksHtml = await this.fetcher.text(ctx, new URL(redirectUrl), { headers: { Referer: url.href } });
+    linksHtml = applyJsHrefOverrides(linksHtml);
     let $ = cheerio.load(linksHtml);
 
     if (!this.hasValidDownloadContent($)) {
@@ -118,6 +160,7 @@ export class HubCloud extends Extractor {
           this.fetcher.setCookie(retryRedirectUrl, `${retryCookieName}=s4t`);
         }
         linksHtml = await this.fetcher.text(ctx, new URL(retryRedirectUrl), { headers: { Referer: url.href } });
+        linksHtml = applyJsHrefOverrides(linksHtml);
         $ = cheerio.load(linksHtml);
       }
 

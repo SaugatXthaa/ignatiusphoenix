@@ -17,10 +17,11 @@ import { Source } from './Source.js';
 import { gotScraping } from 'got-scraping';
 import { HeaderGenerator } from 'header-generator';
 import * as cheerio from 'cheerio';
+import { OTAKU_XOR_KEY } from '../utils/site-secrets.cjs';
 
 const BASE = 'https://hianime.at';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-const OBF_KEY = 'otaku-embed-v1';
+const OBF_KEY = OTAKU_XOR_KEY; // central registry — env OTAKU_XOR_KEY overrides (site-secrets.cjs)
 const REFERER = 'https://zokoanime.video/';
 
 const hg = new HeaderGenerator({ browsers: ['chrome'], devices: ['desktop'], operatingSystems: ['windows'], locales: ['en-US', 'en'] });

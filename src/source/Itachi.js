@@ -49,6 +49,7 @@
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
+import { TMDB_PRIMARY } from '../utils/site-secrets.cjs'; // central site-secret registry (env-overridable)
 
 const ITACHI_BASE = 'https://itachi.tv';
 const VIDHAWK_BASE = 'https://vidhawk.buzz';
@@ -104,7 +105,7 @@ async function isAnimeContent(fetcher, ctx, tmdbId) {
   try {
     const type = tmdbId.season ? 'tv' : 'movie';
     const url = new URL(`https://api.themoviedb.org/3/${type}/${tmdbId.id}`);
-    url.searchParams.set('api_key', process.env.TMDB_API_KEY || '439c478a771f35c05022f9feabcca01c');
+    url.searchParams.set('api_key', TMDB_PRIMARY);
     const data = await fetcher.json(ctx, url);
     if (!data) return false;
 

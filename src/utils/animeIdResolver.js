@@ -6,7 +6,7 @@
 //
 // Supported ID types:
 //   - AniList ID (used by anichan, itachi, animesuge, etc.)
-//   - MAL ID (used by 2dhive, antova, etc.)
+//   - MAL ID (used by 2dhive, etc.)
 //
 // Resolution chain:
 //   1. Try AniList GraphQL (fast, returns AniList ID + romaji title)

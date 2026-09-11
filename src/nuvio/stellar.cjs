@@ -27,15 +27,17 @@
 'use strict';
 
 const crypto = require('crypto');
+const { STELLAR_GDN_KEY, TMDB_SECONDARY } = require('../utils/site-secrets.cjs');
 
 const PROVIDER_NAME = 'Stellar';
 const STELLAR_GDN = 'https://stellar.gdn';
 const BACKEND_URL = 'https://api.stellar.gdn';
-const TMDB_API_KEY = '8476a7ab80ad76f0936744df0430e67c';
+const TMDB_API_KEY = TMDB_SECONDARY;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // AES-GCM encryption key secret (ROTATED on 2026-09-02 — found in stellar.gdn JS bundle)
-const AES_KEY_SECRET = 'KT1b67W1DU2ebpGxQkMiFVyz1iaP/PeMgv/xJQDdDoU=:';
+// Central registry: env STELLAR_GDN_KEY overrides; rotate in site-secrets.cjs
+const AES_KEY_SECRET = STELLAR_GDN_KEY;
 
 // ---------------------------------------------------------------------------
 // Solve PoW: find nonce where SHA-256(challenge + nonce) starts with `difficulty` hex zeros
