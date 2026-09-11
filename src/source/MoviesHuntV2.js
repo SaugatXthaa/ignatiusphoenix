@@ -65,7 +65,7 @@ export class MoviesHuntV2 extends Source {
     try {
       streams = await Promise.race([
         mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null),
-        new Promise(r => setTimeout(() => r(null), 25000)),
+        new Promise(r => setTimeout(() => r(null), 28000)),
       ]);
     } catch (e) {
       console.error(`[movieshunt-v2] error: ${e?.message || e}`);

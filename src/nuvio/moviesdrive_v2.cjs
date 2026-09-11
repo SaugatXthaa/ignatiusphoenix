@@ -319,12 +319,27 @@ async function getDownloadLinks(permalink, season, episode) {
   const links = [];
 
   // Pattern 1: hubcloud search-recover links (movie format)
+  // The button text is just "DOWNLOAD NOW" (no quality marker) — the quality
+  // lives in the header (<h4>/<h5>) IMMEDIATELY BEFORE each button, e.g.
+  //   <h5>...{Hindi-English} <span>480p [500MB]</span></h5><h5><a href=search-recover...>
+  // Extract the nearest preceding quality token per link so every quality
+  // keeps its own label. Previously all links fell back to detectQuality()
+  // returning '1080p' and the seenQualities dedupe collapsed the page to a
+  // single resolved quality (often dropping the 4K file entirely).
   const re = /<a[^>]+href="(https:\/\/hubcloud\.[a-z]+\/drive\/search-recover\.php\?from_ac=[A-Za-z0-9_-]+(?:&q=[A-Za-z0-9+/=_-]+)?)"[^>]*>([\s\S]*?)<\/a>/gi;
   let m;
   while ((m = re.exec(decoded)) !== null) {
     const url = m[1];
     const text = m[2].replace(/<[^>]+>/g, '').trim();
-    if (text) links.push({ url, text, type: 'movie' });
+    if (!text) continue;
+    const before = decoded.slice(Math.max(0, m.index - 550), m.index);
+    const qAll = [...before.matchAll(/(2160p|1080p|720p|480p|360p|4K)/gi)];
+    let quality;
+    if (qAll.length > 0) {
+      const tok = qAll[qAll.length - 1][1].toLowerCase();
+      quality = tok === '4k' ? '2160p' : tok;
+    }
+    links.push({ url, text, quality, type: 'movie' });
   }
 
   // Pattern 2: mdrive.lol archive links (movie AND TV format)
@@ -520,6 +535,22 @@ async function searchHubcloud(token, query) {
   }
 }
 
+// ─── HEAD-liveness check for mirror URLs (pixeldrain DMCA decoys 404) ──────
+async function headOk(url) {
+  try {
+    const gotScraping = await getGotScraping();
+    if (!gotScraping) return false;
+    const res = await gotScraping(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': UA },
+      timeout: { request: 6000 },
+      throwHttpErrors: false,
+      followRedirect: true,
+    });
+    return res.statusCode >= 200 && res.statusCode < 400;
+  } catch (e) { return false; }
+}
+
 // ─── Resolve hubcloud.cx/drive/<fileId> → direct download URLs ────────────
 async function resolveFileUrl(fileId, fileName) {
   const fileUrl = `${HUBCLOUD_BASE}/drive/${fileId}`;
@@ -563,13 +594,12 @@ async function resolveFileUrl(fileId, fileName) {
         }
       }
 
-      // PixelDrain mirror (sometimes available)
-      if (!result.pixeldrainUrl) {
-        const pdMatch2 = gamerHtml.match(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/i);
-        if (pdMatch2) {
-          result.pixeldrainId = pdMatch2[1];
-          result.pixeldrainUrl = `https://pixeldrain.dev/api/file/${pdMatch2[1]}`;
-        }
+      // PixelDrain mirrors — gamerxyt pages list a DEAD DMCA decoy FIRST and
+      // the real file SECOND. Collect every candidate; liveness is checked
+      // (HEAD) at use time so a dead decoy never ships as a stream.
+      if (!result.pixeldrainIds) {
+        const pdMatches = [...gamerHtml.matchAll(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/gi)];
+        result.pixeldrainIds = [...new Set(pdMatches.map(m => m[1]))];
       }
 
       // GPDL URL (10Gbps server)
@@ -646,6 +676,19 @@ function buildStream(url, info, quality, language, source, size, fileName, isAni
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────
+// ─── Bounded-concurrency map (keeps hubcloud happy — no unbounded burst) ───
+async function mapPool(items, limit, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      try { out[idx] = await fn(items[idx], idx); } catch (e) { out[idx] = null; }
+    }
+  }));
+  return out;
+}
+
 async function getStreams(tmdbId, type, season, episode) {
   tmdbId = String(tmdbId);
   const isTV = type === 'tv' || type === 'series';
@@ -703,17 +746,22 @@ async function getStreams(tmdbId, type, season, episode) {
   }
   console.log(`[MoviesDrive] Found ${downloadLinks.length} download link(s)`);
 
-  // 4. For each quality link, resolve to a playable URL via hubcloud.cx
-  const allStreams = [];
+  // 4. For each quality link, resolve to a playable URL via hubcloud.cx.
+  // Distinct qualities resolve CONCURRENTLY (pool of 3): each quality needs
+  // 4-6 sequential upstream fetches (token → search → file page → gamerxyt →
+  // pixel chain), so serial resolution of 4+ qualities regularly blew past
+  // the source time budget and shipped a truncated set.
   const seenQualities = new Set();
-
+  const qualityLinks = [];
   for (const link of downloadLinks) {
     const quality = link.quality || detectQuality(link.text);
-    const language = detectLanguage(link.text + ' ' + best.title, isAnime);
-
     if (seenQualities.has(quality)) continue;
     seenQualities.add(quality);
+    qualityLinks.push({ link, quality });
+  }
 
+  const resolveQualityLink = async ({ link, quality }) => {
+    const language = detectLanguage(link.text + ' ' + best.title, isAnime);
     console.log(`[MoviesDrive] Resolving ${quality} ${language}...`);
     try {
       let fileId = null;
@@ -727,7 +775,7 @@ async function getStreams(tmdbId, type, season, episode) {
         const epInfo = await resolveTvEpisode(link.url, season || 1, episode || 1, quality);
         if (!epInfo) {
           console.log(`[MoviesDrive]   ✗ Could not find episode ${episode || 1} on archive page`);
-          continue;
+          return null;
         }
         fileId = epInfo.fileId;
         fileName = epInfo.fileName || `S${season || 1}E${episode || 1} ${quality}`;
@@ -759,7 +807,7 @@ async function getStreams(tmdbId, type, season, episode) {
         const hits = await searchHubcloud(token, searchQ);
         if (hits.length === 0) {
           console.log(`[MoviesDrive]   ✗ No files found in hubcloud search`);
-          continue;
+          return null;
         }
 
         // Pick the best match — prefer the one with the right quality in the filename
@@ -810,25 +858,30 @@ async function getStreams(tmdbId, type, season, episode) {
 
       if (!fileId) {
         console.log(`[MoviesDrive]   ✗ Could not extract file ID`);
-        continue;
+        return null;
       }
 
       // Step 4c: Resolve the file URL to direct download URLs
       const resolved = await resolveFileUrl(fileId, fileName);
       if (!resolved.pixelUrl && !resolved.gpdlUrl && !resolved.workerUrl && !resolved.pixeldrainUrl) {
         console.log(`[MoviesDrive]   ✗ No playable URL found on file page`);
-        continue;
+        return null;
       }
 
       // Prefer pixel.hubcloud.cx (→ googleusercontent — direct MKV, plays via /range-proxy)
       // Then Cloudflare worker (*.workers.dev — Range native)
-      // Then PixelDrain (sometimes stale — use as last resort)
       // Then GPDL (10Gbps server)
+      // Then PixelDrain (last resort — DMCA decoys common, HEAD-checked)
       let playUrl = null;
       let source = null;
       if (resolved.pixelUrl) {
         console.log(`[MoviesDrive]   Following pixel.hubcloud.cx redirect chain...`);
-        const finalUrl = await resolvePixelToDirect(resolved.pixelUrl);
+        let finalUrl = await resolvePixelToDirect(resolved.pixelUrl);
+        if (!(finalUrl && (finalUrl.includes('googleusercontent.com') || finalUrl.includes('workers.dev')))) {
+          // The pixel chain occasionally hiccups (worker 5xx / slow hop) —
+          // one retry before falling back to weaker mirrors
+          finalUrl = await resolvePixelToDirect(resolved.pixelUrl);
+        }
         if (finalUrl && (finalUrl.includes('googleusercontent.com') || finalUrl.includes('workers.dev'))) {
           playUrl = finalUrl;
           source = 'GDrive';
@@ -839,29 +892,51 @@ async function getStreams(tmdbId, type, season, episode) {
         playUrl = resolved.workerUrl;
         source = 'Cloudflare-Worker';
       }
-      if (!playUrl && resolved.pixeldrainUrl) {
-        playUrl = resolved.pixeldrainUrl;
-        source = 'PixelDrain';
-      }
       if (!playUrl && resolved.gpdlUrl) {
         playUrl = resolved.gpdlUrl;
         source = 'HubCloud-10Gbps';
       }
+      if (!playUrl && resolved.pixeldrainIds && resolved.pixeldrainIds.length > 0) {
+        // Dead decoys are common — liveness-check each candidate, use the
+        // first mirror that actually serves the file
+        for (const pdId of resolved.pixeldrainIds) {
+          const pdUrl = `https://pixeldrain.dev/api/file/${pdId}`;
+          if (await headOk(pdUrl)) {
+            playUrl = pdUrl;
+            source = 'PixelDrain';
+            break;
+          }
+          console.log(`[MoviesDrive]   ✗ PixelDrain ${pdId} dead (DMCA decoy), skipping`);
+        }
+      }
       if (!playUrl) {
         console.log(`[MoviesDrive]   ✗ Could not resolve to a playable URL`);
-        continue;
+        return null;
       }
       console.log(`[MoviesDrive]   ✓ ${source}: ${playUrl.slice(0, 80)}...`);
 
-      allStreams.push(buildStream(playUrl, info, quality, language, source, resolved.size || '', fileName, isAnime));
+      return buildStream(playUrl, info, quality, language, source, resolved.size || '', fileName, isAnime);
     } catch (e) {
       console.log(`[MoviesDrive]   ✗ Resolution failed: ${e.message.slice(0, 80)}`);
+      return null;
     }
+  };
+
+  const resolvedStreams = (await mapPool(qualityLinks, 3, resolveQualityLink)).filter(Boolean);
+
+  const allStreams = [];
+  const seenUrls = new Set();
+  for (const s of resolvedStreams) {
+    if (!s || !s.url || seenUrls.has(s.url)) continue;
+    seenUrls.add(s.url);
+    allStreams.push(s);
   }
 
   // Sort by quality (4K first)
   const qOrder = { '2160p': 0, '1080p': 1, '720p': 2, '480p': 3, '360p': 4 };
-  allStreams.sort((a, b) => (qOrder[a.quality] || 99) - (qOrder[b.quality] || 99));
+  // NB: use ?? not || — the 2160p rank is 0 (falsy) and || would demote 4K
+  // to the "unknown" bucket, sorting it LAST instead of first
+  allStreams.sort((a, b) => (qOrder[a.quality] ?? 99) - (qOrder[b.quality] ?? 99));
 
   console.log(`[MoviesDrive] ✅ ${allStreams.length} playable stream(s) total`);
   const counts = {};

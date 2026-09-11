@@ -40,12 +40,12 @@ async function fetchText(url, referer, timeout) {
   const gs = await loadGotScraping();
   if (gs) {
     try {
-      const res = await gs({ url, headers, timeout: { request: timeout || 15000 }, retry: { limit: 1 } });
+      const res = await gs({ url, headers, timeout: { request: timeout || 10000 }, retry: { limit: 0 } });
       if (res.statusCode >= 200 && res.statusCode < 400) return typeof res.body === 'string' ? res.body : res.body.toString();
     } catch (e) { /* fall through */ }
   }
   // Fallback: plain fetch
-  const res = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(timeout || 15000) });
+  const res = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(timeout || 10000) });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.text();
 }
@@ -128,17 +128,102 @@ function parseDownloadLinks(html) {
 
 // ---------------------------------------------------------------------------
 // Resolve abhilinks.site → hubcloud + gdflix links
+// Each archive page lists SEVERAL quality files (e.g. 480p→2160p), each under
+// its own header (<h4>1080p [3.3GB]</h4> before the button). Label every
+// resolved link with the nearest preceding header quality, falling back to
+// the quality the movieshunt page assigned to the abhilinks button.
+// Season-pack archives list per-episode files behind "-:Episodes: N:-" style
+// markers — capture that too so series requests can filter to the requested
+// episode instead of flooding the player with every episode of the pack.
+// Returns: [{ url, fileId, source, quality?, episode? }]
 // ---------------------------------------------------------------------------
-async function resolveAbhilinks(abhilinksUrl) {
+async function resolveAbhilinks(abhilinksUrl, fallbackQuality) {
   try {
     const html = await fetchText(abhilinksUrl, ORIGIN + '/');
     const links = [];
     const hub = [...html.matchAll(/href="(https:\/\/hubcloud\.[a-z]+\/(?:drive|video)\/([a-z0-9_]+))"/g)];
-    for (const m of hub) links.push({ url: m[1], fileId: m[2], source: 'hubcloud' });
+    for (const m of hub) {
+      const before = html.slice(Math.max(0, m.index - 600), m.index);
+      const qAll = [...before.matchAll(/(2160p|1080p|720p|480p|360p|4K)/gi)];
+      let quality = fallbackQuality || null;
+      if (qAll.length > 0) {
+        const tok = qAll[qAll.length - 1][1].toLowerCase();
+        quality = tok === '4k' ? '2160p' : tok;
+      }
+      // Episode marker: "-:Episodes: 1:-", "Episode 1", "Ep01", "E01" …
+      const epAll = [...before.matchAll(/-:\s*Episodes?\s*:?\s*(\d+)\s*:-|(?:Episode|Ep?)\s*\.?\s*(\d{1,3})\b/gi)];
+      let episode = null;
+      for (const em of epAll) {
+        const num = parseInt(em[1] || em[2], 10);
+        if (num >= 1 && num <= 999) episode = num; // keep the LAST marker before the link
+      }
+      links.push({ url: m[1], fileId: m[2], source: 'hubcloud', quality, episode });
+    }
     const gd = [...html.matchAll(/href="(https:\/\/(?:new\d+\.)?gdflix\.[a-z]+\/file\/([A-Za-z0-9]+))"/g)];
     for (const m of gd) links.push({ url: m[1], fileId: m[2], source: 'gdflix' });
     return links;
   } catch (e) { return []; }
+}
+
+// ---------------------------------------------------------------------------
+// HEAD-liveness check — pixeldrain mirrors on hubcloud pages are frequently
+// dead DMCA decoys (static href is dead while the real file is another ID)
+// ---------------------------------------------------------------------------
+async function headOk(url) {
+  try {
+    const gs = await loadGotScraping();
+    if (!gs) return false;
+    const res = await gs(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': UA },
+      timeout: { request: 6000 },
+      throwHttpErrors: false,
+      followRedirect: true,
+    });
+    return res.statusCode >= 200 && res.statusCode < 400;
+  } catch (e) { return false; }
+}
+
+// ---------------------------------------------------------------------------
+// Follow pixel.hubcloud.cx redirect chain to the direct video URL.
+// Chain: pixel.hubcloud.cx → 302 → pixel.<name>.workers.dev → 302 →
+//        gamerxyt.com/dl.php?link=<video-downloads.googleusercontent URL>
+// The raw pixel URL is NOT player-playable (it lands on an HTML page), so
+// the chain must be followed server-side and the ?link= param extracted.
+// ---------------------------------------------------------------------------
+async function resolvePixelChain(pixelUrl) {
+  const gs = await loadGotScraping();
+  if (!gs) return null;
+  let current = pixelUrl;
+  for (let i = 0; i < 5; i++) {
+    let res;
+    try {
+      res = await gs(current, {
+        headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*', 'Referer': 'https://hubcloud.cx/' },
+        timeout: { request: 8000 }, throwHttpErrors: false, followRedirect: false,
+      });
+    } catch (e) { return null; }
+    const loc = res.headers.location || '';
+    if (res.statusCode >= 300 && res.statusCode < 400 && loc) {
+      try { current = loc.startsWith('http') ? loc : new URL(loc, current).toString(); } catch (e) { return null; }
+      continue;
+    }
+    if (res.statusCode === 200) {
+      try {
+        const u = new URL(current);
+        if (u.hostname.includes('gamerxyt') && u.pathname.includes('dl.php')) {
+          const link = u.searchParams.get('link');
+          if (link && link.startsWith('http')) return link;
+        }
+      } catch (e) { /* not a URL */ }
+      const body = typeof res.body === 'string' ? res.body : (res.body ? res.body.toString() : '');
+      const vd = body.match(/https:\/\/video-downloads\.googleusercontent\.com\/[A-Za-z0-9_-]+/i);
+      if (vd) return vd[0];
+    }
+    if (/workers\.dev|googleusercontent\.com/.test(current)) return current;
+    return null;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,30 +237,63 @@ async function resolveHubcloudDrive(driveUrl) {
     if (gxMatch) {
       const gxHtml = await fetchText(gxMatch[0], driveUrl);
       const gdMatch = gxHtml.match(/https:\/\/lh3\.googleusercontent\.com\/[^\s"'<>]+/);
-      if (gdMatch) { let url = gdMatch[0].split('#')[0].split('=m')[0]; return url + '=d'; }
+      if (gdMatch) {
+        let url = gdMatch[0].split('#')[0].split('=m')[0];
+        const lh3Url = url + '=d';
+        // lh3.googleusercontent.com/pw/ links are Google-hotlink-blocked from
+        // many IPs (403 image/png identity pixel) — only emit when provably
+        // reachable, otherwise fall through to the pixel chain which yields
+        // video-downloads URLs that play everywhere
+        if (await headOk(lh3Url)) return lh3Url;
+      }
       const pdMatch = gxHtml.match(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/);
-      if (pdMatch) return 'https://pixeldrain.com/api/file/' + pdMatch[1] + '?download';
+      if (pdMatch) {
+        const candidates = [...new Set([...gxHtml.matchAll(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/gi)].map(m => m[1]))];
+        for (const pdId of candidates) {
+          const pdUrl = 'https://pixeldrain.com/api/file/' + pdId + '?download';
+          if (await headOk(pdUrl)) return pdUrl;
+        }
+      }
     }
     // Try sportverse.cc (for /video/ path)
     const svMatch = html.match(/https:\/\/sportverse\.cc\/hubcloud\.php\?[^"'\s]+/);
     if (svMatch) {
       const svHtml = await fetchText(svMatch[0], driveUrl);
-      // Find GDrive URL
-      const gdMatch = svHtml.match(/https:\/\/lh3\.googleusercontent\.com\/[^\s"'<>]+/);
-      if (gdMatch) { let url = gdMatch[0].split('#')[0].split('=m')[0]; return url + '=d'; }
+      const gdMatch2 = svHtml.match(/https:\/\/lh3\.googleusercontent\.com\/[^\s"'<>]+/);
+      if (gdMatch2) {
+        let url = gdMatch2[0].split('#')[0].split('=m')[0];
+        const lh3Url = url + '=d';
+        if (await headOk(lh3Url)) return lh3Url;
+      }
       // Find video-downloads URL
       const vdMatch = svHtml.match(/https:\/\/video-downloads\.googleusercontent\.com\/[^\s"'<>]+/);
       if (vdMatch) return vdMatch[0];
       // Find pixeldrain API download URL
       const pdMatch = svHtml.match(/https:\/\/pixeldrain\.[a-z]+\/api\/file\/[A-Za-z0-9]+\?download/);
       if (pdMatch) return pdMatch[0];
-      // Find R2 Cloudflare direct MKV URL
+      // Find R2 Cloudflare direct MKV URL (bucket form — never IP-blocked)
       const r2Match = svHtml.match(/https:\/\/[a-z0-9]+\.r2\.cloudflarestorage\.com\/[^\s"'<>]+\.mkv[^\s"'<>]*/);
       if (r2Match) return r2Match[0];
+      // Pixeldrain /u/ buttons — liveness-check every candidate (DMCA decoys
+      // are common). Server-verified alive beats a datacenter-blocked r2.dev.
+      const svPd = [...new Set([...svHtml.matchAll(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/gi)].map(m => m[1]))];
+      for (const pdId of svPd) {
+        const pdUrl = 'https://pixeldrain.com/api/file/' + pdId + '?download';
+        if (await headOk(pdUrl)) return pdUrl;
+      }
+      // pub-*.r2.dev form LAST: direct + Range-native, but Cloudflare blocks
+      // datacenter ASNs by default (server-side 403 ≠ dead for real users),
+      // so it is only used when nothing verifiable exists
+      const r2Dev = svHtml.match(/https:\/\/pub-[a-z0-9]+\.r2\.dev\/[^\s"'<>]+\.mkv[^\s"'<>]*/);
+      if (r2Dev) return r2Dev[0];
     }
-    // Try pixel.hubcloud.cx
+    // Try pixel.hubcloud.cx — follow the chain to the direct video URL
     const pixelMatch = html.match(/https:\/\/pixel\.hubcloud\.[a-z]+\/\?id=[^"'\s]+/);
-    if (pixelMatch) return pixelMatch[0];
+    if (pixelMatch) {
+      const direct = await resolvePixelChain(pixelMatch[0]);
+      if (direct) return direct;
+      return pixelMatch[0]; // last resort — old behavior
+    }
     return null;
   } catch (e) { return null; }
 }
@@ -210,6 +328,23 @@ function buildStream(opts) {
 }
 
 // ---------------------------------------------------------------------------
+// Bounded-concurrency map — resolution is upstream-fetch-bound (each link
+// needs 2-4 sequential fetches), so serially walking 20+ links regularly
+// exceeded the caller's time budget and the addon shipped ZERO streams.
+// ---------------------------------------------------------------------------
+async function mapPool(items, limit, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      try { out[idx] = await fn(items[idx], idx); } catch (e) { out[idx] = null; }
+    }
+  }));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 async function getStreams(tmdbId, type, season, episode) {
   tmdbId = String(tmdbId);
   console.log('[MoviesHunt] Request: tmdb=' + tmdbId + ' type=' + type);
@@ -240,68 +375,95 @@ async function getStreams(tmdbId, type, season, episode) {
   const allStreams = [];
   const seenFileIds = new Set();
 
-  for (const link of links) {
+  // Resolve links concurrently (pool of 6); each link's hubcloud/gdflix subs
+  // resolve with pool of 3. Serial resolution of 20+ links took 40s+ and hit
+  // the caller's race timeout → zero streams shipped even though every link
+  // was perfectly resolvable.
+  // Streams are pushed into allStreams AS THEY COMPLETE, and the whole pool
+  // is raced against a ~22s internal deadline — the caller's 28s race then
+  // ALWAYS receives whatever resolved instead of timing out to zero.
+  const linksToProcess = links.slice(0, 14);
+  const resolveOneLink = async (link) => {
+    const push = (s) => { if (s) allStreams.push(s); };
     try {
       if (link.type === 'abhilinks') {
-        const subLinks = await resolveAbhilinks(link.url);
-        for (const sub of subLinks) {
-          if (seenFileIds.has(sub.fileId)) continue;
+        const subLinks = await resolveAbhilinks(link.url, link.quality);
+        const subResults = await mapPool(subLinks, 3, async (sub) => {
+          if (seenFileIds.has(sub.fileId)) return null;
+          // Series: season-pack archives hold EVERY episode — keep only the
+          // requested one (subs without a marker stay, defensively)
+          if (type === 'tv' && episode != null && sub.episode != null && sub.episode !== parseInt(episode, 10)) return null;
           if (sub.source === 'hubcloud') {
             const resolved = await resolveHubcloudDrive(sub.url);
-            if (resolved) {
-              seenFileIds.add(sub.fileId);
-              allStreams.push(buildStream({
-                quality: link.quality, title: info.title + ' [MoviesHunt ' + link.quality.toUpperCase() + ']',
-                url: resolved, bingeGroup: 'movieshunt-' + link.quality + '-' + sub.fileId,
-              }));
-              console.log('[MoviesHunt] + ' + link.quality + ': ' + resolved.slice(0, 80));
-            }
+            if (!resolved) return null;
+            seenFileIds.add(sub.fileId);
+            const q = sub.quality || link.quality;
+            return buildStream({
+              quality: q, title: info.title + ' [MoviesHunt ' + String(q).toUpperCase() + ']',
+              url: resolved, bingeGroup: 'movieshunt-' + q + '-' + sub.fileId,
+            });
           } else if (sub.source === 'gdflix') {
             const resolved = await resolveGdflix(sub.url);
-            if (resolved) {
-              seenFileIds.add(sub.fileId);
-              allStreams.push(buildStream({
-                quality: link.quality, title: info.title + ' [MoviesHunt ' + link.quality.toUpperCase() + ' GDFlix]',
-                url: resolved.url, bingeGroup: 'movieshunt-gdflix-' + sub.fileId,
-                mimeType: resolved.type === 'zip' ? 'application/zip' : 'video/x-matroska',
-              }));
-              console.log('[MoviesHunt] + GDFlix ' + link.quality + ': ' + resolved.url.slice(0, 80));
-            }
+            if (!resolved) return null;
+            seenFileIds.add(sub.fileId);
+            const q = sub.quality || link.quality;
+            return buildStream({
+              quality: q, title: info.title + ' [MoviesHunt ' + String(q).toUpperCase() + ' GDFlix]',
+              url: resolved.url, bingeGroup: 'movieshunt-gdflix-' + sub.fileId,
+              mimeType: resolved.type === 'zip' ? 'application/zip' : 'video/x-matroska',
+            });
           }
-        }
+          return null;
+        });
+        for (const r of subResults) push(r);
       } else if (link.type === 'hubcloud') {
-        if (seenFileIds.has(link.fileId)) continue;
+        if (seenFileIds.has(link.fileId)) return;
         const resolved = await resolveHubcloudDrive(link.url);
         if (resolved) {
           seenFileIds.add(link.fileId);
-          allStreams.push(buildStream({
+          push(buildStream({
             quality: link.quality, title: info.title + ' [MoviesHunt ' + link.quality.toUpperCase() + ']',
             url: resolved, bingeGroup: 'movieshunt-' + link.quality + '-' + link.fileId,
           }));
-          console.log('[MoviesHunt] + ' + link.quality + ': ' + resolved.slice(0, 80));
         }
       } else if (link.type === 'gdflix') {
-        if (seenFileIds.has(link.fileId)) continue;
+        if (seenFileIds.has(link.fileId)) return;
         const resolved = await resolveGdflix(link.url);
         if (resolved) {
           seenFileIds.add(link.fileId);
-          allStreams.push(buildStream({
+          push(buildStream({
             quality: link.quality, title: info.title + ' [MoviesHunt ' + link.quality.toUpperCase() + ' GDFlix]',
             url: resolved.url, bingeGroup: 'movieshunt-gdflix-' + link.fileId,
             mimeType: resolved.type === 'zip' ? 'application/zip' : 'video/x-matroska',
           }));
-          console.log('[MoviesHunt] + GDFlix ' + link.quality + ': ' + resolved.url.slice(0, 80));
         }
       }
     } catch (e) { /* skip */ }
+  };
+
+  await Promise.race([
+    mapPool(linksToProcess, 6, resolveOneLink),
+    new Promise(r => setTimeout(r, 22000)),
+  ]);
+
+  // Dedupe identical final URLs (season-pack pages list the same file behind
+  // many buttons — one playable entry is what the player wants)
+  const seenUrls = new Set();
+  const uniqueStreams = [];
+  for (const s of allStreams) {
+    if (!s || !s.url || seenUrls.has(s.url)) continue;
+    seenUrls.add(s.url);
+    uniqueStreams.push(s);
   }
 
   // Sort by quality
   const qOrder = { '2160p': 0, '4k': 0, '1080p': 1, '720p': 2, '480p': 3 };
-  allStreams.sort((a, b) => (qOrder[a.quality] || 99) - (qOrder[b.quality] || 99));
+  // NB: use ?? not || — the 2160p/4k rank is 0 (falsy) and || would demote
+  // 4K to the "unknown" bucket, sorting it LAST instead of first
+  uniqueStreams.sort((a, b) => (qOrder[a.quality] ?? 99) - (qOrder[b.quality] ?? 99));
 
-  console.log('[MoviesHunt] ' + allStreams.length + ' streams total');
-  return allStreams;
+  console.log('[MoviesHunt] ' + uniqueStreams.length + ' streams total');
+  return uniqueStreams;
 }
 
 module.exports = {
