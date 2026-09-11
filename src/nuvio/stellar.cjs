@@ -159,7 +159,13 @@ async function fetchSubtitles(mediaType, id, season, episode) {
 // ---------------------------------------------------------------------------
 async function probeMasterPlaylist(url) {
   try {
-    const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000) });
+    // UPSTREAM CHANGE (2026-09-11): playlist hosts gate on Origin/Referer
+    // stellar.gdn (Nova 403s "Origin not allowed" without it) — send both so
+    // quality/audio detection works for every server.
+    const res = await fetch(url, {
+      headers: { 'User-Agent': UA, 'Origin': STELLAR_GDN, 'Referer': STELLAR_GDN + '/' },
+      signal: AbortSignal.timeout(10000),
+    });
     if (!res.ok) return null;
     const text = await res.text();
     const variants = [];

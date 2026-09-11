@@ -158,11 +158,26 @@ app.get('/extract', async (req, res) => {
 app.get('/proxy', async (req, res) => {
   const rawUrl = req.query.url;
   const rawReferer = req.query.referer;
+  // origin=: optional Origin header forwarded upstream (Stellar's workers CDNs
+  // reject playlist/segment requests without Origin: https://stellar.gdn).
+  // Like referer=, it is ALSO propagated onto every rewritten m3u8 URL below
+  // so the whole variant/segment tree authenticates identically. Additive:
+  // absent for every pre-existing proxy consumer → byte-identical behavior.
+  const rawOrigin = req.query.origin;
   // forceHls=1: when set, the proxy buffers the response and checks if it's
   // HLS (regardless of URL pattern). Used by Nuvio source adapters for URLs
   // that return HLS content but don't have .m3u8 in the path (e.g. vidlove
   // returns application/vnd.apple.mpegurl from /api?d=... endpoint).
   let forceHls = req.query.forceHls === '1';
+  // hls=1: explicit "this URL is part of a proxied HLS tree" marker that
+  // rewriteM3u8Urls propagates onto rewritten child URLs (stellar-style
+  // origin-gated trees whose variant paths like cdn.reallyfast.ch/v/<token>
+  // match NO urlIsM3u8 pattern and would otherwise be served raw, leaving
+  // absolute segment URLs that the player then fetches without Origin → 403).
+  // Same buffered-rewrite treatment as forceHls, but ALSO suppresses the
+  // default Range injection (playlists are truncated/400'd by some workers
+  // when a spurious Range is sent).
+  if (req.query.hls === '1') forceHls = true;
 
   if (!rawUrl) {
     return res.status(400).send('Missing url parameter');
@@ -199,6 +214,7 @@ app.get('/proxy', async (req, res) => {
           xor: req.query.xor,
           ...(req.query.strip ? { strip: req.query.strip } : {}),
           ...(req.query.ct ? { ct: req.query.ct } : {}),
+          ...(rawOrigin ? { origin: rawOrigin } : {}),
         }),
       });
     }
@@ -208,12 +224,16 @@ app.get('/proxy', async (req, res) => {
       'Accept': '*/*',
     };
     if (rawReferer) proxyHeaders['Referer'] = rawReferer;
+    if (rawOrigin) proxyHeaders['Origin'] = rawOrigin;
     // Pass through Range header for seeking. Some CDNs (workers.dev) require
     // a Range header to return 206 — if Stremio doesn't send one, add a
     // default Range to get the first byte (which triggers 206 + seekability).
     if (req.headers.range) {
       proxyHeaders['Range'] = req.headers.range;
-    } else {
+    } else if (!forceHls) {
+      // Default Range only for non-HLS-tree requests — workers CDNs serving
+      // playlists/segments (stellar themepark) truncate or 400 Range'd
+      // playlists. Existing consumers (no hls/forceHls param) unchanged.
       proxyHeaders['Range'] = 'bytes=0-';
     }
 
@@ -232,6 +252,7 @@ app.get('/proxy', async (req, res) => {
       // Merge browser headers with our proxy headers (Referer, Range)
       Object.assign(proxyHeaders, browserHeaders);
       if (rawReferer) proxyHeaders['Referer'] = rawReferer;
+      if (rawOrigin) proxyHeaders['Origin'] = rawOrigin;
       if (req.headers.range) proxyHeaders['Range'] = req.headers.range;
       else proxyHeaders['Range'] = 'bytes=0-';
     }
@@ -359,7 +380,11 @@ app.get('/proxy', async (req, res) => {
 
         if (isHls) {
           // It's an HLS playlist — rewrite relative URLs to absolute /proxy URLs
-          const rewritten = rewriteM3u8Urls(body, targetUrl, rawReferer, req);
+          // (origin= rides along so variant/segment fetches keep authenticating;
+          // hls=1 marks children so variant playlists get the rewrite path too
+          // even when their URL shape matches no m3u8 pattern)
+          const rewritten = rewriteM3u8Urls(body, targetUrl, rawReferer, req,
+            rawOrigin ? { origin: rawOrigin, hls: '1' } : undefined);
           res.status(200);
           res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
           res.setHeader('Content-Length', Buffer.byteLength(rewritten));

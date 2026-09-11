@@ -12,8 +12,17 @@
 //   - Nova (h.themepark.workers.dev) — alternate CDN
 //   - Download files (DL — direct MKV/MP4 URLs up to 4K BluRay REMUX)
 //
-// The stream URL works WITHOUT Referer/auth headers — completely public once
-// resolved. Stremio plays it directly via HLS.
+// UPSTREAM CHANGE (2026-09-11): the CDN workers now enforce hotlink protection —
+//   - Orbit segments (a.themepark.workers.dev/seg/)  → 403 without
+//     Referer/Origin: https://stellar.gdn (playlists on cdn.reallyfast.ch stay open)
+//   - Nova master (h.themepark.workers.dev/hls)      → 403 "Origin not allowed"
+//     without Origin: https://stellar.gdn
+// So every HLS stream is now routed through the addon /proxy with
+// Origin+Referer: https://stellar.gdn (see headers below → meta.nuvioReferer /
+// meta.nuvioOrigin → NuvioExtractor builds /proxy URLs; src/index.js /proxy
+// forwards the Origin header and propagates origin= onto the whole m3u8 tree).
+// Subtitle VTTs (cache.vdrk.site) remain public — no proxying needed.
+// DL direct files keep their previous direct-play behavior.
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -44,6 +53,16 @@ function parseHeight(q) {
   if (s.includes('1440')) return 1440;
   const m = s.match(/(\d{3,4})p?/);
   return m ? parseInt(m[1], 10) : undefined;
+}
+
+// Conservative HLS URL check (module-local, same semantics as
+// NuvioExtractor.isHlsUrl) — used as a fallback when a raw stream object
+// carries no explicit HLS mime type.
+function isHlsUrlSafe(u) {
+  try {
+    const p = new URL(u).pathname.toLowerCase();
+    return p.endsWith('.m3u8') || p.includes('.m3u8') || p.includes('/m3u8/') || p.includes('/playlist');
+  } catch { return false; }
 }
 
 export class Stellar extends Source {
@@ -170,6 +189,16 @@ export class Stellar extends Source {
         ? ' [SUB+DUB Multi-Audio]'
         : (isAnime ? ' [SUB]' : '');
 
+      // Upstream hotlink gate (see file header): HLS workers reject segment /
+      // playlist requests without a stellar.gdn Origin. Setting headers here
+      // makes buildStreamResults emit meta.nuvioReferer + meta.nuvioOrigin so
+      // NuvioExtractor routes the stream through /proxy with both attached.
+      // Non-HLS (DL direct files) keep direct play — unchanged behavior.
+      const isHlsStream = s.type === 'application/vnd.apple.mpegurl' || isHlsUrlSafe(s.url);
+      const streamHeaders = isHlsStream
+        ? { Referer: this.baseUrl + '/', Origin: this.baseUrl }
+        : undefined;
+
       return {
         url: s.url,
         quality: s.quality || (height + 'p'),
@@ -177,6 +206,7 @@ export class Stellar extends Source {
         name: 'Stellar - ' + serverName,
         size: fileSize ? bytes(fileSize) : undefined,
         subtitles: subtitles.length > 0 ? subtitles : undefined,
+        headers: streamHeaders,
         _countryCodes: baseCountryCodes,
         _serverName: serverName,
         _isDownload: isDownload,

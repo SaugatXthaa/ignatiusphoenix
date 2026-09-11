@@ -282,6 +282,11 @@ export function buildStreamResults({ streams, title, sourceId, sourceLabel, coun
 
     const referer = s.headers?.Referer || s.headers?.referer || '';
     const userAgent = s.headers?.['User-Agent'] || s.headers?.['user-agent'] || '';
+    // Origin header (e.g. Stellar: workers CDNs reject requests without
+    // Origin: https://stellar.gdn). NuvioExtractor turns this into an
+    // origin= param on /proxy URLs; src/index.js /proxy sends it upstream
+    // and propagates it onto every rewritten m3u8 URL.
+    const origin = s.headers?.Origin || s.headers?.origin || '';
     const hls = isHlsUrl(url);
     const videoFile = isVideoFileUrl(url);
     const filename = extractFilename(url);
@@ -338,6 +343,7 @@ export function buildStreamResults({ streams, title, sourceId, sourceLabel, coun
       nuvioProvider: true,
       ...(referer && !skipReferer && { nuvioReferer: referer }),
       ...(userAgent && { nuvioUserAgent: userAgent }),
+      ...(origin && { nuvioOrigin: origin }),
       // forceHls=true when URL is ambiguous (not clearly HLS, not clearly MP4)
       // and requires a Referer — the proxy will do a HEAD check to determine
       // if the response is HLS or a video file

@@ -51,7 +51,9 @@ const NUVIO_SOURCE_IDS = new Set([
   'streamxtv',
   // cinebyrocks — movies/TV/anime via VidRock API (multi-CDN direct m3u8/mp4)
   'cinebyrocks',
-  // stellar — movies/TV/anime via PoW + AES-GCM (direct HLS, no Referer needed)
+  // stellar — movies/TV/anime via PoW + AES-GCM (HLS gated behind
+  //   Origin/Referer: stellar.gdn since 2026-09-11 upstream change — routed
+  //   through /proxy with origin= + referer=; see src/source/Stellar.js)
   'stellar',
   // desiflix — movies/TV/anime via manifest.desitvhub.eu.org Stremio addon
   //   Streams are direct URLs (flixsix.com MP4, manifest proxy HLS/MP4) with
@@ -108,6 +110,10 @@ export class NuvioExtractor extends Extractor {
     const referer = meta?.nuvioReferer || '';
     const forceHls = meta?.nuvioForceHls === true;
     const userAgent = meta?.nuvioUserAgent || '';
+    // Origin header (Stellar: its CDN workers 403 without Origin: stellar.gdn).
+    // Appended as origin= on /proxy URLs; the proxy sends it upstream AND
+    // propagates it onto every rewritten m3u8 URL (whole-tree auth).
+    const origin = meta?.nuvioOrigin || '';
     const hls = isHlsUrl(url);
     const videoFile = isVideoFileUrl(url);
 
@@ -136,6 +142,7 @@ export class NuvioExtractor extends Extractor {
       const proxyUrl = new URL('/proxy', ctx.hostUrl);
       proxyUrl.searchParams.set('url', url.href);
       proxyUrl.searchParams.set('referer', referer);
+      if (origin) proxyUrl.searchParams.set('origin', origin);
       return [{
         url: proxyUrl,
         format: Format.hls,
@@ -146,6 +153,7 @@ export class NuvioExtractor extends Extractor {
       const proxyUrl = new URL('/proxy', ctx.hostUrl);
       proxyUrl.searchParams.set('url', url.href);
       proxyUrl.searchParams.set('referer', referer);
+      if (origin) proxyUrl.searchParams.set('origin', origin);
       proxyUrl.searchParams.set('forceHls', '1');
       return [{
         url: proxyUrl,
@@ -157,6 +165,7 @@ export class NuvioExtractor extends Extractor {
       // (AniChan m3u8 has relative variant URLs that need rewriting)
       const proxyUrl = new URL('/proxy', ctx.hostUrl);
       proxyUrl.searchParams.set('url', url.href);
+      if (origin) proxyUrl.searchParams.set('origin', origin);
       proxyUrl.searchParams.set('forceHls', '1');
       return [{
         url: proxyUrl,
@@ -167,6 +176,7 @@ export class NuvioExtractor extends Extractor {
       // MP4/MKV with Referer → direct URL with requestHeaders
       const requestHeaders = { Referer: referer };
       if (userAgent) requestHeaders['User-Agent'] = userAgent;
+      if (origin) requestHeaders['Origin'] = origin;
       return [{
         url,
         format: Format.mp4,
