@@ -481,15 +481,46 @@ export class StreamResolver {
       }
     };
 
-    // GLOBAL TIMEOUT: Return whatever streams we have after 20s.
+    // GLOBAL TIMEOUT: Return whatever streams we have after 40s.
     // This prevents OOM on Render's 512MB free tier — without it, all 74
     // sources run simultaneously, each holding response data in memory.
     // The global cutoff ensures we collect results and free memory quickly.
     const GLOBAL_TIMEOUT_MS = 40_000;
+
+    // Track how many sources have fully settled (scrape + extractor stage).
+    let settledCount = 0;
+    const allSourcePromises = sortedSources.map(s =>
+      handleSource(s).finally(() => { settledCount++; })
+    );
+
     await Promise.race([
-      Promise.all(sortedSources.map(s => handleSource(s))),
+      Promise.all(allSourcePromises),
       new Promise(resolve => setTimeout(resolve, GLOBAL_TIMEOUT_MS)),
     ]);
+
+    // EXTRACTION GRACE WINDOW — recovers streams that were previously
+    // silently dropped every single request. Root cause: the extractor
+    // stage (embedresolver → vidking/other multi-provider sweeps) runs
+    // AFTER a source's own scrape finishes and has NO protected budget —
+    // it only gets whatever remains of the global window. With 71 sources
+    // gated at 15-concurrency (5 queue waves), wave-3+ sources routinely
+    // finish their scrape at t≈25-38s, leaving 2-15s for a multi-fetch
+    // embed resolution → the 40s cutoff fires mid-extraction and their
+    // already-scraped streams (vidfast/vidking/vidzee/vidsrcsbs/
+    // vegamovies/primeshows/...) never reach the response.
+    // Fix: after the cutoff, wait a BOUNDED grace period for in-flight
+    // sources to settle. Strictly additive — can only ADD streams that
+    // were already scraped, never removes or reorders anything. Worst
+    // case latency is bounded at GLOBAL_TIMEOUT_MS + GRACE.
+    const EXTRACT_GRACE_MS = 8_000;
+    if (settledCount < sortedSources.length) {
+      const before = settledCount;
+      await Promise.race([
+        Promise.allSettled(allSourcePromises),
+        new Promise(resolve => setTimeout(resolve, EXTRACT_GRACE_MS)),
+      ]);
+      this.logger.info(`StreamResolver: grace window let ${settledCount - before} late source(s) land (${sortedSources.length - settledCount} still pending)`);
+    }
 
     // Stash timings on the instance for the /debug/stream endpoint to read.
     // (Not returned in the normal /stream response to avoid breaking Stremio.)
