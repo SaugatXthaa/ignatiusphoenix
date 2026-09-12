@@ -39,6 +39,29 @@ function apiHeaders() {
   };
 }
 
+// Magic-byte check — the streamrip API sometimes serves ZIP/RAR archives
+// (PK/Rar! magic) for pack uploads. mpv cannot play archives; drop them so
+// every Pantyflix card is real media. Conservative on network errors: a
+// failed probe never kills a potentially playable card.
+async function isPlayableMedia(urlStr) {
+  try {
+    const res = await fetch(urlStr, {
+      headers: { 'User-Agent': UA, Range: 'bytes=0-15' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return true; // status verdicts are IP-dependent — let the player try
+    const ct = res.headers.get('content-type') || '';
+    if (/text\/html/i.test(ct)) return false; // HTML gate page
+    const buf = Buffer.from(await res.arrayBuffer());
+    const head = buf.subarray(0, 4).toString('binary');
+    if (head.startsWith('PK')) return false;   // ZIP archive
+    if (head.startsWith('Rar!')) return false; // RAR archive
+    if (/application\/(zip|x-zip-compressed|rar)/i.test(ct)) return false;
+    return true;
+  } catch { return true; }
+}
+
 // Parse size string ("31.4GB", "550MB") to bytes
 function parseSize(sizeStr) {
   if (!sizeStr) return undefined;
@@ -169,6 +192,15 @@ export class Pantyflix extends Source {
         if (!resolved) return null; // Skip unresolved fastdlserver URLs
         directUrl = resolved;
       }
+
+      // febbox.com/share/... links from the API are WATCH PAGE URLs (HTML),
+      // not media — shipping them verbatim produces "unrecognized file
+      // format" poison cards. The same content is resolved properly by the
+      // Peckle source, so drop the page URL here.
+      if (/febbox\.com\/share\//i.test(directUrl)) return null;
+
+      // ZIP/RAR archive filter — pack uploads are downloads, not streams.
+      if (!(await isPlayableMedia(directUrl))) return null;
 
       // Dedup by URL
       if (seenUrls.has(directUrl)) return null;

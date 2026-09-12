@@ -304,8 +304,22 @@ async function resolveHubcloudDrive(driveUrl) {
 async function resolveGdflix(gdflixUrl) {
   try {
     const html = await fetchText(gdflixUrl);
-    const indexMatch = html.match(/https:\/\/max\.indexserver\.site\/[^\s"'<>]+/);
-    if (indexMatch) return { url: indexMatch[0], type: 'zip' };
+    // 2026-09: gdflix.dev now 302s to new3.gdflix.io and the indexserver
+    // subdomain rotates (max. → light. → …) — match ANY subdomain, and
+    // HEAD-verify the file (some listing entries 404) before shipping.
+    const idxCandidates = [...new Set([...html.matchAll(/https:\/\/[a-z0-9-]+\.indexserver\.site\/[^\s"'<>]+/g)].map(m => m[0]))];
+    for (const idxUrl of idxCandidates) {
+      if (await headOk(idxUrl)) return { url: idxUrl, type: 'zip' };
+    }
+    // R2 token link fallback — direct MKV, Range-native. Verified 206
+    // video/mkv live (pub-*.r2.dev + ?token= form). HEAD-check to avoid
+    // shipping expired-token URLs.
+    const r2Candidates = [...new Set([...html.matchAll(/https:\/\/pub-[a-z0-9]+\.r2\.dev\/[^\s"'<>]+/g)].map(m => m[0]))];
+    for (const r2Url of r2Candidates) {
+      if (await headOk(r2Url)) return { url: r2Url, type: 'mkv' };
+    }
+    // NB: instant.busycdn.xyz ("DIRECT SERVER [MGT]") returns 500 JSON —
+    // verified dead upstream, deliberately NOT shipped.
     return null;
   } catch (e) { return null; }
 }

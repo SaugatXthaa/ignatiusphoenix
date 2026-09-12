@@ -21,6 +21,34 @@ import { Source } from './Source.js';
 
 const API_BASE = 'https://raw.githubusercontent.com/Watchout2025/api/refs/heads/main/hls';
 const REFERER = 'https://netlio.vercel.app/';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+// Liveness probe — Netlio ships its single HLS URL through /proxy (the CDN
+// is CF-protected and Referer-gated), so a server-side probe sees exactly
+// what the player will see. Netlio is a one-stream source: when upstream
+// answers 4xx/5xx or an HTML gate, a dead card is worse than no card.
+async function hlsAlive(urlStr) {
+  try {
+    const res = await fetch(urlStr, {
+      headers: { 'User-Agent': UA, Referer: REFERER, Range: 'bytes=0-1023' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) {
+      console.log(`[netlio] upstream not playable (${res.status}) — dropping card`);
+      return false;
+    }
+    const ct = res.headers.get('content-type') || '';
+    if (/text\/html/i.test(ct)) {
+      console.log('[netlio] upstream serves HTML gate — dropping card');
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.log(`[netlio] upstream probe failed (${e?.message || e}) — dropping card`);
+    return false;
+  }
+}
 
 export class Netlio extends Source {
   constructor(fetcher) {
@@ -64,7 +92,7 @@ export class Netlio extends Source {
 
             // Only use direct HLS URLs — skip multimovies.rpmhub.site URLs
             // which require browser-side JS decryption
-            if (!hlsUrl.includes('rpmhub.site')) {
+            if (!hlsUrl.includes('rpmhub.site') && (await hlsAlive(hlsUrl))) {
               let parsed;
               try { parsed = new URL(hlsUrl); } catch { /* invalid */ }
               if (parsed) {
@@ -89,7 +117,7 @@ export class Netlio extends Source {
       const movieUrl = new URL(`${API_BASE}/movie/${tmdbId.id}`);
       try {
         const hlsUrl = await this.fetcher.text(ctx, movieUrl, { timeout: 10000 });
-        if (hlsUrl && !hlsUrl.includes('404')) {
+        if (hlsUrl && !hlsUrl.includes('404') && (await hlsAlive(hlsUrl.trim()))) {
           let parsed;
           try { parsed = new URL(hlsUrl.trim()); } catch { /* invalid */ }
           if (parsed) {

@@ -199,6 +199,22 @@ function getStreamFromPage(pageUrl) {
     })
 }
 
+// Liveness gate — AnimeWorld streams ship through /proxy (Referer/UA headers
+// set on the stream object), so a server-side probe sees exactly what the
+// player will see. Upstream 4xx/5xx or an HTML challenge = guaranteed mpv
+// error; drop the stream instead of shipping a dead card.
+function streamAlive(url, headers) {
+  return fetch(url, {
+    headers: Object.assign({ Range: 'bytes=0-1023' }, headers || {}),
+    redirect: 'follow',
+    signal: AbortSignal.timeout(8000),
+  }).then(function(res) {
+    if (!res.ok) return false
+    var ct = res.headers.get('content-type') || ''
+    return !/text\/html/i.test(ct)
+  }).catch(function() { return false })
+}
+
 function getStreams(tmdbId, mediaType, season, episode) {
   return new Promise(function(resolve) {
     var tmdbUrl = 'https://api.themoviedb.org/3/' + (mediaType === 'movie' ? 'movie' : 'tv') + '/' + tmdbId + '?api_key=' + TMDB_KEY
@@ -221,7 +237,13 @@ function getStreams(tmdbId, mediaType, season, episode) {
       .then(function(streamData) {
         if (!streamData) { resolve([]); return }
 
-        resolve([{
+        return streamAlive(streamData.url, {
+          'Referer': PLAYER + '/',
+          'User-Agent': UA,
+        }).then(function(alive) {
+          if (!alive) { resolve([]); return }
+
+          resolve([{
           name: '🗡️ AnimeWorld',
           title: 'AnimeWorld • Multi-Audio 1080p',
           url: streamData.url,
@@ -235,7 +257,8 @@ function getStreams(tmdbId, mediaType, season, episode) {
           subtitles: streamData.subtitle
             ? [{ url: streamData.subtitle, lang: 'en', name: 'English' }]
             : []
-        }])
+          }])
+        })
       })
       .catch(function() {
         resolve([])

@@ -2,7 +2,7 @@
 // Samples stream URLs from the merged endpoints for 2 titles and classifies what
 // a player would actually receive: HLS / video bytes = OK; HTML / JSON / CF
 // challenge = the "[mpv] unrecognized file format" poison class.
-const BASE = 'http://127.0.0.1:4595';
+const BASE = 'http://127.0.0.1:4598';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const TITLES = [
   { label: 'Endgame', path: 'movie/tt4154796' },
@@ -32,7 +32,7 @@ function classify(buf, ct, status) {
 }
 
 async function probe(url) {
-  const u = url.replace('https://127.0.0.1:4595', 'http://127.0.0.1:4595').replace('https://localhost:4595', 'http://localhost:4595');
+  const u = url.replace('https://127.0.0.1:4598', 'http://127.0.0.1:4598').replace('https://localhost:4598', 'http://localhost:4598');
   try {
     const res = await fetch(u, { headers: { 'User-Agent': UA, Range: 'bytes=0-2047' }, redirect: 'follow', signal: AbortSignal.timeout(20000) });
     const ab = await res.arrayBuffer();

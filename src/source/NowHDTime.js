@@ -65,8 +65,12 @@ export class NowHDTime extends Source {
     let parsed;
     try { parsed = new URL(data.playUrl); } catch { return []; }
 
-    // Try to extract resolution from the m3u8 playlist
+    // Liveness + resolution probe — the playUrl is a time-limited token URL
+    // backed by nhdapi's own upstream. When that upstream dies the API still
+    // issues tokens and the card ships born-dead (JSON error body instead of
+    // HLS). Only ship when the playlist is actually being served.
     let height;
+    let playable = false;
     try {
       const { gotScraping } = await import('got-scraping');
       const r = await gotScraping.get(data.playUrl, {
@@ -74,10 +78,18 @@ export class NowHDTime extends Source {
         timeout: { request: 10000 }, throwHttpErrors: false,
       });
       if (r.statusCode === 200) {
-        const resMatch = r.body.match(/RESOLUTION=\d+x(\d+)/i);
-        if (resMatch) height = parseInt(resMatch[1]);
+        const body = typeof r.body === 'string' ? r.body : r.body.toString();
+        if (/#EXTM3U/.test(body)) {
+          playable = true;
+          const resMatch = body.match(/RESOLUTION=\d+x(\d+)/i);
+          if (resMatch) height = parseInt(resMatch[1]);
+        }
       }
-    } catch { /* resolution detection failed — not critical */ }
+    } catch { /* probe failed — treat as not playable */ }
+    if (!playable) {
+      console.log('[nowhdtime] playUrl not serving HLS (expired token or upstream outage) — dropping card');
+      return [];
+    }
 
     const results = [{
       url: parsed,
