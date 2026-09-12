@@ -28,6 +28,18 @@ const videasyScraper = require('./videasy.cjs');
 
 const PROVIDER_NAME = 'Videasy';
 
+// The speedracelight backend fails stochastically per sweep: each of the 10
+// provider servers 404/500s independently per run (live-verified: Endgame
+// sweeps landed "Nitrogen only", "Hydrogen only" and "4 streams from
+// Hydrogen" on three consecutive runs), and the /seed fetch is single-shot.
+// One empty sweep therefore does NOT mean the title has no streams — retry
+// after a short pause so a transient bad window doesn't zero both videasy
+// source cards at once. Bounded: empty sweeps fail fast (upstream 404/500s
+// return in ~2-4s), so worst-case wall time stays well under the resolver's
+// 35s per-source cutoff.
+const EMPTY_RETRY_MAX = 2;      // total attempts = 1 + 2 retries
+const EMPTY_RETRY_DELAY_MS = 2000;
+
 async function getStreams(tmdbId, type, season, episode) {
   // Delegate to the existing videasy scraper — it handles:
   //   1. TMDB info fetch
@@ -35,7 +47,12 @@ async function getStreams(tmdbId, type, season, episode) {
   //   3. Querying 10 speedracelight servers in parallel
   //   4. Decrypting responses (custom stream cipher)
   //   5. Returning streams with subtitles
-  const streams = await videasyScraper.getStreams(tmdbId, type, season, episode);
+  let streams = await videasyScraper.getStreams(tmdbId, type, season, episode);
+
+  for (let attempt = 0; Array.isArray(streams) && streams.length === 0 && attempt < EMPTY_RETRY_MAX; attempt++) {
+    await new Promise(r => setTimeout(r, EMPTY_RETRY_DELAY_MS));
+    streams = await videasyScraper.getStreams(tmdbId, type, season, episode);
+  }
 
   if (!Array.isArray(streams)) return [];
 

@@ -106,10 +106,27 @@ export class VidEasy extends Source {
     const mod = getScraperModule();
     if (!mod || typeof mod.getStreams !== 'function') return [];
 
+    // Retry on empty sweeps: the speedracelight backend fails stochastically
+    // per run (each of the 10 provider servers 404/500s independently — live
+    // sweeps landed "Nitrogen only" then "Hydrogen only" on consecutive
+    // runs), and the /seed fetch is single-shot inside the obfuscated
+    // module. One empty sweep ≠ no streams. Empty sweeps fail fast
+    // (~2-4s), so worst-case wall time stays under the resolver's 35s
+    // per-source cutoff.
+    const EMPTY_RETRY_MAX = 2;
+    const EMPTY_RETRY_DELAY_MS = 2000;
+
     let streams;
     try {
       streams = await Promise.race([
-        mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null),
+        (async () => {
+          let out = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null);
+          for (let attempt = 0; Array.isArray(out) && out.length === 0 && attempt < EMPTY_RETRY_MAX; attempt++) {
+            await new Promise(r => setTimeout(r, EMPTY_RETRY_DELAY_MS));
+            out = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null);
+          }
+          return out;
+        })(),
         new Promise(r => setTimeout(() => r(null), 45000)),
       ]);
     } catch (e) {

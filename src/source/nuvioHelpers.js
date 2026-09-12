@@ -329,7 +329,12 @@ export function buildStreamResults({ streams, title, sourceId, sourceLabel, coun
     // googleusercontent.com is also direct-play (GDrive CDN) — it doesn't
     // need a Referer and the NuvioExtractor routes it through /range-proxy
     // (which doesn't send Referer anyway).
-    const NO_REFERER_HOSTS = /pixeldrain\.(com|dev)|fastdlserver\.site|googleusercontent\.com/i;
+    // *.vimeos.zip (vidsrc-family CDN, backs speedracelight "m4uhd" server
+    // streams surfaced by videasy/videasyto) has an INVERTED hotlink gate:
+    // verified live 403 on any request carrying Referer: vidking.net (the
+    // scraper stamps that on every stream) and 200 #EXTM3U with no Referer.
+    // Skipping Referer routes it as direct HLS — plays clean.
+    const NO_REFERER_HOSTS = /pixeldrain\.(com|dev)|fastdlserver\.site|googleusercontent\.com|vimeos\.zip/i;
     const skipReferer = NO_REFERER_HOSTS.test(url.hostname);
 
     const meta = {
