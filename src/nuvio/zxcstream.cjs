@@ -135,29 +135,18 @@ function getStreams(tmdbId, type, season, episode) {
             });
           }
 
-          // Always also return the player page URL as a fallback stream.
-          // The page itself handles the token POST from the user's browser IP.
-          var playerPageUrl = BASE_URL + "/embed/" + (isMovie ? "movie" : "tv") + "/" + tmdbId;
-          if (!isMovie && season && episode) {
-            playerPageUrl += "/" + season + "/" + episode;
-          }
-          streams.push({
-            name: PROVIDER_NAME + (embedUrl ? " - Player Page" : " - HD (Player Page)"),
-            title: titleLine + " [Player Page]",
-            url: playerPageUrl,
-            quality: embedUrl ? "1080p" : "HD",
-            type: "iframe",
-            headers: { "User-Agent": USER_AGENT },
-            behaviorHints: {
-              bingeGroup: "zxcstream-player",
-              notWebVideo: true
-            }
-          });
-
+          // NO player-page fallback. Shipping the raw player.zxcstream.xyz
+          // page as a stream URL is a guaranteed "[mpv] unrecognized file
+          // format" playback error: the page is (a) an HTML SPA, and (b)
+          // served behind a Cloudflare challenge that 403s server-side
+          // fetches. The old "works from user browser" assumption only held
+          // for Stremio's WEB iframe context — mpv-based players (Stellar,
+          // Stremio desktop) fetch the URL directly and die on the HTML.
+          // Zero playable URLs beats a guaranteed playback error.
           if (embedUrl) {
-            console.log("[ZXCStream] Returning " + streams.length + " streams (embed + player page fallback)");
+            console.log("[ZXCStream] Returning " + streams.length + " stream (resolved embed URL)");
           } else {
-            console.log("[ZXCStream] Returning " + streams.length + " stream (player page — backend IP-blocked from server, will work from user browser)");
+            console.log("[ZXCStream] 0 streams (backend IP-blocked — player page NOT shipped: unplayable HTML in mpv)");
           }
           return streams;
         });

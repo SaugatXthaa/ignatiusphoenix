@@ -12,12 +12,23 @@ import { Extractor } from './Extractor.js';
 // Netlio uses dozens of rotating CDN domains. Instead of listing each one,
 // we match by URL path pattern: all Netlio HLS URLs contain "cf-master"
 // or "/v4/" in the path, and "/hls3/" for movie streams.
-const isNetlioCdnUrl = (url) => {
+const hasNetlioPathMarker = (url) => {
   const path = url.pathname.toLowerCase();
   return path.includes('cf-master') ||
          path.includes('/v4/') ||
-         path.includes('/hls3/') ||
-         url.hostname.endsWith('.workers.dev');
+         path.includes('/hls3/');
+};
+
+const isNetlioCdnUrl = (url) => {
+  // *.workers.dev is Cloudflare's SHARED worker domain — dozens of unrelated
+  // embed APIs live there (e.g. Raflix's api.anicine-embed.workers.dev serves
+  // an HTML player page). A bare hostname match hijacked those URLs from other
+  // sources and shipped unplayable HTML to players → "[mpv] unrecognized file
+  // format" playback errors. Netlio's own URLs always carry a path marker
+  // (cf-master / /v4/ / /hls3/ — verified against its GitHub URL source), so
+  // workers.dev hosts must ALSO match the path pattern to be claimed here.
+  if (url.hostname.endsWith('.workers.dev')) return hasNetlioPathMarker(url);
+  return hasNetlioPathMarker(url);
 };
 
 const REFERER = 'https://netlio.vercel.app/';

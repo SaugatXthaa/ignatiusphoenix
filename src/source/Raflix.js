@@ -84,6 +84,93 @@ async function fetchMediaSources(type, tmdbId, season, episode) {
   return data?.ok ? (data.sources || []) : [];
 }
 
+// ─── CinePro (Anicine Embed worker) server-side resolution ─────────────
+// The "Anicine Embed" server URL (api.anicine-embed.workers.dev/movie/{id})
+// is an HTML SPA shell — UNPLAYABLE in mpv ("[mpv] unrecognized file format"
+// was shipped to users this way). But the worker behind it exposes a fully
+// server-resolvable API (reverse-engineered from its JS bundle):
+//   1. GET /v1/token                              → { token }
+//   2. GET /v1/movies/{tmdbId}                    → { sources: [...] }
+//      GET /v1/tv/{tmdbId}/seasons/{s}/episodes/{e}
+//      (Authorization: Bearer <token>)
+//   3. Each source URL is the worker's own /v1/proxy?data=<b64url-json>
+//      wrapper; decoding `data` yields the REAL upstream m3u8 URL plus the
+//      exact User-Agent/Referer it requires.
+// The upstream playlists use RELATIVE variant URLs, so streams are routed
+// through the addon's /proxy (referer=) which rewrites the whole HLS tree.
+let _cineproToken = { token: null, ts: 0 };
+const CINEPRO_TOKEN_TTL = 50 * 60 * 1000; // server-side expiresAt ≈ 1h
+
+const CINEPRO_WORKER = 'https://api.anicine-embed.workers.dev';
+
+async function cineproFetch(url, headers, timeoutMs = 12000) {
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function getCineproToken(force = false) {
+  if (!force && _cineproToken.token && Date.now() - _cineproToken.ts < CINEPRO_TOKEN_TTL) {
+    return _cineproToken.token;
+  }
+  const d = await cineproFetch(`${CINEPRO_WORKER}/v1/token`, { 'User-Agent': UA });
+  if (!d?.token) throw new Error('no token in response');
+  _cineproToken = { token: d.token, ts: Date.now() };
+  return _cineproToken.token;
+}
+
+// Resolve CinePro sources → [{ url, referer, userAgent, label }]
+async function resolveCinePro(mediaType, tmdbId, season, episode) {
+  const out = [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const token = await getCineproToken(attempt > 0);
+      const auth = { 'User-Agent': UA, Authorization: `Bearer ${token}` };
+      const apiPath = mediaType === 'tv'
+        ? `${CINEPRO_WORKER}/v1/tv/${tmdbId}/seasons/${season || 1}/episodes/${episode || 1}`
+        : `${CINEPRO_WORKER}/v1/movies/${tmdbId}`;
+      const data = await cineproFetch(apiPath, auth);
+      const sources = Array.isArray(data?.sources) ? data.sources : [];
+
+      for (const [i, s] of sources.entries()) {
+        const rawUrl = typeof s?.url === 'string' ? s.url : '';
+        if (!rawUrl) continue;
+        // Preferred: decode the worker's signed /v1/proxy?data= blob to get the
+        // REAL upstream URL + headers — lets our /proxy rewrite the HLS tree
+        // (upstream playlists use relative variant URLs) instead of depending
+        // on the worker's own proxy for every segment.
+        const m = rawUrl.match(/[?&]data=([^&]+)/);
+        if (m) {
+          try {
+            const blob = JSON.parse(decodeURIComponent(m[1]));
+            if (blob?.url && typeof blob.url === 'string' && blob.url.startsWith('http')) {
+              out.push({
+                url: blob.url,
+                referer: blob.headers?.Referer || '',
+                userAgent: blob.headers?.['User-Agent'] || '',
+                label: `CinePro ${i + 1}`,
+              });
+              continue;
+            }
+          } catch { /* blob decode failed — fall through */ }
+        }
+        // Fallback: ship the worker's proxy URL as-is ONLY if it looks like HLS
+        if (/\.m3u8|\/m3u8|\/playlist/i.test(rawUrl)) {
+          out.push({ url: rawUrl, referer: '', userAgent: '', label: `CinePro ${i + 1}` });
+        }
+      }
+      return out;
+    } catch (e) {
+      if (attempt === 1) {
+        console.log(`[raflix] CinePro resolution failed: ${e.message?.slice(0, 80)}`);
+        return out;
+      }
+      // 401/expired-token path — retry once with a fresh token
+    }
+  }
+  return out;
+}
+
 // Fetch anime sources (sub + dub)
 async function fetchAnimeSources(tmdbId, title, season, episode, year) {
   const results = { sub: [], dub: [] };
@@ -197,6 +284,39 @@ export class Raflix extends Source {
             audioLabel: 'English',
           },
         });
+      }
+
+      // CinePro server-side resolution (the "Anicine Embed" server). The raw
+      // anicine URL above is an HTML SPA shell that mpv cannot play — resolve
+      // it to real HLS sources instead. These use the dedicated 'raflixnuvio'
+      // sourceId (NOT 'raflix') so NuvioExtractor claims ONLY these streams
+      // and routes them through /proxy with whole-tree Referer rewriting;
+      // the raw embed results above keep flowing through the normal
+      // extractor registry untouched.
+      const cinepro = await resolveCinePro(mediaType, tmdbId.id, season, episode);
+      for (const cp of cinepro) {
+        let url;
+        try { url = new URL(cp.url); } catch { continue; }
+
+        const meta = {
+          countryCodes: [CountryCode.multi, CountryCode.en],
+          title: `${title} — [Raflix ${cp.label}]`,
+          sourceId: 'raflixnuvio',
+          sourceLabel: this.label,
+          height: 1080,
+          sourceType: 'WebDL',
+          codec: 'h264',
+          serverName: cp.label,
+          audioLabel: 'English',
+          nuvioProvider: true,
+          ...(cp.referer && { nuvioReferer: cp.referer }),
+          ...(cp.userAgent && { nuvioUserAgent: cp.userAgent }),
+        };
+
+        results.push({ url, format: Format.hls, meta });
+      }
+      if (cinepro.length > 0) {
+        console.log(`[raflix] +${cinepro.length} CinePro stream(s) (server-resolved)`);
       }
     }
 

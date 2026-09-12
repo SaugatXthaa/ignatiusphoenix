@@ -417,3 +417,51 @@ export async function callNuvioProvider(providerPath, { tmdbId, mediaType, seaso
     return [];
   }
 }
+
+/**
+ * Liveness gate for streams whose playback is server-proxied (/proxy).
+ * Probes each raw upstream URL with the stream's own headers and drops
+ * streams that would guaranteed-error at play:
+ *   - HTTP 4xx/5xx (403 hotlink gates, 401 JS-cookie challenges, 404 dead)
+ *   - 200 + text/html (Cloudflare "Just a moment" pages, download pages)
+ * Server-side probing is ACCURATE for proxied streams because the /proxy
+ * fetches the upstream from this same server at play time.
+ * Only apply to proxied sources — direct-URL streams play from the PLAYER's
+ * IP, where a server-side verdict would be wrong.
+ *
+ * @param {Array}  streams — raw provider stream objects ({url, headers, ...})
+ * @param {Object} opts    — { timeoutMs = 8000 }
+ * @returns {Promise<Array>} — the subset of streams that answered with real content
+ */
+export async function filterDeadStreams(streams, { timeoutMs = 8000 } = {}) {
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  const checked = await Promise.all((streams || []).map(async (s) => {
+    if (!s?.url || typeof s.url !== 'string' || !s.url.startsWith('http')) return null;
+    let host = '(bad-url)';
+    try { host = new URL(s.url).hostname; } catch { return null; }
+    try {
+      const res = await fetch(s.url, {
+        headers: { 'User-Agent': UA, Range: 'bytes=0-1023', ...(s.headers || {}) },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const ct = res.headers.get('content-type') || '';
+      if (!res.ok) {
+        console.log(`[liveness] drop ${res.status} ${host}${new URL(s.url).pathname.slice(0, 30)}`);
+        return null;
+      }
+      if (/text\/html/i.test(ct)) {
+        console.log(`[liveness] drop HTML gate ${host}${new URL(s.url).pathname.slice(0, 30)}`);
+        return null;
+      }
+      return s;
+    } catch (e) {
+      console.log(`[liveness] drop (${(e?.message || e).slice?.(0, 40) || 'error'}) ${host}`);
+      return null;
+    }
+  }));
+  const kept = checked.filter(Boolean);
+  const dropped = (streams || []).length - kept.length;
+  if (dropped > 0) console.log(`[liveness] ${dropped} dead stream(s) dropped, ${kept.length} kept`);
+  return kept;
+}

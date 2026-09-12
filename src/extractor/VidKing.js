@@ -226,6 +226,29 @@ export class VidKing extends Extractor {
         if (seenUrls.has(streamUrl.href)) continue;
         seenUrls.add(streamUrl.href);
 
+        // Liveness gate for supervideo-edge sources (hfs*.serversicuro.cc):
+        // that edge stochastically serves an HTML "Loading..." JS-gate instead
+        // of the playlist even on fresh tokens (observed 2026-09-12 via the
+        // VerHdLink → vidking fallback path). The VidKing extractor outputs
+        // /proxy URLs, and the proxy passes upstream HTML through — so a gated
+        // source becomes a guaranteed "[mpv] unrecognized file format".
+        // Probe once; drop gated/dead entries. (Probe failure = keep,
+        // best-effort.)
+        if (/serversicuro\.cc$/i.test(streamUrl.hostname) || /^hfs\d+\./i.test(streamUrl.hostname)) {
+          try {
+            const probe = await fetch(streamUrl.href, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', Referer: 'https://supervideo.cc/' },
+              redirect: 'follow',
+              signal: AbortSignal.timeout(8000),
+            });
+            const head = (await probe.text()).slice(0, 400);
+            if (!head.includes('#EXTM3U')) {
+              this.logger?.info?.(`VidKing: dropping gated supervideo source (HTTP ${probe.status} ${probe.headers.get('content-type')})`);
+              continue;
+            }
+          } catch { /* probe failed — keep the stream */ }
+        }
+
         const height = parseHeight(source.quality) ?? meta.height;
         const providerCountries = provider.countryCodes || ['multi'];
         const qualityCountries = countryCodesFromQuality(source.quality);

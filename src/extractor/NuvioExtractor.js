@@ -19,6 +19,7 @@
 
 import { Format } from '../types.js';
 import { Extractor } from './Extractor.js';
+import { HUB_HOST_PATTERN } from '../utils/index.js';
 
 // Nuvio source IDs handled by this extractor
 const NUVIO_SOURCE_IDS = new Set([
@@ -55,6 +56,11 @@ const NUVIO_SOURCE_IDS = new Set([
   //   Origin/Referer: stellar.gdn since 2026-09-11 upstream change — routed
   //   through /proxy with origin= + referer=; see src/source/Stellar.js)
   'stellar',
+  // raflixnuvio — Raflix's server-resolved CinePro streams (sourceId is a
+  // dedicated pseudo-ID so ONLY those streams route through here — /proxy
+  // with whole-tree Referer rewriting; Raflix's raw embed results keep
+  // flowing through the normal extractor registry as sourceId 'raflix')
+  'raflixnuvio',
   // desiflix — movies/TV/anime via manifest.desitvhub.eu.org Stremio addon
   //   Streams are direct URLs (flixsix.com MP4, manifest proxy HLS/MP4) with
   //   no Referer needed — NuvioExtractor passes them through as direct URLs.
@@ -116,6 +122,16 @@ export class NuvioExtractor extends Extractor {
     const origin = meta?.nuvioOrigin || '';
     const hls = isHlsUrl(url);
     const videoFile = isVideoFileUrl(url);
+
+    // Hub-family hosts (hubcloud/hubdrive/hubcdn/gdflix) are DOWNLOAD PAGES —
+    // direct-shipping them is a guaranteed "[mpv] unrecognized file format"
+    // (KMMovies' 15 hubcloud.foo/drive pages shipped raw this way). This
+    // extractor sits BEFORE HubExtractor in the registry order, so returning
+    // [] here lets the registry's fallback chain hand the URL to
+    // HubExtractor, which resolves the page into real direct-file URLs.
+    if (HUB_HOST_PATTERN.test(url.hostname)) {
+      return [];
+    }
 
     // Google Drive hosts don't support HTTP Range — route through /range-proxy
     // for Range translation so Stremio can seek. This applies to UHDMovies

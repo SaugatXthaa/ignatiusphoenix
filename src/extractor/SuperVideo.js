@@ -40,6 +40,32 @@ export class SuperVideo extends Extractor {
     const playlistUrl = extractUrlFromPacked(html, [/sources:\[{file:"(.*?)"/]);
     const playlistHeaders = { Referer: 'https://supervideo.cc/' };
 
+    // Liveness gate: the supervideo HLS edge (hfs*.serversicuro.cc)
+    // stochastically serves an HTML "Loading..." JS-gate page INSTEAD of the
+    // playlist — even for freshly-resolved token URLs (observed 2026-09-12 on
+    // VerHdLink mirrors: extractor saw m3u8, the very next fetch got HTML).
+    // Shipping the gated URL is a guaranteed "[mpv] unrecognized file format"
+    // playback error. Verify the playlist actually resolves; drop otherwise.
+    try {
+      const probe = await fetch(playlistUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          ...playlistHeaders,
+        },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(8000),
+      });
+      const head = (await probe.text()).slice(0, 400);
+      if (!head.includes('#EXTM3U')) {
+        console.log(`[supervideo] playlist gated/dead (HTTP ${probe.status}, ${probe.headers.get('content-type')}) — dropping: ${new URL(playlistUrl).host}`);
+        throw new NotFoundError();
+      }
+    } catch (e) {
+      if (e instanceof NotFoundError) throw e;
+      // Probe itself failed (network/timeout) — keep the stream (best-effort;
+      // don't drop streams merely because our probe couldn't complete)
+    }
+
     const heightAndSizeMatch = html.match(/\d{3,}x(\d{3,}), ([\d.]+ ?[GM]B)/);
     const size = heightAndSizeMatch ? bytes.parse(heightAndSizeMatch[2]) : undefined;
     const height = heightAndSizeMatch

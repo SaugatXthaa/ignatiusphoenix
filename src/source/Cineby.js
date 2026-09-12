@@ -52,6 +52,27 @@ export class Cineby extends Source {
       episode: tmdbId.episode || null,
     });
 
+    // The shared VidKing backend (moon.peakstorm.top) hotlink-gates by Referer
+    // INVERTED: it 403s requests carrying the cineby.at Referer/Origin that the
+    // obfuscated provider stamps on every stream, but serves the SAME files
+    // with Referer: vidking.net (which is what the WatchSeries/VidKing
+    // extractor path sends — verified 200 real HLS vs 403 HTML on 2026-09-12).
+    // Rewrite headers for that host before buildStreamResults so the /proxy
+    // forwards a Referer the CDN actually accepts.
+    for (const s of streams || []) {
+      try {
+        if (!s?.url || typeof s.url !== 'string') continue;
+        const host = new URL(s.url).hostname;
+        if (host === 'moon.peakstorm.top' || host.endsWith('.peakstorm.top')) {
+          s.headers = {
+            ...(s.headers || {}),
+            Referer: 'https://www.vidking.net/',
+            Origin: 'https://www.vidking.net',
+          };
+        }
+      } catch { /* malformed url — leave untouched */ }
+    }
+
     return buildStreamResults({
       streams,
       title,

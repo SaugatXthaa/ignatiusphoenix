@@ -24,6 +24,7 @@ import bytes from 'bytes';
 import { CountryCode } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
+import { filterDeadStreams } from './nuvioHelpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require_ = createRequire(import.meta.url);
@@ -103,10 +104,22 @@ export class BollyFlix extends Source {
 
     if (!Array.isArray(streams) || streams.length === 0) return [];
 
+    // Liveness gate: for series bundles the scraper emits fxlinks.rest/elinks/
+    // landing pages ("EpisodeList" entries) that it never resolves further.
+    // Those pages are WordPress shells whose real links load via JS — an mpv
+    // player fetching one gets HTTP 200 text/html → "[mpv] unrecognized file
+    // format". Probe each URL and drop HTML/erroring streams; the GDrive
+    // (fastdlserver) direct links pass.
+    const liveStreams = await filterDeadStreams(streams);
+    if (liveStreams.length === 0) {
+      console.log(`[bollyflix] ${streams.length} stream(s) from scraper, 0 playable (all landing pages/dead)`);
+      return [];
+    }
+
     const results = [];
     const seenUrls = new Set();
 
-    for (const s of streams) {
+    for (const s of liveStreams) {
       if (!s || !s.url || typeof s.url !== 'string') continue;
       if (!s.url.startsWith('http')) continue;
       if (seenUrls.has(s.url)) continue;

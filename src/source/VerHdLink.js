@@ -39,7 +39,7 @@ export class VerHdLink extends Source {
 
     const $ = cheerio.load(html);
 
-    return $('._player-mirrors')
+    const candidates = $('._player-mirrors')
       .map((_i, el) => {
         let countryCodes;
         if ($(el).hasClass('latino')) {
@@ -56,5 +56,32 @@ export class VerHdLink extends Source {
           .filter(url => !url.host.match(/verhdlink/))
           .map(url => ({ url, meta: { countryCodes, referer: this.baseUrl, ...(vidkingMeta && { vidking: vidkingMeta }) } }));
       }).toArray();
+
+    // Liveness gate: the mirror hosts (hfs*.serversicuro.cc — vidmoly family)
+    // now serve an HTML interstitial ("Loading...") on their token'd m3u8
+    // paths when the token is expired or the edge is gated. Shipping those
+    // raw is a guaranteed "[mpv] unrecognized file format" playback error.
+    // Validate each m3u8 mirror returns an actual playlist before shipping;
+    // non-playlist URLs (direct files) pass through untouched.
+    const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+    const validated = await Promise.all(candidates.map(async (r) => {
+      if (!/\.m3u8|\/hls\d?\//i.test(r.url.pathname)) return r;
+      try {
+        const res = await fetch(r.url, {
+          headers: { 'User-Agent': UA, Referer: `${this.baseUrl}/` },
+          redirect: 'follow',
+          signal: AbortSignal.timeout(8000),
+        });
+        const head = (await res.text()).slice(0, 400);
+        if (head.includes('#EXTM3U')) return r;
+        console.log(`[verhdlink] mirror dropped (HTML gate, ${res.status}): ${r.url.host}${r.url.pathname.slice(0, 40)}`);
+        return null;
+      } catch (e) {
+        console.log(`[verhdlink] mirror dropped (${e.message?.slice(0, 40)}): ${r.url.host}`);
+        return null;
+      }
+    }));
+
+    return validated.filter(Boolean);
   }
 }

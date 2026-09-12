@@ -18,7 +18,7 @@ import { fileURLToPath } from 'url';
 import { CountryCode } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
-import { buildStreamResults, callNuvioProvider } from './nuvioHelpers.js';
+import { buildStreamResults, callNuvioProvider, filterDeadStreams } from './nuvioHelpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'dahmermovies-4k.cjs');
@@ -49,8 +49,14 @@ export class DahmerMovies4k extends Source {
       timeoutMs: 25000, // dahmermovies-4k is slow for TV, cap at 25s
     });
 
+    // Liveness gate — these streams play through the server /proxy, so a
+    // server-side probe accurately predicts playability. Dead/gated URLs
+    // (403 hotlink, 401 JS-cookie challenge, CF challenge HTML) are dropped
+    // instead of being shipped as guaranteed playback errors.
+    const liveStreams = await filterDeadStreams(streams);
+
     return buildStreamResults({
-      streams,
+      streams: liveStreams,
       title,
       sourceId: this.id,
       sourceLabel: this.label,
