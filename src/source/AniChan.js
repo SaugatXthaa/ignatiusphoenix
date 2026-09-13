@@ -76,21 +76,35 @@ async function getAniChanCookie() {
 
 async function apiGet(path, anilistId = null) {
   const { gotScraping } = await import('got-scraping');
-  const cookie = await getAniChanCookie();
-  const res = await gotScraping.get(`${BASE}${path}`, {
-    headers: {
-      'User-Agent': UA,
-      'Accept': 'application/json',
-      // 2026-09: the servers endpoint now rejects requests without a
-      // watch-page Referer + XHR marker (intermittent 401 {"detail":"session"})
-      ...(anilistId && { Referer: `${BASE}/watch/${anilistId}`, 'X-Requested-With': 'XMLHttpRequest' }),
-      ...(cookie && path.startsWith('/api/watch') && { Cookie: `anichan_ws=${cookie}` }),
-    },
-    timeout: { request: 15000 },
-    throwHttpErrors: false,
-    followRedirect: true,
-    http2: false, // Avoid GOAWAY errors from AniChan's HTTP/2 server
-  });
+
+  const doFetch = async (cookie) => {
+    const res = await gotScraping.get(`${BASE}${path}`, {
+      headers: {
+        'User-Agent': UA,
+        'Accept': 'application/json',
+        // 2026-09: the servers endpoint now rejects requests without a
+        // watch-page Referer + XHR marker (intermittent 401 {"detail":"session"})
+        ...(anilistId && { Referer: `${BASE}/watch/${anilistId}`, 'X-Requested-With': 'XMLHttpRequest' }),
+        ...(cookie && path.startsWith('/api/watch') && { Cookie: `anichan_ws=${cookie}` }),
+      },
+      timeout: { request: 15000 },
+      throwHttpErrors: false,
+      followRedirect: true,
+      http2: false, // Avoid GOAWAY errors from AniChan's HTTP/2 server
+    });
+    return res;
+  };
+
+  // 2026-09 (Task 21): the server rejects a session cookie long before its
+  // embedded expiry (observed: cached cookie 401s {"detail":"session"} on every
+  // call for hours while the value still parses as unexpired). On the first
+  // session rejection, drop the cached cookie, mint a fresh one and retry once.
+  let res = await doFetch(await getAniChanCookie());
+  if (res.statusCode === 401 && String(res.body).includes('"session"')) {
+    _acCookie = null;
+    _acCookieExp = 0;
+    res = await doFetch(await getAniChanCookie());
+  }
   if (res.statusCode !== 200) return null;
   try { return JSON.parse(res.body); } catch { return null; }
 }
@@ -241,10 +255,15 @@ export class AniChan extends Source {
 
     for (const type of types) {
       try {
-        // Servers endpoint is intermittently gated (401 "session") — one bounded retry
+        // Servers endpoint is heavily gated (intermittent 401 {"detail":"session"}
+        // even on fresh cookies) — up to two bounded retries with backoff
         let data = await apiGet(`/api/watch/servers?anilistId=${anilistId}&episode=${epNum}&type=${type}`, anilistId);
         if (!data?.servers?.length) {
           await new Promise(r => setTimeout(r, 800));
+          data = await apiGet(`/api/watch/servers?anilistId=${anilistId}&episode=${epNum}&type=${type}`, anilistId);
+        }
+        if (!data?.servers?.length) {
+          await new Promise(r => setTimeout(r, 1600));
           data = await apiGet(`/api/watch/servers?anilistId=${anilistId}&episode=${epNum}&type=${type}`, anilistId);
         }
         if (!data?.servers?.length) continue;
