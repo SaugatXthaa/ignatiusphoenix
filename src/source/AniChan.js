@@ -74,13 +74,16 @@ async function getAniChanCookie() {
   return null;
 }
 
-async function apiGet(path) {
+async function apiGet(path, anilistId = null) {
   const { gotScraping } = await import('got-scraping');
   const cookie = await getAniChanCookie();
   const res = await gotScraping.get(`${BASE}${path}`, {
     headers: {
       'User-Agent': UA,
       'Accept': 'application/json',
+      // 2026-09: the servers endpoint now rejects requests without a
+      // watch-page Referer + XHR marker (intermittent 401 {"detail":"session"})
+      ...(anilistId && { Referer: `${BASE}/watch/${anilistId}`, 'X-Requested-With': 'XMLHttpRequest' }),
       ...(cookie && path.startsWith('/api/watch') && { Cookie: `anichan_ws=${cookie}` }),
     },
     timeout: { request: 15000 },
@@ -223,7 +226,7 @@ export class AniChan extends Source {
     if (!anilistId) return [];
 
     // Step 2: Check episodes and dub availability
-    const epData = await apiGet(`/api/watch/episodes?anilistId=${anilistId}`);
+    const epData = await apiGet(`/api/watch/episodes?anilistId=${anilistId}`, anilistId);
     if (!epData) {
       return [];
     }
@@ -238,7 +241,12 @@ export class AniChan extends Source {
 
     for (const type of types) {
       try {
-        const data = await apiGet(`/api/watch/servers?anilistId=${anilistId}&episode=${epNum}&type=${type}`);
+        // Servers endpoint is intermittently gated (401 "session") — one bounded retry
+        let data = await apiGet(`/api/watch/servers?anilistId=${anilistId}&episode=${epNum}&type=${type}`, anilistId);
+        if (!data?.servers?.length) {
+          await new Promise(r => setTimeout(r, 800));
+          data = await apiGet(`/api/watch/servers?anilistId=${anilistId}&episode=${epNum}&type=${type}`, anilistId);
+        }
         if (!data?.servers?.length) continue;
 
         for (const server of data.servers) {

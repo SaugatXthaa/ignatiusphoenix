@@ -286,16 +286,11 @@ app.get('/proxy', async (req, res) => {
                       pathLower.includes('/m3u8?') ||  // AniChan /api/watch/m3u8?sh=...
                       pathLower.includes('/playlist');  // goated cdn.reallyfast.xyz/playlist/, DesiFlix vixsrc.to/playlist/
     const urlIsStream = pathLower.includes('/stream/');  // AniKage: could be HLS or MP4
-    // AniDB disguises HLS playlists with .txt extensions (master.txt).
-    // .xls files are segments (not playlists) — don't buffer them.
-    const urlIsTxt = pathLower.endsWith('.txt');
-    // AniDB .xls segments — stream directly, just override Content-Type
-    const urlIsAniDBSeg = pathLower.endsWith('.xls') && hostLower.includes('anidb');
     const urlIsAniPriv8 = pathLower.includes('/api/secure/pipeline/');
     // Berkas: *.berkas*.workers.dev — master m3u8 and variant playlists
     const urlIsBerkas = hostLower.includes('berkas') && hostLower.endsWith('.workers.dev');
 
-    if (forceHls || urlIsM3u8 || urlIsTxt || urlIsStream || urlIsAniPriv8 || urlIsBerkas) {
+    if (forceHls || urlIsM3u8 || urlIsStream || urlIsAniPriv8 || urlIsBerkas) {
       // Buffer content to check if it's HLS and rewrite URLs.
       // For /stream/ paths, use a HEAD request first to check content-type —
       // if it's video/mp4, stream directly (avoid buffering large MP4 files).
@@ -353,7 +348,7 @@ app.get('/proxy', async (req, res) => {
         } catch { /* HEAD failed — try buffering (might be HLS) */ }
       }
 
-      if (forceHls || urlIsM3u8 || urlIsTxt || urlIsStream || urlIsAniPriv8 || urlIsBerkas) {
+      if (forceHls || urlIsM3u8 || urlIsStream || urlIsAniPriv8 || urlIsBerkas) {
         // Buffer content to check if it's HLS and rewrite URLs.
         // Use HTTP/1.1 (http2: false) to avoid "GOAWAY" errors from some
         // servers (e.g. vidlove) that close HTTP/2 connections aggressively.
@@ -403,38 +398,10 @@ app.get('/proxy', async (req, res) => {
           return;
         }
 
-        // .txt file but not HLS — serve as-is (could be subtitles or other text)
-        // But override Content-Type to video/mp2t for segment-like .txt files
-        // to prevent Stremio from refusing to play them as video.
-        if (urlIsTxt) {
-          res.status(200);
-          const ct = m3u8Res.headers['content-type'] || 'text/plain';
-          // If the .txt URL path looks like a segment (contains /content/ or
-          // page- or .html), override to video/mp2t (PlayIMDb-style segments)
-          const segPath = targetUrl.pathname.toLowerCase();
-          if (ct.includes('text/html') && (segPath.includes('/content/') || segPath.endsWith('.html') || segPath.includes('page-'))) {
-            res.setHeader('Content-Type', 'video/mp2t');
-          } else {
-            res.setHeader('Content-Type', ct);
-          }
-          res.setHeader('Content-Length', Buffer.byteLength(body));
-          res.send(body);
-          return;
-        }
-
         // /stream/ path but not HLS — could be an MP4 or other video format.
         // If the content is small (< 1MB), it might be a redirect page or error.
         // If it's large, stream it directly.
-        // AniDB .xls segments: override Content-Type to video/mp2t
         if (urlIsStream) {
-          // AniDB .xls segment — override Content-Type
-          if (pathLower.endsWith('.xls') && hostLower.includes('anidb')) {
-            res.status(200);
-            res.setHeader('Content-Type', 'video/mp2t');
-            res.setHeader('Content-Length', Buffer.byteLength(body));
-            res.send(body);
-            return;
-          }
           const contentLength = parseInt(m3u8Res.headers['content-length'] || '0');
           if (contentLength > 0 && contentLength < 1024 * 1024) {
             // Small response — serve as-is (might be a redirect or error page)
@@ -502,13 +469,12 @@ app.get('/proxy', async (req, res) => {
       if (v) res.setHeader(h, v);
     }
 
-    // AniDB segments return Content-Type: application/vnd.ms-excel (.xls).
-    // The body is valid MPEG-TS — override Content-Type to video/mp2t.
+    // Some upstreams serve MPEG-TS segments with Content-Type:
+    // application/vnd.ms-excel — override to video/mp2t.
     // This must happen BEFORE the stream starts piping.
     const preCt = (response.headers['content-type'] || '').toLowerCase();
     const preSegPath = targetUrl.pathname.toLowerCase();
-    const isAniDBXlsSeg = preSegPath.endsWith('.xls') && hostLower.includes('anidb');
-    if (preCt.includes("vnd.ms-excel") || isAniDBXlsSeg) {
+    if (preCt.includes("vnd.ms-excel")) {
       // Override Content-Type for .xls segments — don't pipe, send manually
       stream.destroy();
       try {
@@ -575,14 +541,12 @@ app.get('/proxy', async (req, res) => {
     // because it refuses to play text/html as video.
     // Also apply to any .html segment URLs from HLS playlists (PlayIMDb uses
     // page-N.html for segment names).
-    // AniDB segments return Content-Type: application/vnd.ms-excel (.xls extension)
-    // — the body is valid MPEG-TS, override to video/mp2t.
     const ct = (response.headers['content-type'] || '').toLowerCase();
     const segPath = targetUrl.pathname.toLowerCase();
     if (ct.includes('text/html') && (segPath.includes('/content/') || segPath.endsWith('.html') || segPath.includes('page-'))) {
       res.setHeader('Content-Type', 'video/mp2t');
     }
-    if (ct.includes('vnd.ms-excel') || ct.includes('application/vnd.ms-excel') || urlIsAniDBSeg) {
+    if (ct.includes('vnd.ms-excel') || ct.includes('application/vnd.ms-excel')) {
       res.removeHeader('Content-Type');
       res.setHeader('Content-Type', 'video/mp2t');
     }

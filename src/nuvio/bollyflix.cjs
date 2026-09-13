@@ -423,6 +423,96 @@ function extractDownloadLinks(html, targetSeason, targetEpisode) {
   });
 }
 
+// ===== GDFLIX FASTDL RESOLUTION (2026-09) =====
+//
+// The fastdl links (dl.fastdlserver.site?id=<b64>) 302-redirect to GDFlix
+// file pages (new3.gdflix.io/file/<id>). The direct file is NOT in that
+// page's HTML — its player JS POSTs to /mfile/<id> with a PER-PAGE key
+// (extracted from the taskaction() JS block) and receives
+// {error:false, url:"https://video-downloads.googleusercontent.com/..."}.
+// We replay that POST server-side. Verified 2026-09: 480p→2160p all resolve
+// to direct MKV (magic bytes 1a45dfa3, Content-Type video/mkv).
+async function resolveFastdl(linkUrl) {
+  try {
+    var gs = await getGotScraping();
+    if (!gs) return null;
+    var res = await gs(linkUrl, {
+      headers: Object.assign({}, DEFAULT_HEADERS, { Referer: domainCache.url + "/" }),
+      timeout: { request: 20000 },
+      throwHttpErrors: false,
+      followRedirect: true
+    });
+    if (res.statusCode >= 400) return null;
+    var html = res.body || "";
+    var finalUrl = res.url || linkUrl;
+    var fileMatch = finalUrl.match(/\/file\/([A-Za-z0-9]+)/);
+    if (!fileMatch) return null;
+    var origin = new URL(finalUrl).origin;
+    var filename = ((html.match(/<title>([^<]*)<\/title>/i) || [])[1] || "")
+      .replace(/^GDFlix\s*\|\s*/i, "").trim();
+    // The /mfile/ key is per-page — pull it from the taskaction() JS block.
+    var taStart = html.indexOf("function taskaction");
+    var keyBlock = taStart >= 0 ? html.slice(taStart, taStart + 700) : html;
+    var key = (keyBlock.match(/key",\s*"([a-f0-9]{16,})"/) || [])[1];
+    if (!key) {
+      console.log("[BollyFlix] no mfile key on " + finalUrl);
+      return null;
+    }
+    var post = await gs(origin + "/mfile/" + fileMatch[1], {
+      method: "POST",
+      headers: Object.assign({}, DEFAULT_HEADERS, {
+        Referer: finalUrl,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "x-token": new URL(origin).hostname
+      }),
+      body: "action=instant&key=" + key + "&action_token=",
+      timeout: { request: 20000 },
+      throwHttpErrors: false
+    });
+    if (post.statusCode >= 400) return null;
+    var data = null;
+    try { data = JSON.parse(post.body); } catch (e2) { return null; }
+    if (data && data.error === false && data.url && /^https:\/\//.test(data.url)) {
+      return { url: data.url, filename: filename };
+    }
+    console.log("[BollyFlix] mfile resolve failed: " + ((data && data.message) || "HTTP " + post.statusCode));
+    return null;
+  } catch (e) {
+    console.log("[BollyFlix] resolveFastdl error: " + (e && e.message ? e.message : e));
+    return null;
+  }
+}
+
+// fxlinks.rest/elinks/<slug>/ pages (series bundles) list static
+// "Episode NN" fastdl links plus a "Season Zip". Return the fastdl URL for
+// the requested episode (first episode when none requested).
+async function resolveEpisodeLinks(elinksUrl, targetEpisode) {
+  try {
+    var html = await fetchText(elinksUrl, { Referer: domainCache.url + "/" });
+    var wanted = targetEpisode ? parseInt(targetEpisode, 10) : null;
+    var eps = [];
+    var re = /<a[^>]*href="([^"]*dl\.fastdlserver\.site[^"]*)"[^>]*>([\s\S]{0,80}?)<\/a>/gi;
+    var m;
+    while ((m = re.exec(html))) {
+      var label = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      var numMatch = label.match(/Episode\s*0*(\d{1,3})/i);
+      if (!numMatch) continue; // skips "Season Zip"
+      eps.push({ num: parseInt(numMatch[1], 10), url: m[1].replace(/&amp;/g, "&") });
+    }
+    if (eps.length === 0) return null;
+    if (wanted) {
+      for (var i = 0; i < eps.length; i++) {
+        if (eps[i].num === wanted) return eps[i].url;
+      }
+      console.log("[BollyFlix] episode " + wanted + " not on elinks page (" + eps.length + " eps)" );
+      return null;
+    }
+    return eps[0].url;
+  } catch (e) {
+    return null;
+  }
+}
+
 // ===== MAIN ENTRY =====
 
 function getStreams(tmdbId, mediaType, season, episode) {
@@ -462,7 +552,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
         if (!match) return [];
 
         return getBaseUrl().then(function (base) {
-          return fetchText(match.url, { Referer: base + "/" }).then(function (
+          return fetchText(match.url, { Referer: base + "/" }).then(async function (
             postHtml
           ) {
             var links = extractDownloadLinks(
@@ -498,7 +588,46 @@ function getStreams(tmdbId, mediaType, season, episode) {
               picked.push(l);
             });
 
-            return picked.map(function (l) {
+            // Resolve each link SERVER-SIDE to a direct stream URL:
+            //   GDrive (fastdlserver) → gdflix /mfile/ POST → googleusercontent
+            //   EpisodeList (fxlinks, series) → elinks page → per-episode
+            //   fastdl → gdflix /mfile/ POST
+            //   LinksMod → captcha-locked, unresolvable server-side — skipped.
+            // Bounded pool + deadline: the wrapper races getStreams at 25s, so
+            // whatever resolved by ~18s ships (partials beat timeouts).
+            var deadline = Date.now() + 18000;
+            var resolved = [];
+            var idx = 0;
+            async function resolveWorker() {
+              while (idx < picked.length && Date.now() < deadline) {
+                var link = picked[idx++];
+                try {
+                  var fastdlUrl = null;
+                  if (link.source === "EpisodeList") {
+                    if (isMovie) continue; // elinks are per-episode bundles
+                    fastdlUrl = await resolveEpisodeLinks(link.url, targetEpisode);
+                  } else if (link.source === "GDrive" || /fastdlserver/.test(link.url)) {
+                    fastdlUrl = link.url;
+                  } else {
+                    continue; // LinksMod/Other — not server-resolvable
+                  }
+                  if (!fastdlUrl || Date.now() >= deadline) continue;
+                  var r = await resolveFastdl(fastdlUrl);
+                  if (r) resolved.push({ link: link, direct: r });
+                } catch (e3) { /* per-link failure — keep going */ }
+              }
+            }
+            await Promise.all([resolveWorker(), resolveWorker(), resolveWorker()]);
+
+            if (resolved.length === 0) {
+              console.log("[BollyFlix] 0 links resolved to direct streams");
+              return [];
+            }
+            console.log("[BollyFlix] Resolved " + resolved.length + " direct stream(s)");
+
+            return resolved.map(function (r) {
+              var l = r.link;
+              var d = r.direct;
               var titleLine = info.title;
               if (!isMovie) {
                 titleLine +=
@@ -511,21 +640,19 @@ function getStreams(tmdbId, mediaType, season, episode) {
               }
               titleLine += " (" + info.year + ")";
               if (l.size) titleLine += " " + l.size;
-              if (l.source === "LinksMod") titleLine += " [shortlink]";
+              // The GDFlix page title carries the release filename
+              // ("Title Year Hindi 2160p HEVC WEB-DL ESub [BollyFlix].mkv")
+              // — append it so enrichMeta can parse codec/source/audio.
+              if (d.filename && d.filename.indexOf(info.title) !== 0) {
+                titleLine += " | " + d.filename;
+              }
 
               return {
-                name: PROVIDER_NAME + " - " + l.quality + " " + l.source,
+                name: PROVIDER_NAME + " - " + l.quality + " Direct",
                 title: titleLine,
-                url: l.url,
+                url: d.url,
                 quality: l.quality,
-                size: l.size || undefined,
-                behaviorHints: {
-                  bingeGroup: "bollyflix-" + l.quality,
-                  headers: {
-                    "User-Agent": DEFAULT_HEADERS["User-Agent"],
-                    Referer: "https://bollyflix.free/"
-                  }
-                }
+                size: l.size || undefined
               };
             });
           });

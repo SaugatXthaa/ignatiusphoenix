@@ -58,7 +58,6 @@ const FALLBACK_PROVIDERS = [
   '4khdhub',         // 4K HDR via Cloudflare workers
   'videasy',         // multi-server HLS (speedracelight, up to 4K)
   'castle',          // multi-language with AES-CBC decryption
-  'movieblast',      // mycdn-mb.xyz HLS
   'playimdb',        // vaplayer.ru API with HLS
   'movix',           // finepulfe.xyz HLS
   'purstream',       // finepulfe.xyz (same as movix)
@@ -306,7 +305,7 @@ if (require.main === module) {
     console.log('NOTE: webstreamr.hayd.uk is officially archived (the original CineStream');
     console.log('backend). This wrapper delegates to working 4K-capable providers:');
     console.log('  moviesdrive, cineby, vidfast, dahmermovies-4k, uhdmovies, hindmoviez,');
-    console.log('  hdhub4u, dahmermovies, 4khdhub, videasy, castle, movieblast, etc.');
+    console.log('  hdhub4u, dahmermovies, 4khdhub, videasy, castle, etc.');
     process.exit(1);
   }
 

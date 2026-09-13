@@ -11,7 +11,7 @@ BASE = "https://phoenix-hgs3.onrender.com"
 
 # Sources that returned 0 in the first test — re-test with more movies
 RETEST_SOURCES = [
-    "anidb", "animekai", "animezey", "cuevana", "dahmermovies",
+    "animekai", "animezey", "cuevana", "dahmermovies",
     "dahmermovies4k", "goated", "hdhub4u", "oneembed", "uhdmovies",
     "vixsrc2", "zinkmovies", "animegg",
 ]

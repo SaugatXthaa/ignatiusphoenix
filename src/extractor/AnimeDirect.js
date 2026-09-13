@@ -1,18 +1,17 @@
 // src/extractor/AnimeDirect.js
 // Passthrough extractor for direct playable anime HLS/MP4 URLs.
 //
-// Anime sources (AniDB, AniNeko, HiAnime, AnimeFlix, NineAnime) return
+// Anime sources (AniNeko, HiAnime, AnimeFlix, NineAnime) return
 // direct playable URLs from various CDN hosts. Without an extractor claiming
 // these URLs, they're silently dropped by ExtractorRegistry.
 //
 // Hosts handled:
-//   - hls.anidb.app (AniDB direct HLS)
 //   - *.dramiyos-cdn.com, *.harborlane*, *.pinecliff* (AniNeko HLS)
 //   - *.creativewritingtips.site, *.savannahridgedesignlab* (AniNeko/Netlio)
 //   - gn1r5n.org, playmogo.com (HiAnime embed pages — need extraction)
 //   - gogoanime.com.by (AnimeFlix/NineAnime embed pages — need extraction)
 //
-// For direct HLS URLs (anidb, anineko CDNs), we pass through with the
+// For direct HLS URLs (anineko CDNs), we pass through with the
 // appropriate Referer. For embed pages (hianime, gogoanime), we extract
 // the actual stream URL from the page HTML.
 
@@ -22,7 +21,6 @@ import { Extractor } from './Extractor.js';
 
 // Direct HLS CDN hosts (pass through as-is, just add Referer)
 const DIRECT_HLS_HOSTS = [
-  'hls.anidb.app',
   'play.zephyrix.top',
   // AniKage — prox.anicore.tv serves direct HLS (requires Referer: anikage.cc)
   'prox.anicore.tv',
@@ -90,8 +88,7 @@ export class AnimeDirect extends Extractor {
       // Use Referer from source meta if provided
       // Otherwise infer from hostname
       const referer = meta?.requestHeaders?.Referer ||
-        (url.hostname === 'hls.anidb.app' ? 'https://anidb.app/'
-        : url.hostname === 'play.zephyrix.top' ? 'https://play.zephyrix.top/'
+        (url.hostname === 'play.zephyrix.top' ? 'https://play.zephyrix.top/'
         : url.hostname === 'prox.anicore.tv' ? 'https://anikage.cc/'
         : url.hostname === 'playeng.animeapps.top' ? 'https://anibd.app/'
         : url.hostname.endsWith('.netrocdn.site') ? 'https://vidspark.to/'

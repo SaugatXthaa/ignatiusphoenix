@@ -34,7 +34,7 @@ SERIES_ONLY = {
 }
 # Sources that are movies-only (no series)
 MOVIES_ONLY = {
-    "uhdmovies", "movieblast", "movies4u", "dahmermovies", "dahmermovies4k",
+    "uhdmovies", "movies4u", "dahmermovies", "dahmermovies4k",
     "playimdb", "vidlove", "acermovies",
 }
 

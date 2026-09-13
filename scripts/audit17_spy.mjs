@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const name = process.argv[2] || 'movieblast';
+const name = process.argv[2] || 'bollyflix';
 const tmdb = process.argv[3] || '299534';
 const type = process.argv[4] || 'movie';
 const season = process.argv[5] ? parseInt(process.argv[5]) : null;

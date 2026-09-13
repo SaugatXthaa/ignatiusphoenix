@@ -5,10 +5,13 @@
 //   1. Resolves the current BollyFlix domain from domains.json
 //   2. Searches via /search/{title}
 //   3. Fetches the post page → extracts download links from <h4>/<h5> headings
-//   4. Returns download links from dl.fastdlserver.site (GDrive)
+//   4. Resolves fastdl/gdflix links SERVER-SIDE to direct
+//      video-downloads.googleusercontent.com streams (480p→2160p MKV)
 //
-// The fastdlserver URLs are resolved by the Pantyflix extractor (which already
-// handles fastdlserver → gdflix → cloud-dl workers.dev redirect chain).
+// 2026-09: the scraper now resolves each fastdl link through the GDFlix
+// /mfile/ instant-download POST (per-page key replay) so the cards ship
+// DIRECT playable URLs instead of landing pages. Series posts resolve via
+// fxlinks.rest/elinks pages → per-episode fastdl links → same mfile flow.
 //
 // Enriched metadata (like 4KHDHub):
 //   - height: 480, 720, 1080, 2160 (from quality string)
@@ -147,11 +150,9 @@ export class BollyFlix extends Source {
           ...(height && { height }),
           sourceType,
           ...(fileSize && { bytes: fileSize }),
-          // Don't set nuvioReferer — the fastdlserver URLs are handled by
-          // the Pantyflix extractor which resolves them to direct cloud-dl
-          // workers.dev URLs (fastdlserver → gdflix → cloud-dl workers.dev).
-          // Setting nuvioReferer would make NuvioExtractor claim them first
-          // and route through /proxy, which gets 403 from fastdlserver.
+          // Direct googleusercontent URLs need no Referer (plain browser UA
+          // verified 200 video/mkv) — no nuvioReferer on purpose so
+          // DirectStream passes them through untouched.
         },
       });
     }

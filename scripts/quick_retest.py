@@ -12,7 +12,7 @@ BASE = "https://phoenix-hgs3.onrender.com"
 RETEST_MOVIE = ["19995", "603"]  # Avatar, Matrix
 RETEST_ANIME_SERIES = "85937:1:1"  # Demon Slayer
 
-ANIME_SOURCES = {"anidb", "animekai", "animezey", "animegg"}
+ANIME_SOURCES = {"animekai", "animezey", "animegg"}
 MOVIE_SOURCES = {"cuevana", "dahmermovies", "dahmermovies4k", "goated", "hdhub4u",
                  "oneembed", "uhdmovies", "vixsrc2", "zinkmovies"}
 

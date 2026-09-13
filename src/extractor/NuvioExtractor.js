@@ -35,7 +35,7 @@ const EMBED_PAGE_HOST_PATTERN = /(^|\.)(vidsrc-embed\.ru|vidking\.net|vidzee\.wt
 
 // Nuvio source IDs handled by this extractor
 const NUVIO_SOURCE_IDS = new Set([
-  'cineby', 'hindmoviez', 'movieblast',
+  'cineby', 'hindmoviez',
   'movies4u', 'playimdb',
   // Batch 2: videasy, anikototv, animesalt,
   // animeworldindia, animesdigital
@@ -55,7 +55,7 @@ const NUVIO_SOURCE_IDS = new Set([
   // NOTE: hdhub4u is NOT here — its hubcdn/hubcloud URLs are handled by
   // HubExtractor/HubCloud downstream, not NuvioExtractor.
   // NOTE: 'cinejoy' (the old v1 source) was deleted — only 'cinejoyaio' remains.
-  'zxcstream', 'animezey', 'uhdmovies', 'moviesdrive', 'framextv', 'flystream', 'cinejoyaio',
+  'zxcstream', 'animezey', 'uhdmovies', 'moviesdrive', 'framextv', 'cinejoyaio',
   // nikastream — anime sub+dub HLS via Anivexa API (kryntal.top needs Referer)
   'nikastream',
   // animesuge — anime sub/dub HLS via megaplay.buzz getSourcesNew. Since the

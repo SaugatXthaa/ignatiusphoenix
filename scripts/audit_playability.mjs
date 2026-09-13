@@ -34,7 +34,7 @@ const TEST_CASES = {
 
 function pickTestCase(source) {
   const animeOnly = new Set([
-    'animeflix', 'anidb', 'anineko', 'anikoto', 'anikage', 'anibd', '2dhive',
+    'animeflix', 'anineko', 'anikoto', 'anikage', 'anibd', '2dhive',
     'anidoor', 'animegg', 'hianime', 'animekai', 'animezey', 'anikototv',
     'animeworldindia', 'animesdigital', 'itachi', 'reanime', 'anichan',
     'animesuge', 'nikastream', 'antova', 'allwish',

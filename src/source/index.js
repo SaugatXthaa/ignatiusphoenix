@@ -3,11 +3,9 @@
 
 import { CineWave } from './CineWave.js';
 import { AnimeFlix } from './AnimeFlix.js';
-import { AniDB } from './AniDB.js';
 import { AniNeko } from './AniNeko.js';
 import { AcerMovies } from './AcerMovies.js';
 import { FrameX } from './FrameX.js';
-import { FlyStream } from './FlyStream.js';
 import { CineJoyAllInOne } from './CineJoyAllInOne.js';
 // nikastream.blog — anime sub+dub via Anivexa API (multi-language subtitles)
 import { NikaStream } from './NikaStream.js';
@@ -65,7 +63,6 @@ import { FourKHDHubOne } from './FourKHDHubOne.js';
 import { Cineby } from './Cineby.js';
 // hindmoviez — movies/TV MKV (hshare.ink → workers.dev, 4K/1080p)
 import { HindMoviez } from './HindMoviez.js';
-import { MovieBlast } from './MovieBlast.js';
 import { PlayImdb } from './PlayImdb.js';
 // Re-added sources (from uploaded Nuvio scrapers — each with dedicated source file)
 import { ZXCStream } from './ZXCStream.js';
@@ -137,7 +134,7 @@ export const createSources = (fetcher) => {
     new Netlio(fetcher),
     // anime
     new AnimeFlix(fetcher),
-    new AniDB(fetcher),
+    // Three dead-upstream sources removed 2026-09 — see git history
     new AniNeko(fetcher),
     // AL
     // ES / MX
@@ -183,8 +180,6 @@ export const createSources = (fetcher) => {
     new Cineby(fetcher),
     // hindmoviez — movies/TV MKV (hshare.ink → workers.dev, 4K/1080p)
     new HindMoviez(fetcher),
-    // movieblast — movies/TV HLS (mblinkmove.mycdn-mb.xyz, 1080p)
-    new MovieBlast(fetcher),
     // playimdb — movies/TV HLS (scalableimpactgroup.site, 1080p)
     new PlayImdb(fetcher),
     // ─── Re-added sources (from uploaded Nuvio scrapers) ───
@@ -229,8 +224,6 @@ export const createSources = (fetcher) => {
     new FourKHDHubOne(fetcher),
     // framextv.tech — movies/TV/anime (sub+dub) via FrameX API (up to 4K HLS)
     new FrameX(fetcher),
-    // flystream.net — movies/TV/anime (sub+dub) via FlyStream API (up to 4K HLS)
-    new FlyStream(fetcher),
     // cinejoy.to — movies/TV/anime via Noise protocol (7 servers, up to 4K)
     new CineJoyAllInOne(fetcher),
     // nikastream.blog — anime sub+dub HLS via Anivexa API (multi-language subtitles)

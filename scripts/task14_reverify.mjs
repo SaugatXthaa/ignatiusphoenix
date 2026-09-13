@@ -1,7 +1,7 @@
 // task14_reverify.mjs — 2nd-pass verification of audit offenders with retries
 const BASE = 'http://127.0.0.1:4595';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-const OFFENDERS = ['4KHDHub', 'Cineby', 'DahmerMovies 4K', 'DahmerMovies', 'DesiFlix', 'HindMoviez', 'KMMovies', 'MovieBlast', 'VerHdLink', 'VidEasy', 'VidLink'];
+const OFFENDERS = ['4KHDHub', 'Cineby', 'DahmerMovies 4K', 'DahmerMovies', 'DesiFlix', 'HindMoviez', 'KMMovies', 'VerHdLink', 'VidEasy', 'VidLink'];
 
 function labelOf(s) {
   const name = (s.name || '').split('\n').map(t => t.trim()).filter(Boolean);

@@ -72,14 +72,6 @@ function reanimeSegmentKey() {
 // wiring is blocked until those modules are replaced by readable ports.
 // Values are documented so rotation is a copy-paste, not an archaeology dig.
 
-// movieblast — highest-value finding of the audit: the HMAC secret actively
-// FABRICATES playback credentials (pathname+unixSec → HMAC-SHA256 →
-// ?verify={ts}-{sig}), it does not just replay one. Top of the watch-list.
-// (extracted via deobfuscation of nuvio/movieblast.cjs)
-const MOVIEBLAST_TOKEN = env('MOVIEBLAST_TOKEN', 'jdvhhjv255vghhghdhvfch2565656jhdcghfdf');        // static API token (path-segment auth)
-const MOVIEBLAST_SIGN_SECRET = env('MOVIEBLAST_SIGN_SECRET', 'GJ8reydarI7Jqat9rvbAJKNQ9gY4DoEQF2H5nfuI1gi'); // HMAC-SHA256 URL signer
-const MOVIEBLAST_HASH256 = env('MOVIEBLAST_HASH256', '86dc03244adddb3cbedbf0ae36074a736ee293a64774b18e82a6244eafd0df30'); // APK cert SHA-256 (search header)
-
 // anikototv — TVDB v4 API key (POST /v4/login → module-cached bearer)
 // (extracted via deobfuscation of nuvio/anikototv.cjs)
 const ANIKO_TVDB_KEY = env('ANIKO_TVDB_KEY', '777140fb-de92-440a-aec2-95eb51e2d7ab');
@@ -91,5 +83,5 @@ module.exports = {
   VIDZEE_AES_SEED, STELLAR_GDN_KEY, NOWHDTIME_API_KEY, ZXC_SALT,
   HINDMOVIE_TOKEN, OTAKU_XOR_KEY, reanimeSegmentKey,
   // Class B (registered — consumers obfuscated)
-  MOVIEBLAST_TOKEN, MOVIEBLAST_SIGN_SECRET, MOVIEBLAST_HASH256, ANIKO_TVDB_KEY,
+  ANIKO_TVDB_KEY,
 };

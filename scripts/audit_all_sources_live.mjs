@@ -112,7 +112,7 @@ const workerPath = path.join(__dirname, '_audit_worker.mjs');
 function pickTestCase(source) {
   // Anime-only sources (contentTypes is ['series'] AND label/name suggests anime)
   const animeOnlySources = new Set([
-    'animeflix', 'anidb', 'anineko', 'anikoto', 'anikage', 'anibd', '2dhive',
+    'animeflix', 'anineko', 'anikoto', 'anikage', 'anibd', '2dhive',
     'anidoor', 'animegg', 'hianime', 'animekai', 'animezey', 'anikototv',
     'animeworldindia', 'animesdigital', 'itachi', 'reanime', 'anichan',
     'animesuge', 'nikastream',

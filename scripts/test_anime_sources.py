@@ -21,7 +21,7 @@ BASE = f"http://localhost:{PORT}"
 
 # All 22 anime-related sources
 ANIME_SOURCES = [
-    "2dhive", "9anime", "anibd", "anichan", "anidb", "anidoor", "anikage",
+    "2dhive", "9anime", "anibd", "anichan", "anidoor", "anikage",
     "anikoto", "anikototv", "animeflix", "animegg", "animekai", "animesalt",
     "animesdigital", "animesuge", "animeworld", "animeworldindia", "animezey",
     "anineko", "anipriv8", "anivault", "hianime",

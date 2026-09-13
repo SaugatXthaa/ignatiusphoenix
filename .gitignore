@@ -7,3 +7,4 @@ skills/
 .env
 
 tool-results/
+__pycache__/

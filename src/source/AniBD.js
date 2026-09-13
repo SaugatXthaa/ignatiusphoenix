@@ -1,9 +1,7 @@
 // src/source/AniBD.js
-// anibd.app — anime BD (Blu-ray) streaming site (different from anidb.app!)
+// anibd.app — anime BD (Blu-ray) streaming site
 //
-// NOTE: This is NOT the same as the existing AniDB source (anidb.app).
-//   - anidb.app: Laravel backend, /api/frontend/* endpoints, hls.anidb.app CDN
-//   - anibd.app: WordPress + external animeapps.top API cluster, playeng.animeapps.top CDN
+// anibd.app: WordPress + external animeapps.top API cluster, playeng.animeapps.top CDN
 //
 // Flow (all JSON, no scraping):
 //   1. Search: GET https://eng.animeapps.top/api/search3.php?keyword={title}

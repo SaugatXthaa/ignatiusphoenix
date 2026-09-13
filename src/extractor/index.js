@@ -24,7 +24,7 @@ import { DirectStream } from './DirectStream.js';
 import { EmbedResolver } from './EmbedResolver.js';
 // Netlio — passthrough for direct HLS URLs from netlio.vercel.app
 import { Netlio } from './Netlio.js';
-// AnimeDirect — passthrough for anime HLS/MP4 URLs (AniDB, AniNeko, HiAnime, etc.)
+// AnimeDirect — passthrough for anime HLS/MP4 URLs (AniNeko, HiAnime, etc.)
 import { AnimeDirect } from './AnimeDirect.js';
 // Megaplay — megaplay.buzz / vidtube.site embed pages (Anikoto, StreamXTV anime)
 import { Megaplay } from './Megaplay.js';

@@ -21,7 +21,7 @@ async function main() {
   // The 38 sources that returned 0 for Inception (movie)
   const noStreamIds = [
     'moviebox', 'fmovies', 'moviesdrive', 'zinkmovies', 'netlio', 'fshare',
-    '9anime', 'animeworld', 'animeflix', 'anidb', 'anineko', 'anikoto',
+    '9anime', 'animeworld', 'animeflix', 'anineko', 'anikoto',
     'anikage', 'anibd', '2dhive', 'anidoor', 'cinefreak', 'anivault',
     'anipriv8', 'hdghartv', 'animegg', 'peckle', 'hianime', 'animekai',
     'desiflix', 'movies4u', 'animezey', 'hdhub4u', 'anikototv', 'animesalt',

@@ -80,12 +80,6 @@
       "elapsed": 798
     },
     {
-      "id": "anidb",
-      "status": "ZERO",
-      "count": 0,
-      "elapsed": 681
-    },
-    {
       "id": "anineko",
       "status": "PASS",
       "count": 6,
@@ -191,12 +185,6 @@
       "status": "ZERO",
       "count": 0,
       "elapsed": 26056
-    },
-    {
-      "id": "movieblast",
-      "status": "ZERO",
-      "count": 0,
-      "elapsed": 1955
     },
     {
       "id": "playimdb",
@@ -325,12 +313,6 @@
       "elapsed": 14357
     },
     {
-      "id": "flystream",
-      "status": "ZERO",
-      "count": 0,
-      "elapsed": 717
-    },
-    {
       "id": "cinejoyaio",
       "status": "PASS",
       "count": 2,
@@ -443,11 +425,6 @@
       "testCase": "Naruto S01E01"
     },
     {
-      "id": "anidb",
-      "reason": "0 streams",
-      "testCase": "Naruto S01E01"
-    },
-    {
       "id": "nowhdtime",
       "reason": "0 streams",
       "testCase": "Dune: Part Two"
@@ -464,11 +441,6 @@
     },
     {
       "id": "hindmoviez",
-      "reason": "0 streams",
-      "testCase": "Dune: Part Two"
-    },
-    {
-      "id": "movieblast",
       "reason": "0 streams",
       "testCase": "Dune: Part Two"
     },
@@ -509,11 +481,6 @@
     },
     {
       "id": "bollyflix",
-      "reason": "0 streams",
-      "testCase": "Dune: Part Two"
-    },
-    {
-      "id": "flystream",
       "reason": "0 streams",
       "testCase": "Dune: Part Two"
     },
