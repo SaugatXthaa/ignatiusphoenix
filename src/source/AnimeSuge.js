@@ -21,6 +21,12 @@ import { fileURLToPath } from 'url';
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
+import { installMegaplayShim } from '../nuvio/megaplay_decrypt.cjs';
+
+// megaplay.buzz's getSourcesNew now returns an encrypted `enc` blob instead of
+// plaintext sources.file (2026-09 change). Install the transparent fetch shim
+// so the scraper's existing parse keeps working.
+installMegaplayShim();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require_ = createRequire(import.meta.url);
@@ -97,7 +103,10 @@ export class AnimeSuge extends Source {
       results.push({
         url,
         format: Format.hls,
-        // Route through /proxy with Referer — kryntal.top needs Referer: https://megaplay.buzz/
+        // The m3u8 CDN (fetch.nexabloom.top) hard-403s datacenter IPs, so the
+        // addon's /proxy can never fetch it — the stream ships DIRECT and the
+        // PLAYER's residential IP fetches it. proxyHeaders still ride along
+        // (Stremio applies them at play time).
         requestHeaders: { Referer: 'https://megaplay.buzz/' },
         meta: {
           countryCodes,

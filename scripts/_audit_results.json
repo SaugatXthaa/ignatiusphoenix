@@ -1,12 +1,561 @@
 {
-  "timestamp": "2026-09-12T04:20:46.247Z",
+  "timestamp": "2026-09-13T04:24:19.385Z",
   "results": [
+    {
+      "id": "4khdhub",
+      "status": "PASS",
+      "count": 12,
+      "elapsed": 942
+    },
+    {
+      "id": "moviebox",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 1762
+    },
+    {
+      "id": "cinewave",
+      "status": "PASS",
+      "count": 28,
+      "elapsed": 2711
+    },
+    {
+      "id": "watchseries",
+      "status": "PASS",
+      "count": 11,
+      "elapsed": 1
+    },
+    {
+      "id": "necro",
+      "status": "PASS",
+      "count": 5,
+      "elapsed": 0
+    },
+    {
+      "id": "vidsrcsbs",
+      "status": "PASS",
+      "count": 3,
+      "elapsed": 0
+    },
+    {
+      "id": "vidlink2",
+      "status": "PASS",
+      "count": 2,
+      "elapsed": 2138
+    },
+    {
+      "id": "vidking",
+      "status": "PASS",
+      "count": 1,
+      "elapsed": 0
+    },
+    {
+      "id": "vidfast",
+      "status": "PASS",
+      "count": 1,
+      "elapsed": 0
+    },
+    {
+      "id": "vegamovies",
+      "status": "PASS",
+      "count": 1,
+      "elapsed": 1
+    },
+    {
+      "id": "primeshows",
+      "status": "PASS",
+      "count": 6,
+      "elapsed": 1133
+    },
+    {
+      "id": "netlio",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 359
+    },
+    {
+      "id": "animeflix",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 798
+    },
+    {
+      "id": "anidb",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 681
+    },
+    {
+      "id": "anineko",
+      "status": "PASS",
+      "count": 6,
+      "elapsed": 9195
+    },
+    {
+      "id": "verhdlink",
+      "status": "PASS",
+      "count": 4,
+      "elapsed": 744
+    },
+    {
+      "id": "meinecloud",
+      "status": "PASS",
+      "count": 4,
+      "elapsed": 506
+    },
+    {
+      "id": "acermovies",
+      "status": "PASS",
+      "count": 3,
+      "elapsed": 9944
+    },
+    {
+      "id": "streamxtv",
+      "status": "PASS",
+      "count": 4,
+      "elapsed": 17260
+    },
+    {
+      "id": "anikoto",
+      "status": "PASS",
+      "count": 4,
+      "elapsed": 873
+    },
+    {
+      "id": "anikage",
+      "status": "PASS",
+      "count": 6,
+      "elapsed": 3251
+    },
+    {
+      "id": "anibd",
+      "status": "PASS",
+      "count": 1,
+      "elapsed": 879
+    },
+    {
+      "id": "2dhive",
+      "status": "PASS",
+      "count": 2,
+      "elapsed": 882
+    },
+    {
+      "id": "anidoor",
+      "status": "PASS",
+      "count": 4,
+      "elapsed": 483
+    },
+    {
+      "id": "nowhdtime",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 4300
+    },
+    {
+      "id": "pantyflix",
+      "status": "PASS",
+      "count": 1,
+      "elapsed": 15297
+    },
+    {
+      "id": "animegg",
+      "status": "FAIL",
+      "error": "Timeout awaiting 'request' for 12000ms"
+    },
+    {
+      "id": "peckle",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 1
+    },
+    {
+      "id": "hianime",
+      "status": "PASS",
+      "count": 2,
+      "elapsed": 2116
+    },
+    {
+      "id": "animekai",
+      "status": "PASS",
+      "count": 2,
+      "elapsed": 3479
+    },
+    {
+      "id": "cineby",
+      "status": "PASS",
+      "count": 4,
+      "elapsed": 1971
+    },
+    {
+      "id": "hindmoviez",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 26056
+    },
+    {
+      "id": "movieblast",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 1955
+    },
+    {
+      "id": "playimdb",
+      "status": "PASS",
+      "count": 3,
+      "elapsed": 888
+    },
+    {
+      "id": "zxcstream",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 711
+    },
+    {
+      "id": "animezey",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 6957
+    },
+    {
+      "id": "uhdmovies",
+      "status": "PASS",
+      "count": 1,
+      "elapsed": 5530
+    },
+    {
+      "id": "videasy",
+      "status": "PASS",
+      "count": 5,
+      "elapsed": 12632
+    },
+    {
+      "id": "anikototv",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 2167
+    },
+    {
+      "id": "animeworldindia",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 5525
+    },
+    {
+      "id": "animesdigital",
+      "status": "PASS",
+      "count": 1,
+      "elapsed": 8506
+    },
+    {
+      "id": "itachi",
+      "status": "PASS",
+      "count": 14,
+      "elapsed": 1901
+    },
+    {
+      "id": "imdbplay",
+      "status": "PASS",
+      "count": 1,
+      "elapsed": 4529
+    },
+    {
+      "id": "raflix",
+      "status": "PASS",
+      "count": 11,
+      "elapsed": 2879
+    },
+    {
+      "id": "hindmovie",
+      "status": "PASS",
+      "count": 3,
+      "elapsed": 4765
+    },
+    {
+      "id": "rivestream",
+      "status": "PASS",
+      "count": 18,
+      "elapsed": 25306
+    },
+    {
+      "id": "reanime",
+      "status": "PASS",
+      "count": 2,
+      "elapsed": 3551
+    },
+    {
+      "id": "desiflix",
+      "status": "PASS",
+      "count": 6,
+      "elapsed": 34206
+    },
+    {
+      "id": "persianstremio",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 12687
+    },
+    {
+      "id": "anichan",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 1596
+    },
+    {
+      "id": "animesuge",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 3710
+    },
+    {
+      "id": "bollyflix",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 2041
+    },
+    {
+      "id": "fourkhdhubone",
+      "status": "PASS",
+      "count": 6,
+      "elapsed": 1176
+    },
+    {
+      "id": "framextv",
+      "status": "PASS",
+      "count": 2,
+      "elapsed": 14357
+    },
+    {
+      "id": "flystream",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 717
+    },
+    {
+      "id": "cinejoyaio",
+      "status": "PASS",
+      "count": 2,
+      "elapsed": 2109
+    },
+    {
+      "id": "nikastream",
+      "status": "PASS",
+      "count": 7,
+      "elapsed": 18674
+    },
+    {
+      "id": "cinebyrocks",
+      "status": "PASS",
+      "count": 3,
+      "elapsed": 30470
+    },
+    {
+      "id": "stellarrip",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 26337
+    },
+    {
+      "id": "stellar",
+      "status": "PASS",
+      "count": 2,
+      "elapsed": 7896
+    },
+    {
+      "id": "hdhub4uv2",
+      "status": "PASS",
+      "count": 7,
+      "elapsed": 22868
+    },
+    {
+      "id": "movieshuntv2",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 1464
+    },
+    {
+      "id": "moviesdrivev2",
+      "status": "PASS",
+      "count": 4,
+      "elapsed": 9308
+    },
+    {
+      "id": "cinehdplus",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 651
+    },
+    {
+      "id": "dahmermovies",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 1724
+    },
+    {
+      "id": "dahmermovies4k",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 4614
+    },
     {
       "id": "vidzee",
       "status": "PASS",
       "count": 2,
-      "elapsed": 0
+      "elapsed": 1
+    },
+    {
+      "id": "vixsrc",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 1
+    },
+    {
+      "id": "allwish",
+      "status": "ZERO",
+      "count": 0,
+      "elapsed": 1324
+    },
+    {
+      "id": "videasyto",
+      "status": "FAIL",
+      "error": "TIMEOUT"
+    },
+    {
+      "id": "kmmovies",
+      "status": "PASS",
+      "count": 2,
+      "elapsed": 22899
     }
   ],
-  "failures": []
+  "failures": [
+    {
+      "id": "moviebox",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "netlio",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "animeflix",
+      "reason": "0 streams",
+      "testCase": "Naruto S01E01"
+    },
+    {
+      "id": "anidb",
+      "reason": "0 streams",
+      "testCase": "Naruto S01E01"
+    },
+    {
+      "id": "nowhdtime",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "animegg",
+      "reason": "Timeout awaiting 'request' for 12000ms",
+      "testCase": "Naruto S01E01"
+    },
+    {
+      "id": "peckle",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "hindmoviez",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "movieblast",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "zxcstream",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "animezey",
+      "reason": "0 streams",
+      "testCase": "Naruto S01E01"
+    },
+    {
+      "id": "anikototv",
+      "reason": "0 streams",
+      "testCase": "Naruto S01E01"
+    },
+    {
+      "id": "animeworldindia",
+      "reason": "0 streams",
+      "testCase": "Naruto S01E01"
+    },
+    {
+      "id": "persianstremio",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "anichan",
+      "reason": "0 streams",
+      "testCase": "Naruto S01E01"
+    },
+    {
+      "id": "animesuge",
+      "reason": "0 streams",
+      "testCase": "Naruto S01E01"
+    },
+    {
+      "id": "bollyflix",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "flystream",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "stellarrip",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "movieshuntv2",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "cinehdplus",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "dahmermovies",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "dahmermovies4k",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "vixsrc",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "allwish",
+      "reason": "0 streams",
+      "testCase": "Dune: Part Two"
+    },
+    {
+      "id": "videasyto",
+      "reason": "TIMEOUT",
+      "testCase": "Dune: Part Two"
+    }
+  ]
 }

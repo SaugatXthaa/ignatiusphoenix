@@ -24,6 +24,13 @@ import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
 import { buildStreamResults, callNuvioProvider } from './nuvioHelpers.js';
 import { TMDB_PRIMARY } from '../utils/site-secrets.cjs'; // central site-secret registry (env-overridable)
+import { installMegaplayShim } from '../nuvio/megaplay_decrypt.cjs';
+
+// megaplay.buzz's getSources/getSourcesNew now returns an encrypted `enc`
+// blob instead of plaintext sources.file (2026-09 change). Install the
+// transparent fetch shim so the obfuscated scraper's existing parse keeps
+// working without modifying it.
+installMegaplayShim();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'anikototv.cjs');

@@ -334,7 +334,11 @@ export function buildStreamResults({ streams, title, sourceId, sourceLabel, coun
     // verified live 403 on any request carrying Referer: vidking.net (the
     // scraper stamps that on every stream) and 200 #EXTM3U with no Referer.
     // Skipping Referer routes it as direct HLS — plays clean.
-    const NO_REFERER_HOSTS = /pixeldrain\.(com|dev)|fastdlserver\.site|googleusercontent\.com|vimeos\.zip/i;
+    // fetch.nexabloom.top / *.vyrnex.top (megaplay.buzz anime CDN since the
+    // 2026-09 encrypted-sources change) hard-403 ALL DATACENTER IPs —
+    // /proxy would fetch from THIS server and always 403. Skipping Referer
+    // routes them as direct HLS so the PLAYER's residential IP fetches them.
+    const NO_REFERER_HOSTS = /pixeldrain\.(com|dev)|fastdlserver\.site|googleusercontent\.com|vimeos\.zip|nexabloom\.top|vyrnex\.top/i;
     const skipReferer = NO_REFERER_HOSTS.test(url.hostname);
 
     const meta = {

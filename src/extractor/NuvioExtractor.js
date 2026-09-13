@@ -21,6 +21,18 @@ import { Format } from '../types.js';
 import { Extractor } from './Extractor.js';
 import { HUB_HOST_PATTERN } from '../utils/index.js';
 
+// Embed/player PAGE hosts (HTML SPA players — not media files). Nuvio sources
+// that emit third-party embed fallbacks (StreamXTV: vidsrc-embed.ru /
+// vidking.net / player.vidzee.wtf / player.videasy.net; anime: megaplay.buzz
+// /stream sub-dub pages, vidnest.fun) must NOT ship those pages raw — a raw
+// HTML page URL is a guaranteed "[mpv] unrecognized file format" card.
+// Returning [] here (same pattern as the HUB_HOST block below) lets the
+// registry's fallback chain hand the URL to the dedicated extractors
+// (Megaplay, VidSrc, Vidzee, VidKing, EmbedResolver), which resolve the pages
+// server-side into real HLS. Only NON-media URLs are bypassed: direct
+// HLS/video files on these hosts keep their normal NuvioExtractor routing.
+const EMBED_PAGE_HOST_PATTERN = /(^|\.)(vidsrc-embed\.ru|vidking\.net|vidzee\.wtf|videasy\.net|megaplay\.buzz|vidnest\.fun)$/i;
+
 // Nuvio source IDs handled by this extractor
 const NUVIO_SOURCE_IDS = new Set([
   'cineby', 'hindmoviez', 'movieblast',
@@ -46,6 +58,12 @@ const NUVIO_SOURCE_IDS = new Set([
   'zxcstream', 'animezey', 'uhdmovies', 'moviesdrive', 'framextv', 'flystream', 'cinejoyaio',
   // nikastream — anime sub+dub HLS via Anivexa API (kryntal.top needs Referer)
   'nikastream',
+  // animesuge — anime sub/dub HLS via megaplay.buzz getSourcesNew. Since the
+  // 2026-09 megaplay encryption change the decrypted m3u8 lives on
+  // fetch.nexabloom.top which hard-403s datacenter IPs — NuvioExtractor's
+  // NO_REFERER_HOSTS (nuvioHelpers) routes it as a direct player-IP fetch.
+  // Without joining this set the m3u8 would match NO extractor and be dropped.
+  'animesuge',
   // streamxtv — streamxtv.sbs direct HLS via api.framextv.tech (20 providers,
   // up to 4K). Per-CDN Referer (player.videasy.to / yesmovies.ag / …) MUST be
   // routed through /proxy or the CDNs return 403.
@@ -130,6 +148,14 @@ export class NuvioExtractor extends Extractor {
     // [] here lets the registry's fallback chain hand the URL to
     // HubExtractor, which resolves the page into real direct-file URLs.
     if (HUB_HOST_PATTERN.test(url.hostname)) {
+      return [];
+    }
+
+    // Embed/player PAGE hosts — never ship the raw HTML page (poison class).
+    // Return [] so the registry fallback chain resolves via the dedicated
+    // extractors (Megaplay / VidSrc / Vidzee / VidKing / EmbedResolver).
+    // See EMBED_PAGE_HOST_PATTERN comment above.
+    if (!hls && !videoFile && EMBED_PAGE_HOST_PATTERN.test(url.hostname)) {
       return [];
     }
 

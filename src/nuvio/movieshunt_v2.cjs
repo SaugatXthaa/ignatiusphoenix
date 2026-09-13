@@ -63,6 +63,33 @@ async function getTMDBInfo(tmdbId, type) {
 // Search movieshunt.casa by title
 // ---------------------------------------------------------------------------
 async function searchSite(title) {
+  // movieshunt.casa restructured its search: /?s={q} now 301s to a JS-rendered
+  // /search.html?q={q} page backed by a JSON endpoint /lookup.php?q={q}&page=N
+  // (verified live: { ok, hits: [{ id, post_title, permalink, ... }] }).
+  // Post pages reached via hits[].permalink still carry abhilinks.site archives,
+  // so only this search entry point needs to change. Legacy HTML parse kept as
+  // a fallback in case the site reverts.
+  try {
+    const raw = await fetchText(ORIGIN + '/lookup.php?q=' + encodeURIComponent(title) + '&page=1', undefined, 10000);
+    const j = JSON.parse(raw);
+    const hits = Array.isArray(j && j.hits) ? j.hits : [];
+    const results = [];
+    const seen = new Set();
+    // Match first word of title (strip non-alphanumeric chars like colons,
+    // apostrophes, etc. — e.g. "Dune: Part Two" → firstWord "dune:" → "dune")
+    const firstWord = title.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '');
+    for (const hit of hits) {
+      const permalink = typeof (hit && hit.permalink) === 'string' ? hit.permalink : '';
+      if (!permalink) continue;
+      const slug = permalink.replace(/^\/+|\/+$/g, '');
+      if (!slug || seen.has(slug)) continue;
+      if (slug.match(/^(category|tag|page|wp-|feed|comment|search|author|disclaimer|dmca|privacy|contact|about)/)) continue;
+      if (firstWord && !slug.toLowerCase().includes(firstWord)) continue;
+      seen.add(slug);
+      results.push({ url: ORIGIN + '/' + slug + '/', slug });
+    }
+    if (results.length) return results;
+  } catch (e) { /* fall through to legacy search */ }
   try {
     const html = await fetchText(ORIGIN + '/?s=' + encodeURIComponent(title));
     const links = [...html.matchAll(/href="(https:\/\/movieshunt\.casa\/([a-z0-9-]+)\/)"/g)];

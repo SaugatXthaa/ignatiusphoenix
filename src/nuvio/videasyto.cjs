@@ -40,6 +40,34 @@ const PROVIDER_NAME = 'Videasy';
 const EMPTY_RETRY_MAX = 2;      // total attempts = 1 + 2 retries
 const EMPTY_RETRY_DELAY_MS = 2000;
 
+// ─── Per-request deadline for speedracelight API calls ───
+// Verified live (2026-09): individual provider servers can hang 2+ minutes on
+// certain titles (raw Endgame sweep: 127s wall even though Hydrogen had
+// returned 4 streams early). The scraper awaits ALL servers before returning,
+// so one hung request stalls the whole sweep past the resolver deadline even
+// though fast servers already produced streams. Per-server errors are caught
+// upstream (404/500s are handled per-server), so aborting a hung request just
+// turns it into another caught per-server failure and lets the sweep finish.
+const SPEEDRACELIGHT_RE = /speedracelight\.com/i;
+const SL_REQUEST_TIMEOUT_MS = 12000;
+if (!globalThis.__speedracelightTimeoutShim) {
+  globalThis.__speedracelightTimeoutShim = true;
+  const __origFetch = globalThis.fetch;
+  globalThis.fetch = async function speedracelightBoundedFetch(input, init) {
+    try {
+      const url = typeof input === 'string' ? input : (input && input.url) || String(input);
+      if (SPEEDRACELIGHT_RE.test(url)) {
+        init = { ...(init || {}) };
+        const t = AbortSignal.timeout(SL_REQUEST_TIMEOUT_MS);
+        init.signal = (typeof AbortSignal.any === 'function' && init.signal)
+          ? AbortSignal.any([init.signal, t])
+          : t;
+      }
+    } catch (e) { /* never break the call */ }
+    return __origFetch.call(this, input, init);
+  };
+}
+
 async function getStreams(tmdbId, type, season, episode) {
   // Delegate to the existing videasy scraper — it handles:
   //   1. TMDB info fetch

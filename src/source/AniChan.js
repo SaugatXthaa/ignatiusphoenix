@@ -23,7 +23,12 @@ import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
 
-const BASE = 'https://anichan.net';
+// 2026-09 domain change: anichan.net 301s to anichan.to and the watch APIs are
+// now session-gated — POST /api/watch/session (Turnstile token may be empty)
+// returns an `anichan_ws` cookie scoped to /api/watch, required by the
+// episodes/servers endpoints. The stream URLs themselves carry sig+exp auth
+// and play WITHOUT the cookie.
+const BASE = 'https://anichan.to';
 const ANILIST_GQL = 'https://graphql.anilist.co';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -31,10 +36,53 @@ const normalize = (s) => (s || '').toLowerCase()
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 
+// ─── Session bootstrap (anichan.to /api/watch cookie gate) ───
+// The servers/episodes endpoints return 401 {"detail":"session"} without the
+// anichan_ws cookie obtained from POST /api/watch/session. The cookie value
+// embeds its own expiry (epoch seconds as the first dot-separated segment of
+// the value), so we cache it and refresh a few minutes early.
+let _acCookie = null;
+let _acCookieExp = 0;
+
+async function getAniChanCookie() {
+  const now = Date.now() / 1000;
+  if (_acCookie && now < _acCookieExp - 300) return _acCookie;
+  try {
+    const { gotScraping } = await import('got-scraping');
+    const res = await gotScraping.post(`${BASE}/api/watch/session`, {
+      headers: { 'User-Agent': UA, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: '' }),
+      timeout: { request: 15000 },
+      throwHttpErrors: false,
+      http2: false,
+    });
+    if (res.statusCode !== 200) return null;
+    // Parse the session cookie from set-cookie headers
+    let setCookies = res.headers['set-cookie'] || [];
+    if (typeof setCookies === 'string') setCookies = [setCookies];
+    for (const sc of setCookies) {
+      const m = String(sc).match(/anichan_ws=([^;]+)/);
+      if (m) {
+        _acCookie = m[1];
+        // Cookie value starts with its expiry epoch — parse with a 5min buffer
+        const exp = parseFloat(m[1]);
+        _acCookieExp = Number.isFinite(exp) && exp > now ? exp : now + 7000;
+        return _acCookie;
+      }
+    }
+  } catch { /* fall through */ }
+  return null;
+}
+
 async function apiGet(path) {
   const { gotScraping } = await import('got-scraping');
+  const cookie = await getAniChanCookie();
   const res = await gotScraping.get(`${BASE}${path}`, {
-    headers: { 'User-Agent': UA, 'Accept': 'application/json' },
+    headers: {
+      'User-Agent': UA,
+      'Accept': 'application/json',
+      ...(cookie && path.startsWith('/api/watch') && { Cookie: `anichan_ws=${cookie}` }),
+    },
     timeout: { request: 15000 },
     throwHttpErrors: false,
     followRedirect: true,
@@ -144,6 +192,7 @@ export class AniChan extends Source {
     }
 
     const nameNorm = normalize(name);
+    const firstName = nameNorm.split(' ')[0];
     let bestMedia = null;
     let bestScore = 0;
     for (const m of mediaList) {
@@ -155,6 +204,13 @@ export class AniChan extends Source {
         if (tNorm === nameNorm) score = 100;
         else if (tNorm.includes(nameNorm) || nameNorm.includes(tNorm)) {
           score = Math.min(tNorm.length, nameNorm.length) / Math.max(tNorm.length, nameNorm.length) * 90;
+        }
+        // First-word equality — resolves sequel/spelling variants the
+        // containment rule misses: TMDB "Naruto Shippūden" vs AniList
+        // "Naruto: Shippuuden" (shippuden != shippuuden, no containment).
+        // Both normalize to the same first word "naruto" → strong match.
+        else if (firstName && firstName.length >= 4 && tNorm.split(' ')[0] === firstName) {
+          score = 65 + Math.min(15, firstName.length);
         }
         if (score > bestScore) { bestScore = score; bestMedia = m; }
       }

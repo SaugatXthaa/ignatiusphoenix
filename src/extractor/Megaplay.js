@@ -8,20 +8,24 @@
 //   - AllWish source (all-wish.me) — megaplay.buzz/stream/s-1/{token}
 //   - AniDoor source (anidoor.me) — megaplay.buzz/stream/ani/{alId}/{ep}/{sub|dub}
 //
-// Flow (verified live):
+// Flow (verified live 2026-09):
 //   1. Fetch the embed page (needs Referer: <upstream-site>)
 //   2. Extract data-id from #megaplay-player div
 //   3. GET https://megaplay.buzz/stream/getSourcesNew?id={data-id}
 //      with X-Requested-With: XMLHttpRequest
-//      → returns { sources: { file: "<master.m3u8>" }, tracks: [...], intro, outro }
-//   4. The m3u8 requires Referer: https://megaplay.buzz/ to play
-//      → route through /proxy with megaplay.buzz Referer
-//
-// The /proxy endpoint in src/index.js handles streaming with got-scraping
-// and supports Range requests for seeking.
+//      → response NOW returns { tracks, t, intro, outro, server, enc } where
+//        `enc` decrypts (AES-256-CBC, key/IV from the site's own player JS) to
+//        { file: "<master.m3u8>" } — handled by megaplay_decrypt.cjs
+//   4. The m3u8 CDN (fetch.nexabloom.top / *.vyrnex.top) hard-403s DATACENTER
+//      IPs (Cloudflare / openresty IP-reputation gate) — /proxy would fetch
+//      from THIS server and always 403. Ship the m3u8 DIRECT with Referer
+//      proxyHeaders so the PLAYER's residential IP fetches it, and attach
+//      the multi-language subtitle tracks the API returns.
+//      (Verified server-side: all header combos 403 — direct is the only path.)
 
 import { Format } from '../types.js';
 import { Extractor } from './Extractor.js';
+import { decryptMegaplayEnc } from '../nuvio/megaplay_decrypt.cjs';
 
 // Hosts that use the megaplay.buzz player backend
 const MEGAPLAY_HOSTS = [
@@ -112,19 +116,38 @@ export class Megaplay extends Extractor {
         'Accept': 'application/json,text/plain,*/*',
       });
 
+      // 2026-09 API change: the response now carries an encrypted `enc` blob
+      // instead of a plaintext sources.file. Decrypt it in place so the
+      // existing data?.sources?.file logic below keeps working unchanged.
+      if (data && !data.sources && data.enc) {
+        const dec = decryptMegaplayEnc(data.enc);
+        if (dec && dec.file) data.sources = { file: dec.file };
+      }
+
       if (data?.sources?.file) {
         let m3u8Url;
         try { m3u8Url = new URL(data.sources.file); } catch { m3u8Url = null; }
 
         if (m3u8Url) {
-          // The m3u8 requires Referer: https://megaplay.buzz/ to play.
-          // Route through /proxy with the megaplay.buzz Referer.
-          const proxyUrl = new URL('/proxy', ctx.hostUrl);
-          proxyUrl.searchParams.set('url', m3u8Url.href);
-          proxyUrl.searchParams.set('referer', 'https://megaplay.buzz/');
+          // The m3u8 CDN (fetch.nexabloom.top / *.vyrnex.top) hard-403s
+          // DATACENTER IPs — /proxy fetches from THIS server and would always
+          // 403. Ship the m3u8 DIRECT with proxyHeaders so the PLAYER's
+          // residential IP fetches it. (Verified live 2026-09: all server-side
+          // header combos 403 — direct is the only viable path.)
+
+          // Collect multi-language subtitle tracks from the API response.
+          // Format per track: { file: "https://...vtt", label: "English", kind: "captions" }
+          const subtitles = (Array.isArray(data.tracks) ? data.tracks : [])
+            .filter(t => t && t.file && (t.kind === 'captions' || t.kind === 'subtitles'))
+            .map(t => ({
+              id: String(t.label || 'en').slice(0, 8),
+              url: t.file,
+              lang: t.label || 'en',
+            }));
 
           // Try to fetch the m3u8 playlist to extract resolution/height.
           // The playlist contains #EXT-X-STREAM-INF:...,RESOLUTION=WxH,...
+          // (server-side fetch usually 403s — height detection is best-effort)
           let height = meta?.height;
           if (!height) {
             try {
@@ -139,10 +162,11 @@ export class Megaplay extends Extractor {
           }
 
           return [{
-            url: proxyUrl,
+            url: m3u8Url,
             format: Format.hls,
             label: this.label,
-            meta: { ...meta, ...(height && { height }) },
+            ...(subtitles.length > 0 && { requestHeaders: { Referer: 'https://megaplay.buzz/' } }),
+            meta: { ...meta, ...(height && { height }), ...(subtitles.length > 0 && { subtitles }) },
           }];
         }
       }
@@ -162,14 +186,12 @@ export class Megaplay extends Extractor {
           try { parsed = new URL(directUrl); } catch { parsed = null; }
           if (parsed) {
             const format = parsed.href.includes('.m3u8') ? Format.hls : Format.mp4;
-            const proxyUrl = new URL('/proxy', ctx.hostUrl);
-            proxyUrl.searchParams.set('url', parsed.href);
-            proxyUrl.searchParams.set('referer', 'https://megaplay.buzz/');
 
             return [{
-              url: proxyUrl,
+              url: parsed,
               format,
               label: this.label,
+              requestHeaders: { Referer: 'https://megaplay.buzz/' },
               meta: { ...meta },
             }];
           }
@@ -177,18 +199,9 @@ export class Megaplay extends Extractor {
       }
     } catch { /* extraction failed */ }
 
-    // Step 4: Last resort — route the embed page itself through /proxy.
-    // Stremio will receive the HTML page (which it can't play directly because
-    // the player JS won't run), but at least the stream entry is registered.
-    const proxyUrl = new URL('/proxy', ctx.hostUrl);
-    proxyUrl.searchParams.set('url', url.href);
-    proxyUrl.searchParams.set('referer', upstreamReferer);
-
-    return [{
-      url: proxyUrl,
-      format: Format.hls,
-      label: this.label,
-      meta: { ...meta },
-    }];
+    // No last-resort page shipping: routing the embed PAGE through /proxy
+    // ships an HTML document as a video URL — a guaranteed "[mpv] unrecognized
+    // file format" playback error. Zero playable URLs beats a dead card.
+    return [];
   }
 }
