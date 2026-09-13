@@ -27,6 +27,20 @@ function getGotScraping() {
   })
 }
 
+// Bounded retry helper — zephyrix CDN rate-limits datacenter IPs on a
+// window-by-window basis (~1/3 success observed). Individual attempts are
+// independent, so 3 quick attempts lift per-request success substantially
+// without meaningfully extending the happy path.
+function withRetry(fn, attempts, gapMs) {
+  function tryOnce(i) {
+    return Promise.resolve().then(fn).catch(function (e) {
+      if (i + 1 >= attempts) throw e
+      return new Promise(function (r) { setTimeout(r, gapMs) }).then(function () { return tryOnce(i + 1) })
+    })
+  }
+  return tryOnce(0)
+}
+
 function httpGet(url, headers) {
   var hdrs = Object.assign({ 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' }, headers || {})
   return getGotScraping().then(function (gs) {
@@ -175,27 +189,31 @@ function getStreamFromPage(pageUrl) {
       if (!iframeM) return null
 
       var videoHash = iframeM[2]
-      return httpPost(
-        PLAYER + '/player/index.php?data=' + videoHash + '&do=getVideo',
-        'hash=' + videoHash + '&r=' + encodeURIComponent(BASE + '/'),
-        {
-          'Referer': BASE + '/',
-          'Origin': PLAYER,
-          'X-Requested-With': 'XMLHttpRequest'
-        }
-      ).then(function(data) {
-        // Prefer securedLink (master.m3u8?md5=...&expires=...) over videoSource
-        // (master.txt). The .txt endpoint returns "security error" unless
-        // accessed with the matching md5+expires signature.
-        var m3u8 = data.securedLink || data.videoSource
-        if (!m3u8) return null
+      // 3 attempts — the getVideo POST is the main zephyrix rate-limit hit
+      // point; a rejected window usually clears within a second or two.
+      return withRetry(function () {
+        return httpPost(
+          PLAYER + '/player/index.php?data=' + videoHash + '&do=getVideo',
+          'hash=' + videoHash + '&r=' + encodeURIComponent(BASE + '/'),
+          {
+            'Referer': BASE + '/',
+            'Origin': PLAYER,
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        ).then(function(data) {
+          // Prefer securedLink (master.m3u8?md5=...&expires=...) over videoSource
+          // (master.txt). The .txt endpoint returns "security error" unless
+          // accessed with the matching md5+expires signature.
+          var m3u8 = data.securedLink || data.videoSource
+          if (!m3u8) throw new Error('getVideo returned no link (rate-limited?)')
 
-        var contentHashM = m3u8.match(/\/cdn\/hls\/([a-f0-9]+)\//)
-        var contentHash  = contentHashM ? contentHashM[1] : videoHash
-        var subtitleUrl = PLAYER + '/cdn/down/' + contentHash + '/Subtitle/subtitle_eng.srt'
+          var contentHashM = m3u8.match(/\/cdn\/hls\/([a-f0-9]+)\//)
+          var contentHash  = contentHashM ? contentHashM[1] : videoHash
+          var subtitleUrl = PLAYER + '/cdn/down/' + contentHash + '/Subtitle/subtitle_eng.srt'
 
-        return { url: m3u8, subtitle: subtitleUrl }
-      })
+          return { url: m3u8, subtitle: subtitleUrl }
+        })
+      }, 3, 1200)
     })
 }
 
@@ -203,16 +221,31 @@ function getStreamFromPage(pageUrl) {
 // set on the stream object), so a server-side probe sees exactly what the
 // player will see. Upstream 4xx/5xx or an HTML challenge = guaranteed mpv
 // error; drop the stream instead of shipping a dead card.
+// 5 attempts spread over ~10s — zephyrix CDN 403s arrive in TEMPORAL windows
+// (live-measured: same signed URL 403s for a stretch, then 200s 8/8 once the
+// window clears). Rapid retries land inside the same window and die with it;
+// spaced attempts actually cross it.
 function streamAlive(url, headers) {
-  return fetch(url, {
-    headers: Object.assign({ Range: 'bytes=0-1023' }, headers || {}),
-    redirect: 'follow',
-    signal: AbortSignal.timeout(8000),
-  }).then(function(res) {
-    if (!res.ok) return false
-    var ct = res.headers.get('content-type') || ''
-    return !/text\/html/i.test(ct)
-  }).catch(function() { return false })
+  var GAPS = [0, 1200, 2000, 3000, 4000]
+  function attempt(i) {
+    var wait = GAPS[i] || 0
+    return new Promise(function (r) { setTimeout(r, wait) }).then(function () {
+      return fetch(url, {
+        headers: Object.assign({ Range: 'bytes=0-1023' }, headers || {}),
+        redirect: 'follow',
+        signal: AbortSignal.timeout(8000),
+      })
+    }).then(function(res) {
+      var ok = res.ok && !/text\/html/i.test(res.headers.get('content-type') || '')
+      if (ok) return true
+      if (i + 1 >= GAPS.length) return false
+      return attempt(i + 1)
+    }).catch(function() {
+      if (i + 1 >= GAPS.length) return false
+      return attempt(i + 1)
+    })
+  }
+  return attempt(0)
 }
 
 function getStreams(tmdbId, mediaType, season, episode) {

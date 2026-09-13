@@ -75,7 +75,7 @@ async function getRequestToken(tmdbId, type, season, episode) {
     ? `/en/watch/embed/movie/${tmdbId}`
     : `/en/watch/embed/tv/${tmdbId}-${season}-${episode}`;
   const res = await fetch(STELLAR_RIP + embedPath, {
-    headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000),
+    headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error(`Embed page HTTP ${res.status}`);
   const html = await res.text();
@@ -92,7 +92,7 @@ async function getStreamToken(mediaId, mediaType, tvSlug, requestToken) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Origin': STELLAR_RIP, 'User-Agent': UA },
     body: JSON.stringify({ mediaId, mediaType, tv_slug: tvSlug || '', requestToken }),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(10000),
   });
   if (!initRes.ok) throw new Error(`playback-init HTTP ${initRes.status}`);
   const initData = await initRes.json();
@@ -106,7 +106,7 @@ async function getStreamToken(mediaId, mediaType, tvSlug, requestToken) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Origin': STELLAR_RIP, 'User-Agent': UA },
     body: JSON.stringify({ mediaId, mediaType, tv_slug: tvSlug || '', requestToken, pow: { challengeId, nonce: String(nonce) } }),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(10000),
   });
   if (!solveRes.ok) throw new Error(`playback-init solve HTTP ${solveRes.status}`);
   const solveData = await solveRes.json();
@@ -122,7 +122,7 @@ async function resolveSource(mediaId, mediaType, tvSlug, requestToken, streamTok
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Origin': STELLAR_RIP, 'User-Agent': UA },
     body: JSON.stringify({ data: { mediaId, mediaType, tv_slug: tvSlug || '', source }, endpoint: 'stream-encrypted', requestToken }),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(10000),
   });
   if (!encRes.ok) return null;
   const encData = await encRes.json();
@@ -131,7 +131,7 @@ async function resolveSource(mediaId, mediaType, tvSlug, requestToken, streamTok
     'requestToken=' + encodeURIComponent(requestToken) + '&token=' + encodeURIComponent(streamToken);
   const streamRes = await fetch(STELLAR_RIP + opaqueUrl, {
     headers: { 'Referer': STELLAR_RIP + embedPath, 'User-Agent': UA },
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(10000),
   });
   if (!streamRes.ok) return null;
   const streamData = await streamRes.json();
@@ -148,7 +148,7 @@ async function probeMasterPlaylist(url, embedPath) {
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': UA, 'Referer': STELLAR_RIP + embedPath, 'Origin': STELLAR_RIP },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
     const text = await res.text();
@@ -161,7 +161,9 @@ async function probeMasterPlaylist(url, embedPath) {
       }
     }
     if (variants.length === 0) return { quality: '1080p', width: 0, height: 0, has4K: false, variants: [] };
-    variants.sort((a, b) => b.bw - a.w);
+    // FIX: was (b.bw - a.w) — mixed bandwidth with width, mis-sorting variants
+    // and corrupting quality labels / 4K detection on multi-variant playlists.
+    variants.sort((a, b) => b.bw - a.bw);
     const best = variants[0];
     const r = Math.max(best.w, best.h);
     return {
@@ -221,29 +223,33 @@ async function getStreams(tmdbId, type, season, episode) {
     console.log('[Stellar] Stream token acquired');
 
     // Steps 5-6: Try all sources (s2 first for 4K!)
+    // PERF: resolve all 6 sources IN PARALLEL — the sequential loop took 18-27s
+    // wall time and regularly blew the wrapper's 25s race (=> intermittent 0
+    // streams, the "flaky" behaviour). Parallel wall time = slowest single
+    // source (~5-8s), comfortably inside budget.
+    const settled = await Promise.allSettled(ALL_SOURCES.map(async (source) => {
+      const streamUrl = await resolveSource(mediaId, mediaType, tvSlug, requestToken, streamToken, source, embedPath);
+      if (!streamUrl) { console.log('[Stellar]   ' + source + ': unavailable'); return null; }
+
+      const probe = await probeMasterPlaylist(streamUrl, embedPath);
+      const quality = probe ? probe.quality : '1080p';
+      const resStr = probe && probe.width ? ` ${probe.width}x${probe.height}` : '';
+      const is4K = probe && probe.has4K;
+
+      console.log('[Stellar] + ' + source + ' (' + quality + (is4K ? ' 4K!' : '') + '): ' + streamUrl.slice(0, 60) + '...');
+      return buildStream({
+        title: `${info.title} [Stellar ${source}${resStr}${is4K ? ' 4K' : ''}]`,
+        url: streamUrl,
+        quality,
+        serverLabel: source,
+        bingeGroup: `stellar-${source}-${tmdbId}`,
+        referer: STELLAR_RIP + embedPath,
+      });
+    }));
     const allStreams = [];
-    for (const source of ALL_SOURCES) {
-      try {
-        const streamUrl = await resolveSource(mediaId, mediaType, tvSlug, requestToken, streamToken, source, embedPath);
-        if (!streamUrl) { console.log('[Stellar]   ' + source + ': unavailable'); continue; }
-
-        const probe = await probeMasterPlaylist(streamUrl, embedPath);
-        const quality = probe ? probe.quality : '1080p';
-        const resStr = probe && probe.width ? ` ${probe.width}x${probe.height}` : '';
-        const is4K = probe && probe.has4K;
-
-        allStreams.push(buildStream({
-          title: `${info.title} [Stellar ${source}${resStr}${is4K ? ' 4K' : ''}]`,
-          url: streamUrl,
-          quality,
-          serverLabel: source,
-          bingeGroup: `stellar-${source}-${tmdbId}`,
-          referer: STELLAR_RIP + embedPath,
-        }));
-        console.log('[Stellar] + ' + source + ' (' + quality + (is4K ? ' 4K!' : '') + '): ' + streamUrl.slice(0, 60) + '...');
-      } catch (e) {
-        console.log('[Stellar]   ' + source + ': ' + e.message);
-      }
+    for (const s of settled) {
+      if (s.status === 'fulfilled' && s.value) allStreams.push(s.value);
+      else if (s.status === 'rejected') console.log('[Stellar]   source error: ' + (s.reason?.message || s.reason));
     }
 
     // Sort by quality (4K first)

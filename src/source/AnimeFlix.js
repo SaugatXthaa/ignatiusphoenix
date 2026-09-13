@@ -24,13 +24,36 @@ export class AnimeFlix extends Source {
     const tmdbId = await getTmdbId(this.fetcher, ctx, id);
     const [name, year] = await getTmdbNameAndYear(this.fetcher, ctx, tmdbId);
 
-    const animePageUrl = await this.fetchAnimePageUrl(ctx, name, year, tmdbId);
-    if (!animePageUrl) return [];
+    const candidates = await this.fetchAnimePageCandidates(ctx, name, year, tmdbId);
+    if (candidates.length === 0) return [];
 
+    const title = name + (tmdbId.season ? ` ${TmdbId.formatSeasonAndEpisode(tmdbId)}` : ` (${year})`);
+
+    // Primary = best-scoring page (sub). If a DISTINCT "-dub" page also
+    // scored above threshold, emit it as a second candidate so sub+dub
+    // both ship (site lists them as separate /Anime/...-dub/ entries).
+    const primary = candidates[0];
+    const dub = candidates.find(c => /dub/i.test(c.href) && c.href !== primary.href);
+    const chosen = dub ? [primary, dub] : [primary];
+
+    const results = [];
+    for (const cand of chosen) {
+      try {
+        const cards = await this.collectFromPage(ctx, cand, title, tmdbId, /dub/i.test(cand.href));
+        results.push(...cards);
+      } catch { /* one candidate failing must not kill the other */ }
+    }
+    return results;
+  }
+
+  // Extracts stream card(s) from one anime page (sub or dub variant):
+  // anime page → episode link → episode page → direct iframe / data-hash iframes
+  async collectFromPage(ctx, cand, title, tmdbId, isDub) {
+    const animePageUrl = new URL(cand.href, this.baseUrl);
     const html = await this.fetcher.text(ctx, animePageUrl);
     const $ = cheerio.load(html);
 
-    const title = name + (tmdbId.season ? ` ${TmdbId.formatSeasonAndEpisode(tmdbId)}` : ` (${year})`);
+    const cardTitle = isDub ? title + ' (Dub)' : title;
 
     // For movies (no season), get the first episode link
     // For series, find the matching episode
@@ -38,9 +61,13 @@ export class AnimeFlix extends Source {
 
     if (tmdbId.season) {
       const epNum = tmdbId.episode || 1;
-      // Site uses a[href*="episode"] pattern, not .episodes-ul
-      // e.g. /one-piece-episode-1-english-subbed/
-      const epLink = $(`a[href*="episode-${epNum}-"]`).first().attr('href')
+      // Boundary-aware match first: "episode-5/", "episode-5-" or "episode-5#"
+      // but NOT "episode-50". DOM lists episodes DESCENDING, so the old naive
+      // fallback (a[href*="episode-5"]) could grab episode-50 for episode 5.
+      const epRe = new RegExp(`episode-${epNum}(?:/|-|#|$)`);
+      const hrefs = $('a[href*="episode"]').map((_i, el) => $(el).attr('href')).get();
+      const epLink = hrefs.find(h => h && epRe.test(h))
+        || $(`a[href*="episode-${epNum}-"]`).first().attr('href')
         || $(`a[href*="episode-${epNum}"]`).first().attr('href');
 
       if (!epLink) return [];
@@ -63,7 +90,7 @@ export class AnimeFlix extends Source {
         url: new URL(directIframe),
         meta: {
           countryCodes: [CountryCode.multi, CountryCode.ja],
-          title,
+          title: cardTitle,
           // Don't pass vidking for anime — speedracelight returns wrong content
         },
       }];
@@ -87,7 +114,7 @@ export class AnimeFlix extends Source {
           seenUrls.add(url);
           results.push({
             url: new URL(url),
-            meta: { countryCodes: [CountryCode.multi, CountryCode.ja], title },
+            meta: { countryCodes: [CountryCode.multi, CountryCode.ja], title: cardTitle },
           });
         }
       } catch { /* skip invalid base64 */ }
@@ -96,7 +123,10 @@ export class AnimeFlix extends Source {
     return results;
   }
 
-  async fetchAnimePageUrl(ctx, name, year, tmdbId) {
+  // Returns ALL anime pages matching the title above the acceptance
+  // threshold, sorted best-first. Sub and dub variants are separate site
+  // entries, so callers can emit both cards.
+  async fetchAnimePageCandidates(ctx, name, year, tmdbId) {
     // Try multiple search queries — normalize special characters
     const queries = [
       name,
@@ -114,9 +144,18 @@ export class AnimeFlix extends Source {
       const $ = cheerio.load(html);
 
       // Use scoring to avoid matching wrong anime
-      let bestMatch = null;
-      let bestScore = 0;
-      const nameLower = name.toLowerCase().trim();
+      const scored = [];
+      const seen = new Set();
+      // Normalize typographic quotes — site headings use ’ (U+2019) while
+      // TMDB uses ' (U+0027). Without this, "Journey’s" never matches
+      // "Journey's" and borderline candidates (dub variants with longer
+      // headings) drop below threshold.
+      const norm = (s) => s
+        .toLowerCase()
+        .replace(/[\u2018\u2019\u02BC]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .trim();
+      const nameLower = norm(name);
       const nameAscii = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
       $('a[href*="/Anime/"]').each((_i, el) => {
@@ -132,7 +171,7 @@ export class AnimeFlix extends Source {
         }
         if (!text) text = $(el).text().trim();
         if (!text) return;
-        const textLower = text.toLowerCase();
+        const textLower = norm(text);
 
         let score = 0;
         if (textLower === nameLower) score = 100;
@@ -157,17 +196,23 @@ export class AnimeFlix extends Source {
           if (href.includes(String(year))) score += 5;
         }
 
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = href;
+        if (score > 0 && !seen.has(href)) {
+          seen.add(href);
+          scored.push({ href, score });
         }
       });
 
       // Lower threshold to 40 (from 60) — per-arc pages on anime sites
       // often have slightly different titles than TMDB.
-      if (bestMatch && bestScore >= 40) return new URL(bestMatch, this.baseUrl);
+      const matches = scored.filter(s => s.score >= 40).sort((a, b) => b.score - a.score);
+      if (matches.length > 0) return matches;
     }
 
-    return null;
+    return [];
+  }
+
+  async fetchAnimePageUrl(ctx, name, year, tmdbId) {
+    const candidates = await this.fetchAnimePageCandidates(ctx, name, year, tmdbId);
+    return candidates.length > 0 ? new URL(candidates[0].href, this.baseUrl) : null;
   }
 }
