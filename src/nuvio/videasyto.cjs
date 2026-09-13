@@ -49,7 +49,16 @@ const EMPTY_RETRY_DELAY_MS = 2000;
 // upstream (404/500s are handled per-server), so aborting a hung request just
 // turns it into another caught per-server failure and lets the sweep finish.
 const SPEEDRACELIGHT_RE = /speedracelight\.com/i;
-const SL_REQUEST_TIMEOUT_MS = 12000;
+// Task 22 live-measured latency distribution (Endgame + BreakingBad sweeps):
+// every USEFUL response lands in 250-400ms; the slow tail is pure waste —
+// neon2 returns a 500 after 9.7-10.4s, lamovie hangs to the old 12s cap.
+// So the first sweep now converges at 8s (still 20x the slowest observed
+// success); if the sweep came back empty we go patient (12s) for the retry
+// sweeps, since an empty first pass means we need every millisecond of
+// headroom we can get.
+const SL_FIRST_SWEEP_TIMEOUT_MS = 8000;
+const SL_RETRY_SWEEP_TIMEOUT_MS = 12000;
+let __slActiveTimeoutMs = SL_FIRST_SWEEP_TIMEOUT_MS;
 if (!globalThis.__speedracelightTimeoutShim) {
   globalThis.__speedracelightTimeoutShim = true;
   const __origFetch = globalThis.fetch;
@@ -58,7 +67,7 @@ if (!globalThis.__speedracelightTimeoutShim) {
       const url = typeof input === 'string' ? input : (input && input.url) || String(input);
       if (SPEEDRACELIGHT_RE.test(url)) {
         init = { ...(init || {}) };
-        const t = AbortSignal.timeout(SL_REQUEST_TIMEOUT_MS);
+        const t = AbortSignal.timeout(__slActiveTimeoutMs);
         init.signal = (typeof AbortSignal.any === 'function' && init.signal)
           ? AbortSignal.any([init.signal, t])
           : t;
@@ -75,9 +84,11 @@ async function getStreams(tmdbId, type, season, episode) {
   //   3. Querying 10 speedracelight servers in parallel
   //   4. Decrypting responses (custom stream cipher)
   //   5. Returning streams with subtitles
+  __slActiveTimeoutMs = SL_FIRST_SWEEP_TIMEOUT_MS;
   let streams = await videasyScraper.getStreams(tmdbId, type, season, episode);
 
   for (let attempt = 0; Array.isArray(streams) && streams.length === 0 && attempt < EMPTY_RETRY_MAX; attempt++) {
+    __slActiveTimeoutMs = SL_RETRY_SWEEP_TIMEOUT_MS;
     await new Promise(r => setTimeout(r, EMPTY_RETRY_DELAY_MS));
     streams = await videasyScraper.getStreams(tmdbId, type, season, episode);
   }

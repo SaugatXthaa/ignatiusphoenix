@@ -463,7 +463,8 @@ async function resolveTvEpisode(mdriveUrl, season, episode, quality) {
 
   // hubcloud.cx URL markers — use larger limit (500 chars) to handle <img> inside <a>
   // (mdrive.lol pages use image buttons instead of text links)
-  const urlRe = /href="(https:\/\/hubcloud\.cx\/drive\/[A-Za-z0-9_]+)"[^>]*>([\s\S]{0,500}?)<\/a>/gi;
+  // Task 22: hubcloud TLD rotates (.cx → .ist live-verified 2026-09-14) — match any TLD
+  const urlRe = /href="(https:\/\/hubcloud\.[a-z]+\/drive\/[A-Za-z0-9_]+)"[^>]*>([\s\S]{0,500}?)<\/a>/gi;
   let um;
   while ((um = urlRe.exec(decoded)) !== null) {
     const linkText = um[2].replace(/<[^>]+>/g, '').trim();
@@ -471,7 +472,7 @@ async function resolveTvEpisode(mdriveUrl, season, episode, quality) {
   }
   // Fallback: if no </a> found, just find bare URLs (some pages don't close <a>)
   if (!markers.some(m => m.type === 'url')) {
-    const bareRe = /href="(https:\/\/hubcloud\.cx\/drive\/[A-Za-z0-9_]+)"/gi;
+    const bareRe = /href="(https:\/\/hubcloud\.[a-z]+\/drive\/[A-Za-z0-9_]+)"/gi;
     let bm;
     while ((bm = bareRe.exec(decoded)) !== null) {
       markers.push({ pos: bm.index, url: bm[1], type: 'url', linkText: '' });
@@ -495,7 +496,7 @@ async function resolveTvEpisode(mdriveUrl, season, episode, quality) {
     }
   }
 
-  // Fallback: if no episode markers found, try the FIRST hubcloud.cx link
+  // Fallback: if no episode markers found, use the FIRST file link on the page
   // (for movies on mdrive.lol, there's typically just one file)
   const firstUrl = markers.find(m => m.type === 'url');
   if (firstUrl) {
@@ -510,9 +511,15 @@ async function resolveTvEpisode(mdriveUrl, season, episode, quality) {
   return null;
 }
 
-// ─── Get a fresh FROM_AC_TOKEN from the hubcloud.cx page ──────────────────
+// ─── Get a fresh FROM_AC_TOKEN from the hubcloud page ─────────────────────
+// Task 22: the hubcloud TLD rotates (.cx → .ist live-verified 2026-09-14).
+// Remember the live base from each fetched link so downstream API calls
+// (search-recover, pixel, gpdl) hit the same rotating domain.
+let __hubcloudBase = HUBCLOUD_BASE;
 async function getFromAcToken(hubcloudUrl) {
-  const directUrl = hubcloudUrl.replace('hubcloud.foo', 'hubcloud.cx');
+  const baseMatch = String(hubcloudUrl).match(/https:\/\/hubcloud\.[a-z]+/i);
+  if (baseMatch) __hubcloudBase = baseMatch[0];
+  const directUrl = hubcloudUrl;
   const html = await fetchText(directUrl, { referer: MAIN_URL + '/' });
   const tokenMatch = html.match(/FROM_AC_TOKEN\s*=\s*"([^"]+)"/);
   if (!tokenMatch) {
@@ -523,9 +530,10 @@ async function getFromAcToken(hubcloudUrl) {
 
 // ─── Search hubcloud.cx API for the right file ────────────────────────────
 async function searchHubcloud(token, query) {
-  const pageUrl = `${HUBCLOUD_BASE}/drive/search-recover.php?from_ac=${token}`;
+  const base = __hubcloudBase || HUBCLOUD_BASE;
+  const pageUrl = `${base}/drive/search-recover.php?from_ac=${token}`;
   const qEnc = encodeURIComponent(query);
-  const apiUrl = `${HUBCLOUD_BASE}/drive/search-recover.php?api=search&q=${qEnc}&page=1&from_ac=${token}`;
+  const apiUrl = `${base}/drive/search-recover.php?api=search&q=${qEnc}&page=1&from_ac=${token}`;
   try {
     const data = await fetchJson(apiUrl, { referer: pageUrl });
     return data.hits || [];
@@ -579,7 +587,7 @@ async function resolveFileUrl(fileId, fileName) {
       const gamerHtml = await fetchText(gamerUrl, { referer: HUBCLOUD_BASE + '/' });
 
       // pixel.hubcloud.cx URL → redirects to googleusercontent (preferred — Range via /range-proxy)
-      const pixelMatch = gamerHtml.match(/https:\/\/pixel\.hubcloud\.cx\/\?id=[A-Za-z0-9:_-]+/i);
+      const pixelMatch = gamerHtml.match(/https:\/\/pixel\.hubcloud\.[a-z]+\/\?id=[A-Za-z0-9:_-]+/i);
       if (pixelMatch) {
         result.pixelUrl = pixelMatch[0];
       }
@@ -604,7 +612,7 @@ async function resolveFileUrl(fileId, fileName) {
 
       // GPDL URL (10Gbps server)
       if (!result.gpdlUrl) {
-        const gpdlMatch2 = gamerHtml.match(/https:\/\/gpdl\.hubcloud\.cx\/\?id=[A-Za-z0-9:]+/i);
+        const gpdlMatch2 = gamerHtml.match(/https:\/\/gpdl\.hubcloud\.[a-z]+\/\?id=[A-Za-z0-9:]+/i);
         if (gpdlMatch2) {
           result.gpdlUrl = gpdlMatch2[0];
         }

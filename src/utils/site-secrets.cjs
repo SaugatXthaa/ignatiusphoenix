@@ -41,9 +41,10 @@ const TMDB_TERTIARY = env('TMDB_API_KEY_3', '1c29a5198ee1854bd5eb45dbe8d17d92');
 const VIDZEE_AES_SEED = env('VIDZEE_AES_SEED', '4f2a9c7d1e8b3a6f0d5c2e9a7b1f4d8c');
 
 // stellar.gdn — AES-256-GCM key seed, hashed with the daily date
-// (ROTATED upstream on 2026-09-02; extracted from stellar.gdn JS bundle;
-// consumer: src/nuvio/stellar.cjs)
-const STELLAR_GDN_KEY = env('STELLAR_GDN_KEY', 'KT1b67W1DU2ebpGxQkMiFVyz1iaP/PeMgv/xJQDdDoU=:');
+// (ROTATED upstream on 2026-09-02 and again before 2026-09-14 — re-extracted
+// from the stellar.gdn Next.js chunk 1uewwjxw3lxnk.js `J()` encryptor literal;
+// consumer: src/nuvio/stellar.cjs. PoW unchanged: single SHA256(challenge+nonce))
+const STELLAR_GDN_KEY = env('STELLAR_GDN_KEY', 'iwTL6oi-9LLc3M4a1jcQV6jciugKj1_z6dYhdSbbtlg:');
 
 // nhdapi.com — X-API-Key header (consumer: src/source/NowHDTime.js)
 const NOWHDTIME_API_KEY = env('NOWHDTIME_API_KEY', '7d5239afc1d0a4fa374587d1d3feb1b0');

@@ -41,12 +41,16 @@ export class HindMoviez extends Source {
     const title = name + (tmdbId.season ? ` ${TmdbId.formatSeasonAndEpisode(tmdbId)}` : ` (${year})`);
 
     const mediaType = tmdbId.season ? 'tv' : 'movie';
+    // Task 22 live-measured: scraper wall ≈20s (3 MvLink waves × hshare+hcloud
+    // fetches) + liveness probes ≈1-3s. The old 25s provider cap raced the
+    // scraper's own completion and zeroed the source. 30s keeps the whole
+    // chain inside the resolver's 35s per-source cutoff.
     const streams = await callNuvioProvider(PROVIDER_PATH, {
       tmdbId: tmdbId.id,
       mediaType,
       season: tmdbId.season || null,
       episode: tmdbId.episode || null,
-      timeoutMs: 25000, // HindMoviez is slow, cap at 25s
+      timeoutMs: 30000,
     });
 
     // Liveness gate — these streams play through the server /proxy, so a

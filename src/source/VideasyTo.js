@@ -82,11 +82,14 @@ export class VideasyTo extends Source {
     let streams;
     try {
       // The scraper queries 10 speedracelight servers in parallel and
-      // decrypts responses. Takes 15-25s depending on API response times.
+      // decrypts responses. First sweep converges in 2-10s (8s per-request
+      // cap on useful-server latency; slow-tail servers are useless anyway).
+      // Race at 32s — anything computed past the resolver's 35s per-source
+      // cutoff would be discarded, so cap the work before it's wasted.
       // PRIORITY_SOURCE_IDS in StreamResolver ensures this starts early.
       streams = await Promise.race([
         mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null),
-        new Promise(r => setTimeout(() => r(null), 50000)),
+        new Promise(r => setTimeout(() => r(null), 32000)),
       ]);
     } catch (e) {
       console.error(`[videasyto] getStreams error: ${e?.message || e}`);
