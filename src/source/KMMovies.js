@@ -90,7 +90,7 @@ export class KMMovies extends Source {
     this.label = 'KMMovies';
     this.contentTypes = ['movie', 'series'];
     this.countryCodes = [CountryCode.multi, CountryCode.hi, CountryCode.en];
-    this.baseUrl = 'https://kmmovies.pics';
+    this.baseUrl = 'https://kmmovies.rest';
     this.fetcher = fetcher;
     this.ttl = 10 * 60 * 1000; // 10min
   }

@@ -27,7 +27,7 @@ const { execFile } = require('child_process');
 
 const PROVIDER_NAME = 'KMMovies';
 const TMDB_API_KEY = '8476a7ab80ad76f0936744df0430e67c';
-const KMMOVIES_BASE = 'https://kmmovies.pics';
+const KMMOVIES_BASE = 'https://kmmovies.rest'; // domain migrated .pics -> .rest (301); old host kept for link compat
 const MAGICLINKS_BASE = 'https://w3.magiclinks.lol';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -107,7 +107,7 @@ async function searchKMMovies(query) {
     const html = await fetchText(`${KMMOVIES_BASE}/?s=${encodeURIComponent(query)}`, {
       headers: { Referer: KMMOVIES_BASE + '/', 'Accept': 'text/html' },
     });
-    const matches = [...html.matchAll(/href="(https:\/\/kmmovies\.pics\/([^"\/]+))\/?"/g)];
+    const matches = [...html.matchAll(/href="(https:\/\/kmmovies\.(?:pics|rest)\/([^"\/]+))\/?"/g)];
     const results = new Map();
     const skipSlugs = ['category', 'tag', 'genre', 'year', 'actor', 'director', 'writer', 'browse', 'page', 'wp-content', 'wp-includes', 'trending', 'disclaimer', 'faq', 'privacy-policy', 'dmca', 'comments', 'feed'];
     for (const m of matches) {
