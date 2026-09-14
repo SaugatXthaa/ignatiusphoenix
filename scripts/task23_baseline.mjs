@@ -166,7 +166,7 @@ function partC() {
 async function runChecks(child, logFile, bootLines) {
   const srcM = bootLines.match(/Sources: (\d+)/);
   const extM = bootLines.match(/Extractors: (\d+)/);
-  check('boot source count = 68', srcM && srcM[1] === '68', `got ${srcM?.[1]}`);
+  check('boot source count = 69', srcM && srcM[1] === '69', `got ${srcM?.[1]}`);
   check('boot extractor count = 30', extM && extM[1] === '30', `got ${extM?.[1]}`);
 
   // removed-source leakage at registry level
@@ -187,10 +187,18 @@ async function runChecks(child, logFile, bootLines) {
   const sr = await getJson(`${base}/stream/series/tt0903747:1:1.json`, 150000);
   const srN = sr?.streams?.length || 0;
   check('BreakingBad merged series count >= 80', srN >= 80, `count=${srN}`);
+  // Task 24 matrix extension — anime catalogs
+  const fr = await getJson(`${base}/stream/series/tmdb:209867:2:1.json`, 150000);
+  const frN = fr?.streams?.length || 0;
+  check('Frieren S2E1 merged (anime) count >= 60', frN >= 60, `count=${frN} (obs 108)`);
+  const yn = await getJson(`${base}/stream/movie/tmdb:372058.json`, 150000);
+  const ynN = yn?.streams?.length || 0;
+  check('Your Name merged (anime movie) count >= 70', ynN >= 70, `count=${ynN} (obs 120)`);
 
   // leakage in catalogs: stream titles/urls must not reference removed sources
   const leakRe = /movieblast|moviesblast|flystream|\banidb\b/i;
-  const leaked = [...(mv?.streams || []), ...(sr?.streams || [])].filter(s => leakRe.test(s.title || '') || leakRe.test(s.url || ''));
+  const leaked = [...(mv?.streams || []), ...(sr?.streams || []), ...(fr?.streams || []), ...(yn?.streams || [])]
+    .filter(s => leakRe.test(s.title || '') || leakRe.test(s.url || ''));
   check('no removed-source leakage in catalogs', leaked.length === 0, `${leaked.length} hits`);
 
   // /proxy 206 MKV range check — find a direct (non-m3u8) video URL in catalogs
@@ -210,6 +218,18 @@ async function runChecks(child, logFile, bootLines) {
     } catch (e) { proxyDetail = e.message.slice(0, 60); }
   }
   check('/proxy 206 MKV EBML range check', proxyOk, proxyDetail);
+
+  // ─── Part D: source-level regression guards (Task 24) ───
+  console.log('\n=== PART D: source-level guards (via /debug/source) ===');
+  // moviesdrivev2 matcher guard: search.php died upstream; the Task 24
+  // wp-json + scored-matcher fix must keep returning F1 streams
+  const md = await getJson(`${base}/debug/source/moviesdrivev2?type=movie&id=tmdb:911430`, 45000);
+  const mdCount = md?.count ?? 0;
+  check('moviesdrivev2 F1 >= 3 (Task 24 matcher guard)', mdCount >= 3, `count=${mdCount}`);
+  // vegamovies2 standing check: new Task 24 source must keep resolving
+  const vg = await getJson(`${base}/debug/source/vegamovies2?type=series&id=tmdb:108978:4:1`, 45000);
+  const vgCount = vg?.count ?? 0;
+  check('vegamovies2 Reacher S4E1 >= 2 (new source guard)', vgCount >= 2, `count=${vgCount}`);
 
   child.kill('SIGTERM');
   await new Promise(r => setTimeout(r, 800));

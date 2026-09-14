@@ -47,8 +47,10 @@
 'use strict';
 
 const PROVIDER_NAME = 'MoviesDrive';
-const MAIN_URL = 'https://new3.moviesdrive.christmas';
-const SEARCH_API = MAIN_URL + '/search.php';
+// Task 24: site rotates subdomains (new2 → new3 → new4). Live-verified 2026-09-14:
+// post permalinks already point at new4 and only new4's search index works.
+const MAIN_URL = 'https://new4.moviesdrive.christmas';
+const MAIN_URL_FALLBACK = 'https://new3.moviesdrive.christmas';
 const HUBCLOUD_BASE = 'https://hubcloud.cx';
 const TMDB_API_KEY = '8476a7ab80ad76f0936744df0430e67c';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
@@ -189,29 +191,103 @@ async function getTMDBInfo(tmdbId, type) {
   }
 }
 
-// ─── Search MoviesDrive via Typesense-backed search.php ────────────────────
+// ─── Search MoviesDrive ───────────────────────────────────────────────────
+// Task 24: the Typesense-backed /search.php is BROKEN upstream — every query
+// (title, partial, even imdb id) returns the same 15 latest posts regardless
+// of q. Live-verified the WordPress search controller works and ranks exact
+// titles first: /wp-json/wp/v2/search?search=<q> → [{title, url}].
+// No imdb_id field exists in either wp-json endpoint, so best-match is
+// title-scored (see scoreCandidate below).
+function decodeWpEntities(s) {
+  return String(s || '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&#x27;/g, "'")
+    .replace(/&nbsp;/g, ' ').replace(/&#8211;|&ndash;/g, '–')
+    .replace(/&mdash;/g, '—').replace(/&#8217;|&rsquo;/g, "'")
+    .replace(/<[^>]+>/g, '').trim();
+}
+
 async function searchMoviesdrive(query, perPage) {
   perPage = perPage || 10;
-  const url = `${SEARCH_API}?q=${encodeURIComponent(query)}&per_page=${perPage}`;
+  const url = `${MAIN_URL}/wp-json/wp/v2/search?search=${encodeURIComponent(query)}&per_page=${perPage}`;
   try {
     const data = await fetchJson(url, { referer: MAIN_URL + '/' });
-    if (!data || !data.hits) return [];
-    return data.hits.map(h => {
-      const doc = h.document || {};
-      return {
-        id: doc.id,
-        imdbId: doc.imdb_id,
-        title: doc.post_title || '',
-        permalink: doc.permalink || '',
-        thumbnail: doc.post_thumbnail || '',
-        categories: doc.category || [],
-        date: doc.post_date || '',
-      };
-    });
+    if (!Array.isArray(data)) return [];
+    return data.map(h => ({
+      id: h.id,
+      imdbId: null,               // wp-json search controller has no imdb field
+      title: decodeWpEntities(h.title),
+      permalink: h.url || '',
+      thumbnail: '',
+      categories: [],
+      date: '',
+    })).filter(r => r.title && r.permalink);
   } catch (e) {
     console.log(`[MoviesDrive] Search failed: ${e.message}`);
     return [];
   }
+}
+
+// ─── Title scoring for best-post match (Task 24) ─────────────────────────
+// The old logic (imdb match → contains → blind searchResults[0]) shipped
+// WRONG-post streams whenever the site index had a gap: the blind fallback
+// picked unrelated latest posts (F1 → Bigg Boss) and the wrapper's TMDB-titled
+// card hid the mismatch. New approach: score every candidate, accept only a
+// genuine title relation, otherwise return no post (zero wrong streams).
+function normalizeTitleForMatch(s) {
+  return String(s || '').toLowerCase()
+    // Task 24: fold diacritics FIRST (NFD + strip combining marks) — TMDB
+    // "Shippūden" (U+016B) vs site "Shippuden" (ASCII) must tokenize alike,
+    // otherwise the [^a-z0-9] strip below splits ū into a gap and kills the
+    // match (same class of bug as the Task 20 apostrophe normalization).
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/^download\s+/i, '')
+    .replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, ' ')  // strip [] () {} groups
+    .replace(/\b(480p|720p|1080p|2160p|4k|web-?dl|web-?rip|bluray|bdrip|brrip|hdtv|hdrip|hevc|x264|x265|h265|10bit|dual[\s-]?audio|multi[\s-]?audio|esub?s?|hindi|english|dubbed|org|original|audio|season|complete|added|imax|uhd|hdr10\+?|dv)\b/gi, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+function scoreCandidate(requestedTitle, requestedYear, postTitle, isTV) {
+  const tNorm = normalizeTitleForMatch(requestedTitle);
+  const pNorm = normalizeTitleForMatch(postTitle);
+  if (!tNorm || !pNorm) return 0;
+  const tTok = new Set(tNorm.split(' '));
+  const pTok = pNorm.split(' ');
+  if (pTok.length === 0) return 0;
+  // containment both ways + token overlap ratio
+  const overlap = pTok.filter(w => tTok.has(w)).length;
+  const ratio = overlap / Math.max(1, tTok.size);
+  const contained = pNorm.includes(tNorm) || tNorm.includes(pNorm);
+  let score = contained ? 0.6 + 0.4 * ratio : ratio;
+  // year sanity: post mentioning the requested year (±1) is a strong signal;
+  // a DIFFERENT modern year suggests a different title entirely
+  const years = (postTitle.match(/(19|20)\d{2}/g) || []).map(Number);
+  if (requestedYear && years.length) {
+    if (years.some(y => Math.abs(y - requestedYear) <= 1)) score += 0.25;
+    else score -= 0.3;
+  }
+  // format awareness (Task 24): "Naruto Shippuden" the SERIES post and the
+  // "Naruto Shippuden: The Lost Tower" MOVIE post tokenize identically and
+  // can tie after the year penalty — break the tie with season/episode
+  // markers on the RAW post title.
+  const seriesLike = /\b(seasons?\s*\d|s\d{1,2}\s*[–—-]|episode\s*\d|\bep\d+\b|complete\s+(anime\s+)?(web\s+)?series)\b/i.test(String(postTitle || ''));
+  if (isTV) score += seriesLike ? 0.2 : -0.15;
+  else if (seriesLike) score -= 0.1;
+  return Math.max(0, Math.min(1.25, score));
+}
+
+function pickBestPost(searchResults, info, isTV) {
+  const requestedYear = info.year ? parseInt(info.year, 10) : null;
+  let best = null, bestScore = 0;
+  for (const r of searchResults) {
+    const s = scoreCandidate(info.title, requestedYear, r.title, isTV);
+    if (s > bestScore) { best = r; bestScore = s; }
+  }
+  // threshold: containment alone (0.6) passes when year confirms; token
+  // overlap without containment needs enough matching words
+  if (best && bestScore >= 0.6) return best;
+  return null;   // refuse: better zero streams than a wrong-title file
 }
 
 // ─── Quality detection ────────────────────────────────────────────────────
@@ -498,6 +574,19 @@ async function resolveTvEpisode(mdriveUrl, season, episode, quality) {
 
   // Fallback: if no episode markers found, use the FIRST file link on the page
   // (for movies on mdrive.lol, there's typically just one file)
+  // Task 24 guard: if the page DOES carry episode markers but none matches the
+  // requested episode, the archive simply doesn't host that episode (e.g. the
+  // Naruto "Season 1-16" post's archives only hold the latest EP349/350).
+  // Serving EP349 labeled as S01E01 is exactly the mismatch this task removes
+  // — refuse instead of falling back to the first file.
+  const allEpNums = new Set();
+  const looseEpRe = /(?:ep|episode)\s*(\d{1,4})/gi;
+  let lm;
+  while ((lm = looseEpRe.exec(decoded)) !== null) allEpNums.add(parseInt(lm[1], 10));
+  if (allEpNums.size > 0 && !allEpNums.has(parseInt(episode, 10))) {
+    console.log(`[MoviesDrive]   ✗ Archive hosts episodes [${[...allEpNums].slice(0, 8).join(', ')}${allEpNums.size > 8 ? ', …' : ''}] — episode ${episode} not present, refusing wrong-episode fallback`);
+    return null;
+  }
   const firstUrl = markers.find(m => m.type === 'url');
   if (firstUrl) {
     const fileId = firstUrl.url.match(/\/drive\/([A-Za-z0-9_]+)/)?.[1];
@@ -714,30 +803,29 @@ async function getStreams(tmdbId, type, season, episode) {
   console.log(`[MoviesDrive] TMDB: ${info.title}${info.year ? ` (${info.year})` : ''}` +
               ` IMDB: ${info.imdbId || 'N/A'}${isAnime ? ' [ANIME]' : ''}`);
 
-  // 2. Search MoviesDrive by title (IMDB search returns wrong fuzzy matches)
+  // 2. Search MoviesDrive (Task 24: wp-json search controller; search.php is
+  //    broken upstream and returns the same latest posts for every query).
+  //    Query ladder: full title → title without subtitle tail → imdb id.
   let searchResults = await searchMoviesdrive(info.title, 10);
-  if (searchResults.length === 0 && info.imdbId) {
-    searchResults = await searchMoviesdrive(info.imdbId, 10);
+  let picked = pickBestPost(searchResults, info, isTV);
+  if (!picked) {
+    // index-gap fallback: drop everything after the first colon/dash segment
+    const shortTitle = info.title.split(/[:–—-]/)[0].trim();
+    if (shortTitle && shortTitle.toLowerCase() !== info.title.toLowerCase()) {
+      const altResults = await searchMoviesdrive(shortTitle, 10);
+      picked = pickBestPost(altResults, info, isTV);
+      if (picked) console.log(`[MoviesDrive] Short-title fallback "${shortTitle}" matched: ${picked.title.slice(0, 50)}`);
+    }
   }
-  if (searchResults.length === 0) {
-    console.log('[MoviesDrive] No search results');
+  if (!picked && info.imdbId) {
+    const imdbResults = await searchMoviesdrive(info.imdbId, 10);
+    picked = imdbResults.find(r => r.imdbId === info.imdbId) || null;
+  }
+  if (!picked) {
+    console.log(`[MoviesDrive] No confident match for "${info.title}" — refusing to serve a wrong-title post`);
     return [];
   }
-  console.log(`[MoviesDrive] Found ${searchResults.length} search result(s)`);
-
-  // Pick best match
-  let best = null;
-  if (info.imdbId) {
-    best = searchResults.find(r => r.imdbId === info.imdbId);
-  }
-  if (!best) {
-    const titleLower = info.title.toLowerCase();
-    const titleMatch = searchResults.find(r =>
-      r.title.toLowerCase().includes(titleLower) ||
-      titleLower.includes(r.title.toLowerCase().split(/\s+/)[0].toLowerCase())
-    );
-    best = titleMatch || searchResults[0];
-  }
+  const best = picked;
   console.log(`[MoviesDrive] Best match: ${best.title.slice(0, 60)} (${best.permalink})`);
 
   // 3. Fetch movie page and extract download links (one per quality)
@@ -844,18 +932,36 @@ async function getStreams(tmdbId, type, season, episode) {
             new RegExp(`\\b[eE]${epNum}\\b`),                  // E1 (no leading zero)
             new RegExp(`Episode\\s+${epNum}\\b`, 'i'),         // Episode 1
           ];
-          const epMatches = qualityHits.filter(h => {
-            const fn = h.file_name || '';
-            return epRegexes.some(re => re.test(fn));
-          });
+          const findEpMatch = (hits) => hits.filter(h => epRegexes.some(re => re.test(h.file_name || '')));
+          let epMatches = findEpMatch(qualityHits);
+          // Task 24: hubcloud's global index ranks the LATEST episode first
+          // (e.g. "Naruto Shippuden - E360" for an S01E01 request). If the
+          // first sweep has no episode match, retry the search with an
+          // episode-targeted query before giving up.
+          if (epMatches.length === 0) {
+            const epQuery = `${titleClean} E${epNum} ${qNum}p`;
+            console.log(`[MoviesDrive]   ⚠ No episode ${epNum} in first sweep, retrying: "${epQuery}"`);
+            const epHits = await searchHubcloud(token, epQuery);
+            const epQualityHits = epHits.filter(h => {
+              const fn = (h.file_name || '').toLowerCase();
+              return fn.includes(qNum) || (quality === '2160p' && fn.includes('4k'));
+            });
+            epMatches = findEpMatch(epQualityHits.length ? epQualityHits : epHits);
+          }
           if (epMatches.length > 0) {
             target = epMatches[0];
             console.log(`[MoviesDrive]   ✓ Matched episode ${epNum}: ${target.file_name.slice(0, 60)}`);
           } else {
-            console.log(`[MoviesDrive]   ⚠ No episode ${epNum} match, using first quality hit`);
+            // Refuse: serving the latest episode (or an unrelated movie file)
+            // labeled as S01E01 is exactly the mismatch this Task 24 fix
+            // removes. Zero wrong-episode streams beats one more stream.
+            console.log(`[MoviesDrive]   ✗ No episode ${epNum} file found — refusing wrong-episode fallback`);
+            return null;
           }
         }
         if (!target) {
+          // Movie path: post title already matched + quality filter applied,
+          // so the top hit is safe (this fallback only ever runs for movies).
           target = qualityHits[0] || hits[0];
         }
         fileName = target.file_name || '';

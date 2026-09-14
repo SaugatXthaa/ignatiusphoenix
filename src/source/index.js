@@ -37,6 +37,7 @@ import { VidKing } from './VidKing.js';
 import { VidFast } from './VidFast.js';
 import { VidLink } from './VidLink.js';
 import { VegaMovies } from './VegaMovies.js';
+import { VegaMoviesNew } from './VegaMoviesNew.js';
 // New sources (additive — no existing source modified)
 // streamxtv — streamxtv.sbs direct playable HLS via api.framextv.tech
 //   (20 providers, up to 4K, multi-language subtitles) + streamxtv.tech
@@ -240,6 +241,8 @@ export const createSources = (fetcher) => {
     new MoviesHuntV2(fetcher),
     // MoviesDrive v2 — movies/TV via new3.moviesdrive.christmas WP API (up to 4K)
     new MoviesDriveV2(fetcher),
+    // VegaMovies Direct — movies/TV/anime via new2.vegamovies.futbol nexdrive→fastdl (up to 4K)
+    new VegaMoviesNew(fetcher),
     // ─── Orphan sources (registered in batch — all additive) ───
     // cinehdplus — ES/MX series via cinehdplus.com
     new CineHDPlus(fetcher),
