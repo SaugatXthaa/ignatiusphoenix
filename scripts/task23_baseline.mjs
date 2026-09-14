@@ -1,0 +1,236 @@
+// task23_baseline.mjs — rebuilt consolidated regression (final_regression.mjs +
+// decrypt suite were working-tree-only in old sessions, never committed, lost).
+//
+// Three parts:
+//   A. Decrypt self-tests (pure crypto, no network) — stream-decrypt.cjs +
+//      megaplay_decrypt.cjs round-trips and known vectors.
+//   B. videasyto direct-scraper probe — wall-time + HLS magic byte check on a
+//      FULL url (the /debug/source endpoint truncates urls at 150 chars).
+//   C. Addon boot regression on TEST_PORT (4596): boot counts, merged movie /
+//      series catalogs, removed-source leakage check, /proxy 206 MKV check.
+//
+// Usage: node scripts/task23_baseline.mjs
+
+import { spawn } from 'child_process';
+import fs from 'fs';
+import crypto from 'crypto';
+import { createRequire } from 'module';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.join(__dirname, '..');
+const require_ = createRequire(import.meta.url);
+
+let pass = 0, fail = 0;
+const failures = [];
+function check(name, cond, detail = '') {
+  if (cond) { pass++; console.log(`  [PASS] ${name}${detail ? ' — ' + detail : ''}`); }
+  else { fail++; failures.push(name + (detail ? ` (${detail})` : '')); console.log(`  [FAIL] ${name}${detail ? ' — ' + detail : ''}`); }
+}
+
+// ============================================================
+// PART A — decrypt self-tests
+// ============================================================
+async function partA() {
+  console.log('\n=== PART A: decrypt module self-tests ===');
+  const mp = require_(path.join(REPO, 'src/nuvio/megaplay_decrypt.cjs'));
+  const sd = require_(path.join(REPO, 'src/utils/stream-decrypt.cjs'));
+
+  // A1. megaplay AES-256-CBC round-trip using the SHIPPED constants
+  //     (extracted from the module source so the test always reflects reality)
+  const mpSrc = fs.readFileSync(path.join(REPO, 'src/nuvio/megaplay_decrypt.cjs'), 'utf8');
+  const keyRaw = mpSrc.match(/MP_AES_KEY_RAW = (["'])(.+?)\1/)[2];
+  const ivRaw = mpSrc.match(/MP_AES_IV_RAW = (["'])(.+?)\1/)[2];
+  const key = Buffer.concat([Buffer.from(keyRaw, 'utf8'), Buffer.alloc(16, 0)]);
+  const iv = Buffer.from(ivRaw, 'utf8');
+  const payload = { file: 'https://moon.peakstorm.top/vd/test123/master.m3u8', h: 'abc' };
+  const c = crypto.createCipheriv('aes-256-cbc', key, iv);
+  const ct = Buffer.concat([c.update(JSON.stringify(payload), 'utf8'), c.final()]);
+  const enc = ct.toString('base64url');
+  const dec = mp.decryptMegaplayEnc(enc);
+  check('megaplay AES round-trip', !!dec && dec.file === payload.file, dec?.file?.slice(0, 50));
+  check('megaplay rejects garbage', mp.decryptMegaplayEnc('not-valid-base64!!') === null);
+  check('megaplay rejects random b64', mp.decryptMegaplayEnc(Buffer.from('random junk bytes here').toString('base64url')) === null);
+
+  // A2. xorDecrypt round-trip
+  const key2 = Buffer.from([0x5a, 0xa5, 0x01, 0xff]);
+  const buf = Buffer.from('hello plaintext stream url 12345', 'utf8');
+  const xored = Buffer.from(buf.map((b, i) => b ^ key2[i % key2.length]));
+  check('xorDecrypt round-trip', sd.xorDecrypt(xored, key2).equals(buf));
+
+  // A3. base64DecodeStrict
+  const b64out = sd.base64DecodeStrict(Buffer.from('round-trip-data').toString('base64'));
+  check('base64DecodeStrict round-trip', String(b64out) === 'round-trip-data', `type=${typeof b64out}`);
+  check('base64DecodeStrict rejects invalid', sd.base64DecodeStrict('!!!not-base64!!!') === null);
+  check('base64DecodeStrict rejects short', sd.base64DecodeStrict('abc=') === null);
+  check('base64DecodeStrict non-string null', sd.base64DecodeStrict(12345) === null);
+
+  // A4. verifyMpegTs on synthetic TS packet (0x47 sync byte + 187 more)
+  const tsPacket = Buffer.concat([Buffer.from([0x47, 0x40, 0x00, 0x10]), Buffer.alloc(184, 0x00)]);
+  const tsBuf = Buffer.concat(Array(8).fill(tsPacket));
+  const tsOk = sd.verifyMpegTs(tsBuf);
+  check('verifyMpegTs accepts synthetic TS', tsOk && tsOk.valid === true && tsOk.checked === 8, `checked=${tsOk?.checked}`);
+  const tsBad = sd.verifyMpegTs(Buffer.alloc(1024, 0x00));
+  check('verifyMpegTs rejects junk', tsBad && tsBad.valid === false, `checked=${tsBad?.checked}`);
+  check('verifyMpegTs rejects short buffer', sd.verifyMpegTs(Buffer.alloc(100, 0x47)).valid === false);
+
+  // A5. image-disguise detection + stripping
+  const webpHdr = Buffer.concat([Buffer.from('RIFF'), u32(0x999), Buffer.from('WEBPVP8 '), Buffer.alloc(32, 0x11)]);
+  const pngHdr = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40, 0x22)]);
+  check('isWebPDisguise', sd.isWebPDisguise(webpHdr) === true);
+  check('isPngDisguise', sd.isPngDisguise(pngHdr) === true);
+  check('stripFakeImageHeader webp', sd.stripFakeImageHeader(webpHdr).length < webpHdr.length);
+  check('stripFakeImageHeader plain untouched', sd.stripFakeImageHeader(Buffer.from([0x1a, 0x45, 0xdf, 0xa3, ...Buffer.alloc(28)])).length === 32);
+
+  // A6. sha256Hex known vector
+  check('sha256Hex known vector', sd.sha256Hex('abc') === 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+
+  // A7. aes256CbcDecrypt round-trip
+  const k32 = crypto.randomBytes(32), iv16 = crypto.randomBytes(16);
+  const c2 = crypto.createCipheriv('aes-256-cbc', k32, iv16);
+  const ct2 = Buffer.concat([c2.update('secret-payload', 'utf8'), c2.final()]);
+  check('aes256CbcDecrypt round-trip', sd.aes256CbcDecrypt(k32, iv16, ct2) === 'secret-payload');
+
+  // A8. deriveAesKeyChain determinism + length
+  const kA = sd.deriveAesKeyChain({ secret: 's1', seed: 'seed1', iterations: 1000, keyLen: 32, digest: 'sha256' });
+  const kB = sd.deriveAesKeyChain({ secret: 's1', seed: 'seed1', iterations: 1000, keyLen: 32, digest: 'sha256' });
+  check('deriveAesKeyChain deterministic', Buffer.compare(kA, kB) === 0 && kA.length === 32);
+
+  // A9. deriveFieldNames determinism
+  const fA = JSON.stringify(sd.deriveFieldNames('seedX'));
+  const fB = JSON.stringify(sd.deriveFieldNames('seedX'));
+  check('deriveFieldNames deterministic', fA === fB && fA.length > 2);
+
+  // A10. parseXorKeyParam — must not throw on odd input; exact format from source
+  let noThrow = true, out = null;
+  try { out = sd.parseXorKeyParam('5aa501ff'); } catch { noThrow = false; }
+  check('parseXorKeyParam no-throw hex', noThrow, `out=${out === null ? 'null' : 'parsed'}`);
+}
+
+function u32(n) { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; }
+
+// ============================================================
+// PART B — videasyto direct-scraper probe (full URL, timing)
+// ============================================================
+async function partB() {
+  console.log('\n=== PART B: videasyto direct scraper (F1 tmdb:911430) ===');
+  const mod = require_(path.join(REPO, 'src/nuvio/videasyto.cjs'));
+  const t0 = Date.now();
+  let streams = [];
+  try { streams = await mod.getStreams('911430', 'movie', null, null); }
+  catch (e) { check('videasyto getStreams no-throw', false, e.message); return; }
+  const wall = Date.now() - t0;
+  check('videasyto wall time <= 16s', wall <= 16000, `${wall}ms (was 127s pre-Task22)`);
+  check('videasyto stream count >= 3', streams.length >= 3, `count=${streams.length}`);
+  const has4K = streams.some(s => s._is4k === true || /2160|4k/i.test(String(s.quality || '') + String(s.title || '')));
+  check('videasyto includes 4K (2160p)', has4K, `qualities=${streams.map(s => String(s.quality || '').match(/\d+p/)?.[0]).filter(Boolean).join(',')}`);
+
+  // full-URL HLS magic check (debug endpoint truncates at 150 chars)
+  const hls = streams.find(s => /\.m3u8($|\?)/.test(s.url || '') || (s.format || '').toUpperCase().includes('HLS')) || streams[0];
+  if (hls?.url) {
+    try {
+      const res = await fetch(hls.url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36', Referer: 'https://videasy.to/' }, signal: AbortSignal.timeout(12000) });
+      const body = await res.text();
+      const ok = res.status === 200 && (body.includes('#EXTM3U') || body.includes('#EXT-X'));
+      check('videasyto full-URL HLS magic', ok, `status=${res.status} len=${body.length} head=${body.slice(0, 24).replace(/\n/g, '⏎')}`);
+    } catch (e) { check('videasyto full-URL HLS magic', false, e.message.slice(0, 60)); }
+  } else check('videasyto full-URL HLS magic', false, 'no url returned');
+}
+
+// ============================================================
+// PART C — addon boot + merged catalogs + leakage + proxy 206
+// ============================================================
+const TEST_PORT = 4596;
+function partC() {
+  return new Promise(resolve => {
+    console.log(`\n=== PART C: boot regression on :${TEST_PORT} ===`);
+    const logFile = `/tmp/task23_boot_${TEST_PORT}.log`;
+    const child = spawn('node', ['src/index.js'], { cwd: REPO, env: { ...process.env, PORT: String(TEST_PORT) }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const logStream = fs.createWriteStream(logFile);
+    child.stdout.pipe(logStream); child.stderr.pipe(logStream);
+    let bootLines = '';
+    const onLine = d => { bootLines += d; };
+    child.stdout.on('data', onLine); child.stderr.on('data', onLine);
+
+    const deadline = Date.now() + 30000;
+    const waitBoot = setInterval(() => {
+      if (bootLines.includes('Extractors:') || Date.now() > deadline) {
+        clearInterval(waitBoot);
+        runChecks(child, logFile, bootLines).then(resolve).catch(e => { console.log('PART C error:', e.message); resolve(); });
+      }
+    }, 500);
+  });
+}
+
+async function runChecks(child, logFile, bootLines) {
+  const srcM = bootLines.match(/Sources: (\d+)/);
+  const extM = bootLines.match(/Extractors: (\d+)/);
+  check('boot source count = 68', srcM && srcM[1] === '68', `got ${srcM?.[1]}`);
+  check('boot extractor count = 30', extM && extM[1] === '30', `got ${extM?.[1]}`);
+
+  // removed-source leakage at registry level
+  const srcLine = bootLines.match(/Sources: \d+ \(([^)]*)\)/)?.[1] || '';
+  const ids = srcLine.split(',').map(s => s.trim());
+  check('no movieblast/anidb/flystream in registry', !ids.includes('movieblast') && !ids.includes('anidb') && !ids.includes('flystream'));
+
+  // crash-class errors in boot log (upstream fetch noise during warmup excluded)
+  const crashy = bootLines.split('\n').filter(l => /Cannot find module|SyntaxError|ReferenceError|TypeError|failed to load scraper/i.test(l));
+  check('no crash-class boot errors', crashy.length === 0, crashy.slice(0, 2).join(' | ').slice(0, 90));
+
+  const base = `http://127.0.0.1:${TEST_PORT}`;
+  // merged movie catalog (Endgame)
+  const mv = await getJson(`${base}/stream/movie/tt4154796.json`, 150000);
+  const mvN = mv?.streams?.length || 0;
+  check('Endgame merged movie count >= 90', mvN >= 90, `count=${mvN}`);
+  // merged series catalog (Breaking Bad S1E1)
+  const sr = await getJson(`${base}/stream/series/tt0903747:1:1.json`, 150000);
+  const srN = sr?.streams?.length || 0;
+  check('BreakingBad merged series count >= 80', srN >= 80, `count=${srN}`);
+
+  // leakage in catalogs: stream titles/urls must not reference removed sources
+  const leakRe = /movieblast|moviesblast|flystream|\banidb\b/i;
+  const leaked = [...(mv?.streams || []), ...(sr?.streams || [])].filter(s => leakRe.test(s.title || '') || leakRe.test(s.url || ''));
+  check('no removed-source leakage in catalogs', leaked.length === 0, `${leaked.length} hits`);
+
+  // /proxy 206 MKV range check — find a direct (non-m3u8) video URL in catalogs
+  const allStreams = [...(mv?.streams || []), ...(sr?.streams || [])];
+  const direct = allStreams.filter(s => {
+    const u = s.url || '';
+    return /^https?:\/\//.test(u) && !/\.m3u8($|\?)/i.test(u) && !/\/proxy\?/.test(u);
+  });
+  let proxyOk = false, proxyDetail = 'no direct candidate';
+  for (const cand of direct.slice(0, 4)) {
+    try {
+      const res = await fetch(`${base}/proxy?url=${encodeURIComponent(cand.url)}`, { headers: { Range: 'bytes=0-1023' }, signal: AbortSignal.timeout(20000) });
+      const head = Buffer.from(await res.arrayBuffer()).subarray(0, 4);
+      const ebml = head[0] === 0x1a && head[1] === 0x45 && head[2] === 0xdf && head[3] === 0xa3;
+      if ((res.status === 206 || res.status === 200) && ebml) { proxyOk = true; proxyDetail = `status=${res.status} EBML ok via ${new URL(cand.url).host}`; break; }
+      proxyDetail = `status=${res.status} magic=${head.toString('hex')}`;
+    } catch (e) { proxyDetail = e.message.slice(0, 60); }
+  }
+  check('/proxy 206 MKV EBML range check', proxyOk, proxyDetail);
+
+  child.kill('SIGTERM');
+  await new Promise(r => setTimeout(r, 800));
+  const tail = fs.readFileSync(logFile, 'utf8');
+  const warmupLines = tail.split('\n').filter(l => /warmup/i.test(l)).length;
+  console.log(`  (info) warmup lines: ${warmupLines}, boot log: ${logFile}`);
+}
+
+async function getJson(url, timeoutMs) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    return await res.json();
+  } catch (e) { console.log(`  (warn) GET ${url.slice(0, 60)} failed: ${e.message}`); return null; }
+}
+
+// ============================================================
+(async () => {
+  await partA();
+  await partB();
+  await partC();
+  console.log(`\n=== RESULT: ${pass} PASS / ${fail} FAIL ===`);
+  if (failures.length) { console.log('Failures:'); failures.forEach(f => console.log('  -', f)); }
+  process.exit(fail ? 1 : 0);
+})();
