@@ -198,7 +198,8 @@ async function runChecks(child, logFile, bootLines) {
   // Task 25: 30 → 31 — VidZee extractor registered (ported file existed but
   // was never wired into createExtractors; vidzee source shipped 0 streams).
   // Task 28: 31 → 32 — MixDrop extractor (verhdlink mixdrop mirrors → direct MP4)
-  check('boot extractor count = 32', extM && extM[1] === '32', `got ${extM?.[1]}`);
+  // Task 30: 32 → 33 — VidSrcMe extractor (necro vidsrc.me chain unlock)
+  check('boot extractor count = 33', extM && extM[1] === '33', `got ${extM?.[1]}`);
 
   // removed-source leakage at registry level
   const srcLine = bootLines.match(/Sources: \d+ \(([^)]*)\)/)?.[1] || '';

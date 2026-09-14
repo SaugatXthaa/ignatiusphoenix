@@ -51,6 +51,9 @@ import { NuvioExtractor } from './NuvioExtractor.js';
 // embeds fell through to EmbedResolver, which can't resolve the JS app, so
 // the VidZee source shipped 0 streams in production.
 import { Vidzee } from './Vidzee.js';
+// VidSrcMe — Task 30: vidsrc.me/vidsrcme.ru chain (necro embeds) — data API +
+// per-5-min-window ChaCha20 WASM decrypt + generate.php JWT → /proxy HLS.
+import { VidSrcMe } from './VidSrcMe.js';
 
 export { Extractor } from './Extractor.js';
 export { ExtractorRegistry } from './ExtractorRegistry.js';
@@ -114,6 +117,10 @@ export const createExtractors = (fetcher, logger) => {
     // VidZee — dedicated player.vidzee.wtf resolver (claims before the
     // generic EmbedResolver fallback, whose page-scrape can't read the JS app)
     new Vidzee(fetcher, logger),
+    // VidSrcMe — Task 30: necro's vidsrc.me embeds → direct HLS via decoded
+    // vidsrcme.ru chain (WASM decrypt + IP-bound JWT → /proxy). Claims before
+    // the generic EmbedResolver fallback, which cannot execute the chain.
+    new VidSrcMe(fetcher, logger),
     // EmbedResolver — generic fallback for embed pages (vidsrc.to, vidzee, voe, etc.)
     new EmbedResolver(fetcher, logger),
 
