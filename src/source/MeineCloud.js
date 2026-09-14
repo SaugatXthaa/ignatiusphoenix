@@ -59,6 +59,21 @@ export class MeineCloud extends Source {
         let link = $(el).attr('data-link')?.trim();
         if (!link) return;
 
+        // Task 28 root-cause fix: data-link values are BASE64-ENCODED embed
+        // URLs (e.g. "Ly9kcjBwc3RyZWFtLmNvbS9lL21md3dlZGMwZTNmZQ==" →
+        // "//dr0pstream.com/e/mfwwec0e3fe"). The previous code never decoded
+        // them — it prepended "https://" to the raw base64 string, producing
+        // garbage URLs that matched no extractor (the whole source silently
+        // delivered 0). Decode first; fall back to raw when it isn't base64.
+        if (!/^[a-z]+:\/\//i.test(link) && !link.startsWith('//')) {
+          try {
+            const decoded = Buffer.from(link, 'base64').toString('utf8');
+            if (/^(https?:)?\/\//.test(decoded) && !/[\x00-\x1f]/.test(decoded)) {
+              link = decoded;
+            }
+          } catch { /* not base64 — keep raw */ }
+        }
+
         if (link.startsWith('//')) {
           link = 'https:' + link;
         } else if (!link.startsWith('http')) {

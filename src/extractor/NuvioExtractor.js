@@ -114,6 +114,15 @@ const NUVIO_SOURCE_IDS = new Set([
   //     route its HLS through /proxy with whole-tree auth, exactly like
   //     'stellar' (which was already in this set)
   'imdbplay', 'stellarrip',
+  // animotvslash — anime hardsub/softsub via animotvslash.org (Task 28).
+  //   Streams: rumble.com HLS (Referer: animotvslash.org), videas.fr HLS
+  //   (Origin-gated, INVERTED hotlink gate — 403 WITH Referer; ships
+  //   nuvioOrigin only), videas.fr MP4 tiers, VidHide hls2/hls3 masters
+  //   (Referer from embed origin), Vidara API HLS (Referer), megaplay
+  //   fetch.nexabloom.top (NO_REFERER_HOSTS → direct player-IP fetch, same
+  //   as animesuge). Without joining this set every URL matched NO extractor
+  //   and was silently dropped at StreamResolver's extraction stage.
+  'animotvslash',
 ]);
 
 // Detect if URL is clearly HLS (m3u8 file or /playlist path)

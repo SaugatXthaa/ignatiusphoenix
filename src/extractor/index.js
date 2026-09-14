@@ -11,6 +11,7 @@ import { HDStream4U } from './HDStream4U.js';
 import { HubExtractor } from './HubExtractor.js';
 import { LuluStream } from './LuluStream.js';
 import { MovieBox } from './MovieBox.js';
+import { MixDrop } from './MixDrop.js';
 import { SaveFiles } from './SaveFiles.js';
 import { StreamEmbed } from './StreamEmbed.js';
 import { SuperVideo } from './SuperVideo.js';
@@ -97,6 +98,8 @@ export const createExtractors = (fetcher, logger) => {
     new SaveFiles(fetcher, logger),
     new StreamEmbed(fetcher, logger),
     new SuperVideo(fetcher, logger),
+    // MixDrop — mixdrop.* embeds → MDCore.wurl direct MP4 (verhdlink mirrors)
+    new MixDrop(fetcher, logger),
     new Vidara(fetcher, logger),
     new Vidsonic(fetcher, logger),
 

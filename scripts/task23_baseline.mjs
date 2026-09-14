@@ -193,10 +193,12 @@ function partC() {
 async function runChecks(child, logFile, bootLines) {
   const srcM = bootLines.match(/Sources: (\d+)/);
   const extM = bootLines.match(/Extractors: (\d+)/);
-  check('boot source count = 69', srcM && srcM[1] === '69', `got ${srcM?.[1]}`);
+  // Task 28: 69 → 70 — AniMoTVSlash (animotvslash.org) registered
+  check('boot source count = 70', srcM && srcM[1] === '70', `got ${srcM?.[1]}`);
   // Task 25: 30 → 31 — VidZee extractor registered (ported file existed but
   // was never wired into createExtractors; vidzee source shipped 0 streams).
-  check('boot extractor count = 31', extM && extM[1] === '31', `got ${extM?.[1]}`);
+  // Task 28: 31 → 32 — MixDrop extractor (verhdlink mixdrop mirrors → direct MP4)
+  check('boot extractor count = 32', extM && extM[1] === '32', `got ${extM?.[1]}`);
 
   // removed-source leakage at registry level
   const srcLine = bootLines.match(/Sources: \d+ \(([^)]*)\)/)?.[1] || '';
@@ -273,6 +275,13 @@ async function runChecks(child, logFile, bootLines) {
   let vgCount = vg?.count ?? 0;
   if (vgCount < 2) { await new Promise(r => setTimeout(r, 10000)); const vg2 = await getJson(`${base}/debug/source/vegamovies2?type=series&id=tmdb:108978:4:1`, 45000); vgCount = Math.max(vgCount, vg2?.count ?? 0); }
   check('vegamovies2 Reacher S4E1 >= 2 (new source guard)', vgCount >= 2, `count=${vgCount}`);
+  // animotvslash standing check (Task 28): anime hardsub/softsub source.
+  // One-shot guard with a retry — videas CDN intermittently hangs Range
+  // probes from datacenter IPs; a single slow round must not fail the run.
+  const am = await getJson(`${base}/debug/source/animotvslash?type=series&id=tmdb:209867:2:1`, 45000);
+  let amCount = am?.count ?? 0;
+  if (amCount < 2) { await new Promise(r => setTimeout(r, 10000)); const am2 = await getJson(`${base}/debug/source/animotvslash?type=series&id=tmdb:209867:2:1`, 45000); amCount = Math.max(amCount, am2?.count ?? 0); }
+  check('animotvslash Frieren S2E1 >= 2 (Task 28 guard)', amCount >= 2, `count=${amCount}`);
 
   child.kill('SIGTERM');
   await new Promise(r => setTimeout(r, 800));

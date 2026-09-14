@@ -56,6 +56,7 @@ import { HiAnime } from './HiAnime.js';
 import { AnimeKai } from './AnimeKai.js';
 import { AniChan } from './AniChan.js';
 import { AnimeSuge } from './AnimeSuge.js';
+import { AniMoTVSlash } from './AniMoTVSlash.js';
 // BollyFlix — movies/TV download links via bollyflix.free (up to 4K)
 import { BollyFlix } from './BollyFlix.js';
 // 4KHDHub.one — movies/TV via 4khdhub.one (separate from existing 4KHDHub.link)
@@ -219,6 +220,7 @@ export const createSources = (fetcher) => {
     new AniChan(fetcher),
     // animesuge.at — anime sub+dub HLS via megaplay.buzz (1080p)
     new AnimeSuge(fetcher),
+    new AniMoTVSlash(fetcher),
     // bollyflix.free — movies/TV download links (up to 4K, Hindi-English)
     new BollyFlix(fetcher),
     // 4khdhub.one — movies/TV via HubCloud/HubDrive (up to 4K, separate from 4KHDHub.link)
