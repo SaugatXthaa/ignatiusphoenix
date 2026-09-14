@@ -103,6 +103,17 @@ const NUVIO_SOURCE_IDS = new Set([
   //   - videasyto: speedracelight API (direct playable, no Referer)
   //   - kmmovies: kmmovies.pics → R2 + Pixeldrain (direct playable MKV, no Referer)
   'dahmermovies', 'dahmermovies4k', 'videasyto', 'kmmovies',
+  // Task 25 ground-truth audit: both sources scrape fine but their results
+  // matched NO extractor → silently dropped at StreamResolver's extraction
+  // stage (0 cards in every /stream response despite healthy scrapes).
+  //   - imdbplay: returns ALREADY-PROXIED self /proxy URLs (ctx.hostUrl) —
+  //     NuvioExtractor's no-Referer passthrough ships them unchanged
+  //     (mirrors 'playimdb', which was already in this set)
+  //   - stellarrip: stellar.rip CDN (cdn.reallyfast.ch / *.workers.dev) is
+  //     Origin-gated — meta.nuvioReferer/nuvioOrigin (set by the source)
+  //     route its HLS through /proxy with whole-tree auth, exactly like
+  //     'stellar' (which was already in this set)
+  'imdbplay', 'stellarrip',
 ]);
 
 // Detect if URL is clearly HLS (m3u8 file or /playlist path)

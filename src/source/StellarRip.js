@@ -145,6 +145,13 @@ export class StellarRip extends Source {
           codec,
           serverName,
           ...(is4K && { hdr: 'HDR' }),
+          // stellar.rip CDN is Origin-gated (same hotlink gate as Stellar):
+          // NuvioExtractor reads these to route HLS through /proxy with
+          // Referer+Origin attached (whole-tree auth on rewritten m3u8s).
+          // Task 25: without them the results matched no extractor and were
+          // silently dropped at the extraction stage (0 cards in /stream).
+          nuvioReferer: referer,
+          nuvioOrigin: 'https://stellar.rip',
         },
       });
     }

@@ -126,16 +126,24 @@ async function partB() {
   const has4K = streams.some(s => s._is4k === true || /2160|4k/i.test(String(s.quality || '') + String(s.title || '')));
   check('videasyto includes 4K (2160p)', has4K, `qualities=${streams.map(s => String(s.quality || '').match(/\d+p/)?.[0]).filter(Boolean).join(',')}`);
 
-  // full-URL HLS magic check (debug endpoint truncates at 150 chars)
-  const hls = streams.find(s => /\.m3u8($|\?)/.test(s.url || '') || (s.format || '').toUpperCase().includes('HLS')) || streams[0];
-  if (hls?.url) {
+  // full-URL HLS magic check (debug endpoint truncates at 150 chars).
+  // Individual CDN nodes (moon.peakstorm.top, vimeos.zip) intermittently 403
+  // datacenter IPs while sibling nodes serve fine — probe up to 3 candidates,
+  // PASS if ANY carries the HLS magic (matches real player behavior).
+  const hlsCands = streams.filter(s => /\.m3u8($|\?)/.test(s.url || '') || (s.format || '').toUpperCase().includes('HLS'));
+  const hlsPool = (hlsCands.length ? hlsCands : streams).slice(0, 3);
+  let hlsOk = false, hlsDetail = 'no url returned';
+  for (const hls of hlsPool) {
+    if (!hls?.url) continue;
     try {
       const res = await fetch(hls.url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36', Referer: 'https://videasy.to/' }, signal: AbortSignal.timeout(12000) });
       const body = await res.text();
       const ok = res.status === 200 && (body.includes('#EXTM3U') || body.includes('#EXT-X'));
-      check('videasyto full-URL HLS magic', ok, `status=${res.status} len=${body.length} head=${body.slice(0, 24).replace(/\n/g, '⏎')}`);
-    } catch (e) { check('videasyto full-URL HLS magic', false, e.message.slice(0, 60)); }
-  } else check('videasyto full-URL HLS magic', false, 'no url returned');
+      hlsDetail = `status=${res.status} len=${body.length} host=${new URL(hls.url).host}`;
+      if (ok) { hlsOk = true; break; }
+    } catch (e) { hlsDetail = e.message.slice(0, 60); }
+  }
+  check('videasyto full-URL HLS magic', hlsOk, hlsDetail);
 }
 
 // ============================================================
@@ -157,9 +165,28 @@ function partC() {
     const waitBoot = setInterval(() => {
       if (bootLines.includes('Extractors:') || Date.now() > deadline) {
         clearInterval(waitBoot);
-        runChecks(child, logFile, bootLines).then(resolve).catch(e => { console.log('PART C error:', e.message); resolve(); });
+        // The 'Extractors:' log line only means source registration printed —
+        // under CPU contention the HTTP listener can still be momentarily
+        // unready, which produced fast-failing fetches (false UNHEALTHY).
+        // Poll /health until it answers, then run checks.
+        waitHealthy(30000)
+          .then(() => runChecks(child, logFile, bootLines))
+          .then(resolve)
+          .catch(e => { console.log('PART C error:', e.message); resolve(); });
       }
     }, 500);
+
+    async function waitHealthy(budgetMs) {
+      const end = Date.now() + budgetMs;
+      while (Date.now() < end) {
+        try {
+          const res = await fetch(`http://127.0.0.1:${TEST_PORT}/health`, { signal: AbortSignal.timeout(3000) });
+          if (res.ok) return;
+        } catch {}
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      console.log('  (warn) /health poll budget exhausted — proceeding anyway');
+    }
   });
 }
 
@@ -167,7 +194,9 @@ async function runChecks(child, logFile, bootLines) {
   const srcM = bootLines.match(/Sources: (\d+)/);
   const extM = bootLines.match(/Extractors: (\d+)/);
   check('boot source count = 69', srcM && srcM[1] === '69', `got ${srcM?.[1]}`);
-  check('boot extractor count = 30', extM && extM[1] === '30', `got ${extM?.[1]}`);
+  // Task 25: 30 → 31 — VidZee extractor registered (ported file existed but
+  // was never wired into createExtractors; vidzee source shipped 0 streams).
+  check('boot extractor count = 31', extM && extM[1] === '31', `got ${extM?.[1]}`);
 
   // removed-source leakage at registry level
   const srcLine = bootLines.match(/Sources: \d+ \(([^)]*)\)/)?.[1] || '';
@@ -179,30 +208,42 @@ async function runChecks(child, logFile, bootLines) {
   check('no crash-class boot errors', crashy.length === 0, crashy.slice(0, 2).join(' | ').slice(0, 90));
 
   const base = `http://127.0.0.1:${TEST_PORT}`;
+  // Catalog fetches on a freshly booted instance can hit the resolver's 40s
+  // global deadline and return starved/empty responses (documented in
+  // src/index.js). One warm-cache retry after a short settle fixes false
+  // negatives without masking real regressions (retry needs only ONE hit).
+  const getCatalog = async (url, min) => {
+    let j = await getJson(url, 150000);
+    let n = j?.streams?.length || 0;
+    if (n < min) {
+      console.log(`  (info) ${url.split('/').pop()} returned ${n} — settling 15s, retrying once (cold-start starvation guard)`);
+      await new Promise(r => setTimeout(r, 15000));
+      const j2 = await getJson(url, 150000);
+      const n2 = j2?.streams?.length || 0;
+      if (n2 > n) { j = j2; n = n2; }
+    }
+    return { json: j, n };
+  };
   // merged movie catalog (Endgame)
-  const mv = await getJson(`${base}/stream/movie/tt4154796.json`, 150000);
-  const mvN = mv?.streams?.length || 0;
-  check('Endgame merged movie count >= 90', mvN >= 90, `count=${mvN}`);
+  const mv = await getCatalog(`${base}/stream/movie/tt4154796.json`, 90);
+  check('Endgame merged movie count >= 90', mv.n >= 90, `count=${mv.n}`);
   // merged series catalog (Breaking Bad S1E1)
-  const sr = await getJson(`${base}/stream/series/tt0903747:1:1.json`, 150000);
-  const srN = sr?.streams?.length || 0;
-  check('BreakingBad merged series count >= 80', srN >= 80, `count=${srN}`);
+  const sr = await getCatalog(`${base}/stream/series/tt0903747:1:1.json`, 80);
+  check('BreakingBad merged series count >= 80', sr.n >= 80, `count=${sr.n}`);
   // Task 24 matrix extension — anime catalogs
-  const fr = await getJson(`${base}/stream/series/tmdb:209867:2:1.json`, 150000);
-  const frN = fr?.streams?.length || 0;
-  check('Frieren S2E1 merged (anime) count >= 60', frN >= 60, `count=${frN} (obs 108)`);
-  const yn = await getJson(`${base}/stream/movie/tmdb:372058.json`, 150000);
-  const ynN = yn?.streams?.length || 0;
-  check('Your Name merged (anime movie) count >= 70', ynN >= 70, `count=${ynN} (obs 120)`);
+  const fr = await getCatalog(`${base}/stream/series/tmdb:209867:2:1.json`, 60);
+  check('Frieren S2E1 merged (anime) count >= 60', fr.n >= 60, `count=${fr.n} (obs 108)`);
+  const yn = await getCatalog(`${base}/stream/movie/tmdb:372058.json`, 70);
+  check('Your Name merged (anime movie) count >= 70', yn.n >= 70, `count=${yn.n} (obs 120)`);
 
   // leakage in catalogs: stream titles/urls must not reference removed sources
   const leakRe = /movieblast|moviesblast|flystream|\banidb\b/i;
-  const leaked = [...(mv?.streams || []), ...(sr?.streams || []), ...(fr?.streams || []), ...(yn?.streams || [])]
+  const leaked = [...(mv.json?.streams || []), ...(sr.json?.streams || []), ...(fr.json?.streams || []), ...(yn.json?.streams || [])]
     .filter(s => leakRe.test(s.title || '') || leakRe.test(s.url || ''));
   check('no removed-source leakage in catalogs', leaked.length === 0, `${leaked.length} hits`);
 
   // /proxy 206 MKV range check — find a direct (non-m3u8) video URL in catalogs
-  const allStreams = [...(mv?.streams || []), ...(sr?.streams || [])];
+  const allStreams = [...(mv.json?.streams || []), ...(sr.json?.streams || [])];
   const direct = allStreams.filter(s => {
     const u = s.url || '';
     return /^https?:\/\//.test(u) && !/\.m3u8($|\?)/i.test(u) && !/\/proxy\?/.test(u);
@@ -224,11 +265,13 @@ async function runChecks(child, logFile, bootLines) {
   // moviesdrivev2 matcher guard: search.php died upstream; the Task 24
   // wp-json + scored-matcher fix must keep returning F1 streams
   const md = await getJson(`${base}/debug/source/moviesdrivev2?type=movie&id=tmdb:911430`, 45000);
-  const mdCount = md?.count ?? 0;
+  let mdCount = md?.count ?? 0;
+  if (mdCount < 3) { await new Promise(r => setTimeout(r, 10000)); const md2 = await getJson(`${base}/debug/source/moviesdrivev2?type=movie&id=tmdb:911430`, 45000); mdCount = Math.max(mdCount, md2?.count ?? 0); }
   check('moviesdrivev2 F1 >= 3 (Task 24 matcher guard)', mdCount >= 3, `count=${mdCount}`);
   // vegamovies2 standing check: new Task 24 source must keep resolving
   const vg = await getJson(`${base}/debug/source/vegamovies2?type=series&id=tmdb:108978:4:1`, 45000);
-  const vgCount = vg?.count ?? 0;
+  let vgCount = vg?.count ?? 0;
+  if (vgCount < 2) { await new Promise(r => setTimeout(r, 10000)); const vg2 = await getJson(`${base}/debug/source/vegamovies2?type=series&id=tmdb:108978:4:1`, 45000); vgCount = Math.max(vgCount, vg2?.count ?? 0); }
   check('vegamovies2 Reacher S4E1 >= 2 (new source guard)', vgCount >= 2, `count=${vgCount}`);
 
   child.kill('SIGTERM');

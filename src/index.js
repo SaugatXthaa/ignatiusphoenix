@@ -1199,14 +1199,19 @@ app.get('/debug/source/:sourceId', async (req, res) => {
     if (results?.__timeout) {
       return res.json({ source: sourceId, type, id: rawId, timedOut: true, durationMs: dt });
     }
+    // full=1 → untruncated stream URLs (up to 3). Diagnostic use only: the
+    // default 150-char slice keeps responses small for humans, but it makes
+    // magic-byte playability checks impossible for long direct URLs.
+    const wantFull = req.query.full === '1';
+    const sliceLen = wantFull ? 3 : 5;
     return res.json({
       source: sourceId,
       type,
       id: rawId,
       durationMs: dt,
       count: Array.isArray(results) ? results.length : 0,
-      results: Array.isArray(results) ? results.slice(0, 5).map(r => ({
-        url: r.url?.href?.slice(0, 150),
+      results: Array.isArray(results) ? results.slice(0, sliceLen).map(r => ({
+        url: wantFull ? r.url?.href : r.url?.href?.slice(0, 150),
         format: r.format,
         meta: { ...r.meta, title: r.meta?.title?.slice(0, 120) },
       })) : [],

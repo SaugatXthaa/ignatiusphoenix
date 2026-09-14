@@ -45,6 +45,11 @@ import { HiAnime as HiAnimeExtractor } from './HiAnime.js';
 import { AnimeKai as AnimeKaiExtractor } from './AnimeKai.js';
 // Nuvio — wraps Nuvio provider streams with /proxy when Referer is needed
 import { NuvioExtractor } from './NuvioExtractor.js';
+// VidZee — dedicated resolver for player.vidzee.wtf embeds (TMDB API → HLS).
+// Task 25: the ported extractor existed but was never registered — vidzee
+// embeds fell through to EmbedResolver, which can't resolve the JS app, so
+// the VidZee source shipped 0 streams in production.
+import { Vidzee } from './Vidzee.js';
 
 export { Extractor } from './Extractor.js';
 export { ExtractorRegistry } from './ExtractorRegistry.js';
@@ -103,6 +108,9 @@ export const createExtractors = (fetcher, logger) => {
     new AcerMovies(fetcher, logger),
     // DirectStream — passthrough for direct playable CDN URLs
     new DirectStream(fetcher, logger),
+    // VidZee — dedicated player.vidzee.wtf resolver (claims before the
+    // generic EmbedResolver fallback, whose page-scrape can't read the JS app)
+    new Vidzee(fetcher, logger),
     // EmbedResolver — generic fallback for embed pages (vidsrc.to, vidzee, voe, etc.)
     new EmbedResolver(fetcher, logger),
 

@@ -9,6 +9,44 @@ import { CountryCode } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
 
+// Shared candidate scorer (used by BOTH the wp-json and legacy search paths).
+// Normalize typographic quotes — site headings use ’ (U+2019) while
+// TMDB uses ' (U+0027). Without this, "Journey’s" never matches "Journey's".
+function scoreCandidate(text, href, name, year) {
+  const norm = (s) => s
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u02BC]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .trim();
+  const nameLower = norm(name);
+  const nameAscii = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const textLower = norm(text);
+
+  let score = 0;
+  if (textLower === nameLower) score = 100;
+  else if (textLower === nameAscii) score = 95;
+  else if (textLower.includes(nameLower) || nameLower.includes(textLower)) {
+    score = Math.min(textLower.length, nameLower.length) / Math.max(textLower.length, nameLower.length) * 90;
+  }
+  // Word-overlap fallback — handles TMDB titles that don't match any
+  // site entry exactly (per-arc/per-season pages on anime sites).
+  if (score < 50) {
+    const nameWords = nameLower.split(/\s+/).filter(w => w.length > 2);
+    const textWords = textLower.split(/\s+/).filter(w => w.length > 2);
+    const common = nameWords.filter(w => textWords.includes(w));
+    if (nameWords.length > 0 && common.length >= Math.min(nameWords.length, 2)) {
+      const overlap = common.length / Math.max(nameWords.length, textWords.length);
+      if (overlap >= 0.5) score = Math.max(score, overlap * 75);
+    }
+  }
+
+  // Bonus for matching year
+  if (score > 0 && year) {
+    if (String(href).includes(String(year))) score += 5;
+  }
+  return score;
+}
+
 export class AnimeFlix extends Source {
   constructor(fetcher) {
     super();
@@ -126,6 +164,14 @@ export class AnimeFlix extends Source {
   // Returns ALL anime pages matching the title above the acceptance
   // threshold, sorted best-first. Sub and dub variants are separate site
   // entries, so callers can emit both cards.
+  //
+  // Search strategy (Task 25): the site's ?s= HTML search now IGNORES the
+  // query and returns the same latest-posts list for everything (same
+  // upstream breakage class as moviesdrivev2's search.php in Task 24), so
+  // the scored matcher refused every title → source went silent. The
+  // WordPress REST search (/wp-json/wp/v2/search) still ranks properly, so
+  // it is tried FIRST for every query variant; the legacy ?s= scrape is
+  // kept as a fallback in case the REST endpoint ever goes away.
   async fetchAnimePageCandidates(ctx, name, year, tmdbId) {
     // Try multiple search queries — normalize special characters
     const queries = [
@@ -134,6 +180,12 @@ export class AnimeFlix extends Source {
       name.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim(),
     ].filter((q, i, arr) => q && arr.indexOf(q) === i);
 
+    // ── primary: WordPress REST search (query is actually honored) ──
+    const wpMatches = await this.wpJsonCandidates(ctx, queries, name, year);
+    if (wpMatches.length > 0) return wpMatches;
+
+    // ── fallback: legacy ?s= HTML scrape (query currently ignored by the
+    //    site — the scoring below still refuses wrong-title posts) ──
     for (const query of queries) {
       const searchUrl = new URL(`/?s=${encodeURIComponent(query)}`, this.baseUrl);
       let html;
@@ -143,21 +195,8 @@ export class AnimeFlix extends Source {
 
       const $ = cheerio.load(html);
 
-      // Use scoring to avoid matching wrong anime
       const scored = [];
       const seen = new Set();
-      // Normalize typographic quotes — site headings use ’ (U+2019) while
-      // TMDB uses ' (U+0027). Without this, "Journey’s" never matches
-      // "Journey's" and borderline candidates (dub variants with longer
-      // headings) drop below threshold.
-      const norm = (s) => s
-        .toLowerCase()
-        .replace(/[\u2018\u2019\u02BC]/g, "'")
-        .replace(/[\u201C\u201D]/g, '"')
-        .trim();
-      const nameLower = norm(name);
-      const nameAscii = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-
       $('a[href*="/Anime/"]').each((_i, el) => {
         const href = $(el).attr('href');
         if (!href || href.includes('/Anime/?') || href.includes('/az-list') || href.includes('/genres/')) return;
@@ -171,31 +210,8 @@ export class AnimeFlix extends Source {
         }
         if (!text) text = $(el).text().trim();
         if (!text) return;
-        const textLower = norm(text);
 
-        let score = 0;
-        if (textLower === nameLower) score = 100;
-        else if (textLower === nameAscii) score = 95;
-        else if (textLower.includes(nameLower) || nameLower.includes(textLower)) {
-          score = Math.min(textLower.length, nameLower.length) / Math.max(textLower.length, nameLower.length) * 90;
-        }
-        // Word-overlap fallback — handles TMDB titles that don't match any
-        // site entry exactly (per-arc/per-season pages on anime sites).
-        if (score < 50) {
-          const nameWords = nameLower.split(/\s+/).filter(w => w.length > 2);
-          const textWords = textLower.split(/\s+/).filter(w => w.length > 2);
-          const common = nameWords.filter(w => textWords.includes(w));
-          if (nameWords.length > 0 && common.length >= Math.min(nameWords.length, 2)) {
-            const overlap = common.length / Math.max(nameWords.length, textWords.length);
-            if (overlap >= 0.5) score = Math.max(score, overlap * 75);
-          }
-        }
-
-        // Bonus for matching year
-        if (score > 0 && year) {
-          if (href.includes(String(year))) score += 5;
-        }
-
+        const score = scoreCandidate(text, href, name, year);
         if (score > 0 && !seen.has(href)) {
           seen.add(href);
           scored.push({ href, score });
@@ -209,6 +225,35 @@ export class AnimeFlix extends Source {
     }
 
     return [];
+  }
+
+  // WordPress REST search: /wp-json/wp/v2/search?search=… ranks exact and
+  // partial title matches properly (unlike the broken ?s= page). Returns
+  // candidates in the SAME {href, score} shape as the legacy scraper so the
+  // rest of the chain (collectFromPage etc.) is untouched.
+  async wpJsonCandidates(ctx, queries, name, year) {
+    const scored = [];
+    const seen = new Set();
+    for (const query of queries) {
+      const apiUrl = new URL(`/wp-json/wp/v2/search?search=${encodeURIComponent(query)}&per_page=20`, this.baseUrl);
+      let arr;
+      try {
+        arr = await this.fetcher.json(ctx, apiUrl);
+      } catch { continue; }
+      if (!Array.isArray(arr)) continue;
+      for (const entry of arr) {
+        if (!entry?.url || !entry?.title) continue;
+        if (!/\/Anime\//.test(entry.url)) continue; // only anime pages
+        if (seen.has(entry.url)) continue;
+        seen.add(entry.url);
+        const score = scoreCandidate(entry.title, entry.url, name, year);
+        if (score > 0) scored.push({ href: entry.url, score });
+      }
+      // wp-json honors the query — a first-query hit is authoritative, but
+      // try the ASCII-folded variant too before giving up (same-title rule
+      // as the legacy loop).
+    }
+    return scored.filter(s => s.score >= 40).sort((a, b) => b.score - a.score);
   }
 
   async fetchAnimePageUrl(ctx, name, year, tmdbId) {
