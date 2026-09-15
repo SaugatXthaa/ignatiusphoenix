@@ -25,10 +25,9 @@
 "use strict";
 
 var crypto = require("crypto");
-var { ZXC_SALT, TMDB_TERTIARY } = require('../utils/site-secrets.cjs');
 
 var PROVIDER_NAME = "ZXCStream";
-var TMDB_API_KEY = TMDB_TERTIARY;
+var TMDB_API_KEY = "1c29a5198ee1854bd5eb45dbe8d17d92";
 var BASE_URL = "https://player.zxcstream.xyz";
 
 var USER_AGENT =
@@ -56,7 +55,7 @@ function getTMDBInfo(tmdbId, type) {
 // We use this when constructing the player page URL hash so the player page
 // can short-circuit its token POST request.
 function generateFrontendToken(tmdbId) {
-  var SECRET = ZXC_SALT; // central registry — env ZXC_SALT overrides (site-secrets.cjs)
+  var SECRET = "24356351231432574635345245245252324";
   var ts = Date.now();
   var input = ts + ":" + SECRET + ":" + tmdbId;
   var xt = crypto.createHash("sha512").update(input).digest("hex").slice(0, 64);
@@ -135,18 +134,29 @@ function getStreams(tmdbId, type, season, episode) {
             });
           }
 
-          // NO player-page fallback. Shipping the raw player.zxcstream.xyz
-          // page as a stream URL is a guaranteed "[mpv] unrecognized file
-          // format" playback error: the page is (a) an HTML SPA, and (b)
-          // served behind a Cloudflare challenge that 403s server-side
-          // fetches. The old "works from user browser" assumption only held
-          // for Stremio's WEB iframe context — mpv-based players (Stellar,
-          // Stremio desktop) fetch the URL directly and die on the HTML.
-          // Zero playable URLs beats a guaranteed playback error.
+          // Always also return the player page URL as a fallback stream.
+          // The page itself handles the token POST from the user's browser IP.
+          var playerPageUrl = BASE_URL + "/embed/" + (isMovie ? "movie" : "tv") + "/" + tmdbId;
+          if (!isMovie && season && episode) {
+            playerPageUrl += "/" + season + "/" + episode;
+          }
+          streams.push({
+            name: PROVIDER_NAME + (embedUrl ? " - Player Page" : " - HD (Player Page)"),
+            title: titleLine + " [Player Page]",
+            url: playerPageUrl,
+            quality: embedUrl ? "1080p" : "HD",
+            type: "iframe",
+            headers: { "User-Agent": USER_AGENT },
+            behaviorHints: {
+              bingeGroup: "zxcstream-player",
+              notWebVideo: true
+            }
+          });
+
           if (embedUrl) {
-            console.log("[ZXCStream] Returning " + streams.length + " stream (resolved embed URL)");
+            console.log("[ZXCStream] Returning " + streams.length + " streams (embed + player page fallback)");
           } else {
-            console.log("[ZXCStream] 0 streams (backend IP-blocked — player page NOT shipped: unplayable HTML in mpv)");
+            console.log("[ZXCStream] Returning " + streams.length + " stream (player page — backend IP-blocked from server, will work from user browser)");
           }
           return streams;
         });
