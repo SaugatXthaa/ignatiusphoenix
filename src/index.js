@@ -1234,6 +1234,44 @@ app.get('/debug/source/:sourceId', async (req, res) => {
   }
 });
 
+// Raw native-fetch probe from THIS server — diagnoses egress-IP/TLS blocks.
+// Task 38: stellarrip/stellar/uhdmovies/bollyflix resolve 0 in production while
+// identical code + got-scraping /proxy probes succeed; this endpoint isolates
+// the native undici fetch path each scraper actually uses.
+// Usage: /debug/rawfetch?url=https://stellar.rip/en/watch/embed/movie/27205
+app.get('/debug/rawfetch', async (req, res) => {
+  const rawUrl = req.query.url;
+  if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) {
+    return res.status(400).json({ error: 'query param url required (http/https)' });
+  }
+  const t0 = Date.now();
+  try {
+    const r = await fetch(rawUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'Accept': 'text/html,*/*' },
+      signal: AbortSignal.timeout(12000),
+      redirect: 'follow',
+    });
+    const text = await r.text();
+    return res.json({
+      url: rawUrl,
+      ok: r.ok,
+      status: r.status,
+      finalUrl: r.url,
+      durationMs: Date.now() - t0,
+      bytes: text.length,
+      head: text.slice(0, 300),
+    });
+  } catch (e) {
+    return res.json({
+      url: rawUrl,
+      error: e?.message || String(e),
+      cause: e?.cause?.message || e?.cause?.code || undefined,
+      durationMs: Date.now() - t0,
+    });
+  }
+});
+
+
 // ============== LANDING PAGE ==============
 app.get('/', (req, res) => {
   const hostUrl = `https://${req.headers.host}`;
