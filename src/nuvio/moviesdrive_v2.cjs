@@ -1208,7 +1208,13 @@ async function getStreams(tmdbId, type, season, episode) {
   // same title resolved 4 streams in 3.3s from sandbox). Race the pool
   // against a deadline and deliver whichever chains resolved in time:
   // 1-2 cards beat zero. Env-tunable for ops tuning without a redeploy.
-  const RESOLVE_DEADLINE_MS = parseInt(process.env.MDV2_RESOLVE_DEADLINE_MS, 10) || 21000;
+  // 14s (was 21s): the resolver now answers the client at a 15s budget
+  // (STREAM_CLIENT_BUDGET_MS), so a 21s internal deadline could never ship
+  // cards inside a first cold response — they'd only reach users via the
+  // warm second request. 14s lets partial quality-pool chains (1-2 cards)
+  // land within the budget when discovery is quick; the wrapper's top-up
+  // loop keeps harvesting in the background for the cache.
+  const RESOLVE_DEADLINE_MS = parseInt(process.env.MDV2_RESOLVE_DEADLINE_MS, 10) || 14000;
   const resolveBudgetMs = Math.max(3000, RESOLVE_DEADLINE_MS - (Date.now() - startedAt));
   // Task 34: pool continuation — if a previous sweep for this title is
   // still resolving (its deadline race returned early and the wrapper is

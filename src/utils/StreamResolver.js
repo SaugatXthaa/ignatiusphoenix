@@ -393,8 +393,8 @@ export class StreamResolver {
     // Priority sources — these are started FIRST, before other sources, so they
     // don't get stuck waiting in the queue behind 75+ other sources. Without this,
     // slow sources (Cinejoy's lumen-gate-v1 crypto, StellarRip's PoW + 19-server
-    // probing) would wait 10-15s in the queue, leaving only 15-20s before the
-    // GLOBAL_TIMEOUT_MS = 33s cutoff.
+    // probing) would wait 10-15s in the queue, leaving too little of the client
+    // budget (STREAM_CLIENT_BUDGET_MS) for actual execution.
     const PRIORITY_SOURCE_IDS = new Set([
       'cinejoyaio', 'zinkmovies', '4khdhub', 'playimdb',
       // Stellar sources — PoW + AES-GCM takes 5-10s; must start early
@@ -420,6 +420,11 @@ export class StreamResolver {
       'itachi',
       // StreamXTV — api.framextv.tech 20-provider sweep takes 10-25s
       'streamxtv',
+      // HindMoviez — gdrive-class workers.dev MKV host; production isolation
+      // run resolved 4 cards in 18s but under 70-way concurrency (queued
+      // behind wave 1) it burned 30s and shipped 0. Starting in wave 1 gives
+      // it the full client budget instead of queue-then-die.
+      'hindmoviez',
     ]);
     const sortedSources = [...sources].sort((a, b) => {
       const aPriority = PRIORITY_SOURCE_IDS.has(a.id) ? 0 : 1;
@@ -486,11 +491,20 @@ export class StreamResolver {
       }
     };
 
-    // GLOBAL TIMEOUT: Return whatever streams we have after 40s.
-    // This prevents OOM on Render's 512MB free tier — without it, all 74
-    // sources run simultaneously, each holding response data in memory.
-    // The global cutoff ensures we collect results and free memory quickly.
-    const GLOBAL_TIMEOUT_MS = 40_000;
+    // CLIENT BUDGET — respond to the HTTP request as soon as this budget
+    // expires, even while sources are still resolving. Production evidence
+    // (Render 0.1-CPU, /debug/source isolation runs vs 70-source concurrent
+    // runs, Sep 2026): stellarrip 5 cards isolated vs 0 concurrent, hindmoviez
+    // 4 vs 0, moviesdrivev2 3 vs 0-3 — and total resolve wall time 33s+,
+    // which is BEYOND Stremio's client patience (~20s). Cold requests were
+    // timing out client-side and the user saw ZERO streams even when sources
+    // could deliver. Fix: return partial results at the budget; sources that
+    // are still running keep going in the BACKGROUND and their results land
+    // in the per-source caches (Source.handle, 5min TTL), so the NEXT request
+    // for the same id returns a much fuller set well within the budget.
+    // Set STREAM_CLIENT_BUDGET_MS=40000 (or higher) to restore the old
+    // wait-for-everything semantics (used by task23_baseline.mjs count guards).
+    const CLIENT_BUDGET_MS = Math.max(5000, parseInt(process.env.STREAM_CLIENT_BUDGET_MS, 10) || 15000);
 
     // Track how many sources have fully settled (scrape + extractor stage).
     let settledCount = 0;
@@ -498,38 +512,25 @@ export class StreamResolver {
       handleSource(s).finally(() => { settledCount++; })
     );
 
-    await Promise.race([
-      Promise.all(allSourcePromises),
-      new Promise(resolve => setTimeout(resolve, GLOBAL_TIMEOUT_MS)),
+    const allSettled = await Promise.race([
+      Promise.all(allSourcePromises).then(() => true),
+      new Promise(resolve => setTimeout(() => resolve(false), CLIENT_BUDGET_MS)),
     ]);
 
-    // EXTRACTION GRACE WINDOW — recovers streams that were previously
-    // silently dropped every single request. Root cause: the extractor
-    // stage (embedresolver → vidking/other multi-provider sweeps) runs
-    // AFTER a source's own scrape finishes and has NO protected budget —
-    // it only gets whatever remains of the global window. With 71 sources
-    // gated at 15-concurrency (5 queue waves), wave-3+ sources routinely
-    // finish their scrape at t≈25-38s, leaving 2-15s for a multi-fetch
-    // embed resolution → the 40s cutoff fires mid-extraction and their
-    // already-scraped streams (vidfast/vidking/vidzee/vidsrcsbs/
-    // vegamovies/primeshows/...) never reach the response.
-    // Fix: after the cutoff, wait a BOUNDED grace period for in-flight
-    // sources to settle. Strictly additive — can only ADD streams that
-    // were already scraped, never removes or reorders anything. Worst
-    // case latency is bounded at GLOBAL_TIMEOUT_MS + GRACE.
-    const EXTRACT_GRACE_MS = 8_000;
-    if (settledCount < sortedSources.length) {
-      const before = settledCount;
-      await Promise.race([
-        Promise.allSettled(allSourcePromises),
-        new Promise(resolve => setTimeout(resolve, EXTRACT_GRACE_MS)),
-      ]);
-      this.logger.info(`StreamResolver: grace window let ${settledCount - before} late source(s) land (${sortedSources.length - settledCount} still pending)`);
-    }
+    // When the budget expired first, the remaining allSourcePromises are
+    // deliberately NOT awaited here — they keep executing (node does not
+    // cancel promises), each completing handleSource's catch/finally and
+    // caching via Source.handle. Same background behavior the old 40s
+    // GLOBAL_TIMEOUT cutoff had, except the client now gets a response at
+    // the budget instead of at 33-48s.
 
     // Stash timings on the instance for the /debug/stream endpoint to read.
     // (Not returned in the normal /stream response to avoid breaking Stremio.)
     this._lastSourceTimings = sourceTimings;
+    this._lastResolveWasPartial = !allSettled;
+    if (!allSettled) {
+      this.logger.info(`StreamResolver: client budget ${CLIENT_BUDGET_MS}ms hit (${settledCount}/${sortedSources.length} sources settled, ${urlResults.length} urlResults) — returning partial results; remaining sources complete in background and will be cached for the next request`);
+    }
 
     // Enrich metadata for all results (parse from title/URL — no source changes)
     for (const r of urlResults) {
@@ -555,6 +556,11 @@ export class StreamResolver {
     // This is BEST-EFFORT — if OpenSubtitles fails (timeout, rate limit,
     // no result), streams are returned WITHOUT subtitles. Never breaks
     // stream playback.
+    // Skip OpenSubtitles on the partial (budget-expired) path — subs are
+    // best-effort and the 9s lookup would blow the budget promise to the
+    // client. Warm requests that settle everything in budget still get the
+    // full subtitle injection below.
+    if (allSettled) {
     try {
       // Identify streams that need OpenSubtitles fallback
       const streamsNeedingSubs = urlResults.filter(r =>
@@ -649,6 +655,7 @@ export class StreamResolver {
     } catch (e) {
       this.logger.warn(`StreamResolver: subtitle fetch failed — ${e?.message || e}`);
     }
+    } // end if (allSettled) — partial responses skip the 9s subtitle lookup
 
     // Sort: errors first, then by height desc, then bytes desc, then priority
     urlResults.sort((a, b) => {
