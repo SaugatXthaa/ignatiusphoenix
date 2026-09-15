@@ -364,6 +364,7 @@ export class StreamResolver {
   }
 
   async _resolveInternal(ctx, sources, type, id) {
+    const resolveT0 = Date.now();
 
     const streams = [];
     const urlResults = [];
@@ -384,7 +385,14 @@ export class StreamResolver {
     // limit of 15 (down from 20), sources wait less time in the queue, giving
     // them more actual execution time. Cinejoy needs ~6s of actual execution,
     // so a 15s limit gives it ~15s of slack for queue + execution.
-    const MAX_CONCURRENT_SOURCES = 15;
+    // Task 37: 15 → 10. Production /debug/source isolation runs prove the
+    // "0-stream" sources (stellarrip, hindmoviez, moviesdrivev2, kmmovies)
+    // DO resolve on Render when given CPU — under 15-way concurrency on the
+    // 0.1-CPU instance their fetches inflate 2-3x and blow internal budgets.
+    // The response deadline is the 15s CLIENT_BUDGET, so concentrating CPU on
+    // fewer concurrent sources = more sources actually land within budget;
+    // the tail drains in background and caches for the next request.
+    const MAX_CONCURRENT_SOURCES = 10;
 
     // Priority sources — these are started FIRST, before other sources, so they
     // don't get stuck waiting in the queue behind 85+ other sources. Without this,
@@ -558,9 +566,11 @@ export class StreamResolver {
     // stream playback.
     // Skip OpenSubtitles on the partial (budget-expired) path — subs are
     // best-effort and the 9s lookup would blow the budget promise to the
-    // client. Warm requests that settle everything in budget still get the
-    // full subtitle injection below.
-    if (allSettled) {
+    // client. Also skip when everything settled LATE in the budget window
+    // (sandbox evidence: all-70 settled at ~14.9s → full path → +9s subs →
+    // 29s response, beyond client patience). Warm resolves that settle
+    // comfortably early still get the full subtitle injection.
+    if (allSettled && (Date.now() - resolveT0) < CLIENT_BUDGET_MS - 2000) {
     try {
       // Identify streams that need OpenSubtitles fallback
       const streamsNeedingSubs = urlResults.filter(r =>
@@ -655,7 +665,7 @@ export class StreamResolver {
     } catch (e) {
       this.logger.warn(`StreamResolver: subtitle fetch failed — ${e?.message || e}`);
     }
-    } // end if (allSettled) — partial responses skip the 9s subtitle lookup
+    } // end if (allSettled && settled-early) — late-settled/partial responses skip the 9s subtitle lookup
 
     // Sort: errors first, then by height desc, then bytes desc, then priority
     urlResults.sort((a, b) => {

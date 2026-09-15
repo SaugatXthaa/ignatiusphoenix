@@ -23,7 +23,7 @@
 'use strict';
 
 const https = require('https');
-const { execFile } = require('child_process');
+const { execFile, spawnSync } = require('child_process');
 
 const PROVIDER_NAME = 'KMMovies';
 const TMDB_API_KEY = '8476a7ab80ad76f0936744df0430e67c';
@@ -53,6 +53,18 @@ function fetchBufCurl(url, { headers = {}, timeout = 30000, method = 'GET', body
     execFile('curl', args, { maxBuffer: 50 * 1024 * 1024, timeout: timeout + 5000, encoding: 'utf8' }, (err, stdout, stderr) => {
       const out = stdout || '';
       if (out.length === 0 && err) {
+        // Render's node:20-slim Docker image ships WITHOUT curl — spawn fails
+        // ENOENT and every kmmovies fetch died server-side (sandbox had curl,
+        // production didn't → 0 streams). Fall back to a child Node https GET
+        // (no cookie-jar support — cookie flows degrade, plain GET/POST work).
+        if (err.code === 'ENOENT' || /ENOENT|not found/i.test(err.message || '')) {
+          try {
+            const fb = fetchBufViaNodeChild(url, finalHeaders, timeout, method, body);
+            return resolve(fb);
+          } catch (e2) {
+            return reject(new Error(`curl+node failed: ${(e2.message || '').slice(0, 80)}`));
+          }
+        }
         return reject(new Error(`curl failed: ${(err.message || '').slice(0, 80)}`));
       }
       const statusMatch = out.match(/__HTTP_STATUS:(\d+)$/);
@@ -61,6 +73,40 @@ function fetchBufCurl(url, { headers = {}, timeout = 30000, method = 'GET', body
       resolve({ status, body: Buffer.from(responseBody, 'utf8') });
     });
   });
+}
+
+// Node-child https fallback (see fetchBufCurl ENOENT branch): same
+// {status, body:string} shape as the curl path, minus cookie-jar support.
+function fetchBufViaNodeChild(url, finalHeaders, timeout, method = 'GET', body = null) {
+  const script = `
+    const https = require('https'); const http = require('http');
+    const u = new URL(process.argv[1]);
+    const lib = u.protocol === 'http:' ? http : https;
+    const req = lib.request({ hostname: u.hostname, path: u.pathname + u.search,
+      headers: JSON.parse(process.argv[2]), method: process.argv[3],
+      timeout: ${Math.min(Number(timeout) || 30000, 30000)} }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        process.stdout.write(Buffer.concat(chunks));
+        process.stdout.write('\\n__HTTP_STATUS:' + res.statusCode);
+      });
+    });
+    req.on('error', (e) => { process.stderr.write('__ERROR__' + e.message); process.exit(1); });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    if (process.argv[4]) req.write(process.argv[4]);
+    req.end();
+  `;
+  const res = spawnSync(process.execPath, ['-e', script, url, JSON.stringify(finalHeaders), method, body || ''],
+    { maxBuffer: 50 * 1024 * 1024, timeout: timeout + 5000, encoding: 'buffer' });
+  if (res.error || res.status !== 0) {
+    throw new Error(`node fallback failed for ${url}: ${(res.error?.message || res.stderr?.toString() || 'unknown').slice(0, 100)}`);
+  }
+  const str = res.stdout.toString('utf8');
+  const statusMatch = str.match(/__HTTP_STATUS:(\d+)\s*$/);
+  const status = statusMatch ? parseInt(statusMatch[1]) : 200;
+  const responseBody = statusMatch ? str.replace(/\n__HTTP_STATUS:\d+\s*$/, '') : str;
+  return { status, body: Buffer.from(responseBody, 'utf8') };
 }
 
 function fetchBufNode(url, { headers = {}, timeout = 30000, method = 'GET', body = null } = {}) {
@@ -128,7 +174,9 @@ async function findMovieByTitle(title, year) {
     if (results.length === 0) continue;
     const yearMatch = year ? results.find(r => r.slug.includes(`-${year}`)) : null;
     const exact = results.find(r => r.title.toLowerCase() === title.toLowerCase());
-    const picked = yearMatch || exact || results[0];
+    // Task 37: no blind results[0] pick — same wrong-content class as
+    // reanime/animesuge (first search hit served under the requested title)
+    const picked = yearMatch || exact || null;
     if (picked) { console.log(`[KMMovies] Search "${q}" → ${results.length} results, picked: ${picked.slug}`); return picked; }
   }
   return null;

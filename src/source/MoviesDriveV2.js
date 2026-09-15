@@ -126,6 +126,12 @@ export class MoviesDriveV2 extends Source {
                                   // upstream post genuinely has fewer tiers
     const TOPUP_MIN_MS = 8000;    // skip sweeps that cannot finish in time
     const TOPUP_DELAY_MS = 1500;  // let the in-flight pool progress first
+    // Task 37: zero-card sweeps wait 6s before re-sweeping. Production
+    // telemetry showed moviesdrivev2 fast-failing to 0 in ~2.5s under the
+    // 70-source burst while ISOLATED runs delivered — the priority wave
+    // hammers upstream simultaneously at t=0 and moviesdrive rate-limits the
+    // burst; a 1.5s retry landed inside the same window. 6s lets it pass.
+    const TOPUP_EMPTY_DELAY_MS = 6000;
     const t0 = Date.now();
     const remainingMs = () => RACE_MS - (Date.now() - t0);
 
@@ -141,7 +147,8 @@ export class MoviesDriveV2 extends Source {
         if (!Array.isArray(streams)) break;          // race cap consumed
         if (streams.length >= TOPUP_BELOW) break;    // healthy sweep
         if (remainingMs() < TOPUP_MIN_MS) break;     // no budget for another
-        await new Promise(r => setTimeout(r, TOPUP_DELAY_MS));
+        const delayMs = (streams.length > 0) ? TOPUP_DELAY_MS : TOPUP_EMPTY_DELAY_MS;
+        await new Promise(r => setTimeout(r, delayMs));
         const more = await runSweep();
         if (!Array.isArray(more)) break;             // race cap consumed
         const seenUrls = new Set((streams || []).map(s => s && s.url));

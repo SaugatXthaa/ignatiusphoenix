@@ -35,7 +35,7 @@
 const https = require('https');
 const http = require('http');
 const crypto = require('crypto');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
 const PROVIDER_NAME = 'ReAnime';
 const TMDB_API_KEY = '8476a7ab80ad76f0936744df0430e67c';
@@ -59,22 +59,64 @@ const SEGMENT_XOR_KEY = reanimeSegmentKey();
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ─── HTTP: curl-based (for reanime.to — CF JA3 protection) ───────────────────
+// Render's node:20-slim Docker image ships WITHOUT the curl binary — when
+// execFileSync('curl') throws ENOENT (production evidence: reanime/kmmovies
+// returned 0 streams on Render while working in the dev sandbox, and
+// reanime.to answered 200 to the SAME server via /proxy), run the same GET
+// through a child Node process so the search + flix chain still resolves.
+function fetchBufViaNodeChild(url, finalHeaders, timeout) {
+  const hdrJson = JSON.stringify(finalHeaders);
+  const script = `
+    const https = require('https'); const http = require('http');
+    const u = new URL(process.argv[1]);
+    const lib = u.protocol === 'http:' ? http : https;
+    const req = lib.request({ hostname: u.hostname, path: u.pathname + u.search,
+      headers: JSON.parse(process.argv[2]), method: 'GET',
+      timeout: ${Math.min(Number(timeout) || 30000, 30000)} }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        process.stdout.write('\\n__HTTP_STATUS__' + res.statusCode);
+        return;
+      }
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        process.stdout.write(Buffer.concat(chunks));
+        process.stdout.write('\\n__HTTP_STATUS__' + res.statusCode);
+      });
+    });
+    req.on('error', (e) => { process.stderr.write('__ERROR__' + e.message); process.exit(1); });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.end();
+  `;
+  const res = spawnSync(process.execPath, ['-e', script, url, hdrJson],
+    { maxBuffer: 50 * 1024 * 1024, timeout: timeout + 5000, encoding: 'buffer' });
+  if (res.error || res.status !== 0) {
+    throw new Error(`node fallback failed for ${url}: ${(res.error?.message || res.stderr?.toString() || 'unknown').slice(0, 100)}`);
+  }
+  return res.stdout;
+}
+
 function fetchBufCurl(url, { headers = {}, timeout = 30000 } = {}) {
   const finalHeaders = { 'User-Agent': UA, 'Accept': '*/*', ...headers };
-  const args = ['-sL', '--max-time', String(Math.floor(timeout / 1000))];
-  for (const [k, v] of Object.entries(finalHeaders)) args.push('-H', `${k}: ${v}`);
-  args.push('-o', '-', '-w', '\n__HTTP_STATUS__%{http_code}', url);
+  let out;
   try {
-    const out = execFileSync('curl', args, { maxBuffer: 50 * 1024 * 1024, timeout: timeout + 5000, encoding: 'buffer' });
-    // Parse the trailing status marker that curl appended via -w
-    const str = out.toString('utf8');
-    const statusMatch = str.match(/__HTTP_STATUS__(\d+)\s*$/);
-    const status = statusMatch ? parseInt(statusMatch[1]) : 200;
-    const body = statusMatch ? out.slice(0, out.length - statusMatch[0].length - 1) : out;
-    return { status, headers: {}, body };
+    const args = ['-sL', '--max-time', String(Math.floor(timeout / 1000))];
+    for (const [k, v] of Object.entries(finalHeaders)) args.push('-H', `${k}: ${v}`);
+    args.push('-o', '-', '-w', '\n__HTTP_STATUS__%{http_code}', url);
+    out = execFileSync('curl', args, { maxBuffer: 50 * 1024 * 1024, timeout: timeout + 5000, encoding: 'buffer' });
   } catch (e) {
-    throw new Error(`curl failed for ${url}: ${(e.message || '').slice(0, 100)}`);
+    if (e.code === 'ENOENT' || /ENOENT|not found/i.test(e.message || '')) {
+      out = fetchBufViaNodeChild(url, finalHeaders, timeout);
+    } else {
+      throw new Error(`curl failed for ${url}: ${(e.message || '').slice(0, 100)}`);
+    }
   }
+  // Parse the trailing status marker that curl appended via -w
+  const str = out.toString('utf8');
+  const statusMatch = str.match(/__HTTP_STATUS__(\d+)\s*$/);
+  const status = statusMatch ? parseInt(statusMatch[1]) : 200;
+  const body = statusMatch ? out.slice(0, out.length - statusMatch[0].length - 1) : out;
+  return { status, headers: {}, body };
 }
 
 // ─── HTTP: Node https (for flixcloud.cc, TMDB, fetch8, vault-95 — no CF JA3) ──
@@ -196,7 +238,7 @@ async function fetchAnimeMeta(animeId) {
 }
 
 // ─── Find matching anime on reanime by title + year ─────────────────────────
-async function findAnimeByTitle(title, year) {
+async function findAnimeByTitle(title, year, isTV) {
   const queries = [
     title,
     title.replace(/\s*\(.*?\)\s*/g, '').trim(),
@@ -206,9 +248,22 @@ async function findAnimeByTitle(title, year) {
   for (const q of queries) {
     const results = await searchReanime(q);
     if (results.length === 0) continue;
-    const exact = results.find(r => r.title.toLowerCase() === title.toLowerCase());
-    const yearMatch = year ? results.find(r => String(r.year) === String(year)) : null;
-    const picked = exact || yearMatch || results[0];
+    // Task 37: EXACT title + year gate — the old `exact || yearMatch ||
+    // results[0]` blind fallback served whatever ranked first: live-action
+    // Mutiny (2026) resolved to the 1985 anime "Odin: Photon Space Sailer
+    // Starlight" (same title-pair trap Task 33 removed from animesuge).
+    // Movies: year within ±1; TV seasons: ±3 (anilist season_year vs TMDB
+    // first_air_date drifts further for multi-season anime).
+    const norm = (s) => String(s || '').toLowerCase().normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const nTitle = norm(title);
+    const nYear = Number(year) || 0;
+    const tol = isTV ? 3 : 1;
+    const picked = results.find(r => {
+      if (norm(r.title) !== nTitle) return false;
+      if (!nYear || !r.year) return true;
+      return Math.abs(Number(r.year) - nYear) <= tol;
+    }) || null;
     if (picked) {
       console.log(`[ReAnime] Matched: ${picked.title} (${picked.year}) anilist=${picked.anilistId} slug=${picked.animeId}`);
       return picked;
@@ -369,7 +424,7 @@ async function getStreams(tmdbId, type, season, episode) {
   console.log(`[ReAnime] TMDB: ${info0.title} (${info0.year})`);
 
   // 2. Find matching anime on reanime.to.
-  let anime = await findAnimeByTitle(info0.title, info0.year);
+  let anime = await findAnimeByTitle(info0.title, info0.year, isTV);
   if (!anime) {
     console.log('[ReAnime] No matching anime found on reanime.to');
     return [];
