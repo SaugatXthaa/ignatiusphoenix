@@ -109,27 +109,51 @@ export class MoviesDriveV2 extends Source {
     if (!mod || typeof mod.getStreams !== 'function') return [];
 
     const mediaType = tmdbId.season ? 'tv' : 'movie';
-    // Retry on empty sweeps: the search index and the hubcloud/gamerxyt hops
-    // fail stochastically per request (search index gaps, CF challenges on
-    // individual hops). One empty sweep ≠ no streams — the whole chain is
-    // fast (live-measured: success ~3.5s, empty fail ~2-5s), so 2 bounded
-    // retries stay far under the resolver's 35s per-source cutoff.
-    const EMPTY_RETRY_MAX = 2;
-    const EMPTY_RETRY_DELAY_MS = 1500;
+    // Task 34: deadline-aware partial top-up. Re-sweeps are cheap now that
+    // the scraper caches discovery and continues its quality pool (Task 34
+    // in moviesdrive_v2.cjs), so sweeps that delivered 0-1 cards get another
+    // chance within the remaining wrapper budget. The old unconditional
+    // retry loop re-ran the FULL discovery chain per attempt, burned its
+    // 30s race cap on re-discovery, and shipped 0 cards on Render's 0.1-CPU
+    // instances (production /debug/stream: count=0-1 at durationMs≈23s while
+    // the same title resolved 4 streams in 3-6s from sandbox).
+    const RACE_MS = 30000;        // keep under the resolver's 35s cutoff
+    const TOPUP_MAX = 2;          // bounded extra sweeps
+    const TOPUP_BELOW = 4;        // full quality ladder (2160/1080/720/480) —
+                                  // a partial sweep gets topped up; the extra
+                                  // sweep is nearly free (discovery cache hit
+                                  // + pool continuation) and adds 0 when the
+                                  // upstream post genuinely has fewer tiers
+    const TOPUP_MIN_MS = 8000;    // skip sweeps that cannot finish in time
+    const TOPUP_DELAY_MS = 1500;  // let the in-flight pool progress first
+    const t0 = Date.now();
+    const remainingMs = () => RACE_MS - (Date.now() - t0);
+
+    const runSweep = () => Promise.race([
+      mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null),
+      new Promise(r => setTimeout(() => r(null), Math.max(3000, remainingMs()))),
+    ]);
 
     let streams;
     try {
-      streams = await Promise.race([
-        (async () => {
-          let out = await mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null);
-          for (let attempt = 0; Array.isArray(out) && out.length === 0 && attempt < EMPTY_RETRY_MAX; attempt++) {
-            await new Promise(r => setTimeout(r, EMPTY_RETRY_DELAY_MS));
-            out = await mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null);
-          }
-          return out;
-        })(),
-        new Promise(r => setTimeout(() => r(null), 30000)),
-      ]);
+      streams = await runSweep();
+      for (let attempt = 0; attempt < TOPUP_MAX; attempt++) {
+        if (!Array.isArray(streams)) break;          // race cap consumed
+        if (streams.length >= TOPUP_BELOW) break;    // healthy sweep
+        if (remainingMs() < TOPUP_MIN_MS) break;     // no budget for another
+        await new Promise(r => setTimeout(r, TOPUP_DELAY_MS));
+        const more = await runSweep();
+        if (!Array.isArray(more)) break;             // race cap consumed
+        const seenUrls = new Set((streams || []).map(s => s && s.url));
+        const fresh = more.filter(s => s && s.url && !seenUrls.has(s.url));
+        if (fresh.length > 0) {
+          streams = streams.concat(fresh)
+            .sort((a, b) => (parseHeight(b.quality) || 0) - (parseHeight(a.quality) || 0));
+          console.log(`[moviesdrive-v2] top-up sweep +${fresh.length} card(s) → ${streams.length} total`);
+        } else {
+          break; // pool fully resolved with nothing new — no point re-sweeping
+        }
+      }
     } catch (e) {
       console.error(`[moviesdrive-v2] error: ${e?.message || e}`);
       return [];

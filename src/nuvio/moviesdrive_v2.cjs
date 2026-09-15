@@ -667,6 +667,76 @@ async function headOk(url) {
   } catch (e) { return false; }
 }
 
+// Task 34: gpdl.hubcloud.* is a 302 front for a workers.dev backend. Probe
+// it with a redirect-following HEAD and return the FINAL URL when the
+// backend is alive (a *.workers.dev URL survives the resolver's
+// HubCloud-CDN filter and plays via /proxy), or null when the backend is
+// dead — the old code accepted the bare gpdl redirect page unconditionally,
+// which both shipped dead cards (worker currently answers HTTP 500) and
+// starved the HEAD-checked PixelDrain fallback of a chance.
+async function probeGpdl(gpdlUrl) {
+  try {
+    const gotScraping = await getGotScraping();
+    if (!gotScraping) return null;
+    const res = await gotScraping(gpdlUrl, {
+      method: 'HEAD',
+      headers: { 'User-Agent': UA },
+      timeout: { request: 6000 },
+      throwHttpErrors: false,
+      followRedirect: true,
+    });
+    if (res.statusCode >= 200 && res.statusCode < 400 && res.url) {
+      const finalHost = new URL(res.url).hostname || '';
+      // Alive only if the redirect landed on a real file host — not another
+      // hubcloud CDN front (which would just be another HTML redirect page)
+      if (!/^(pixel|gpdl|gpdl2)\.hubcloud\./.test(finalHost)) return res.url;
+    }
+    return null;
+  } catch (e) { return null; }
+}
+
+// Task 34: decode a gamerxyt dl.php redirect bridge into its real
+// destination. The bridge URL literally carries the target in link= —
+// decoding it lets the card ship the direct googleusercontent URL (same
+// /range-proxy routing as the GDrive tier) instead of a raw bridge URL
+// that would bypass our proxies.
+function decodeGamerxytBridge(u) {
+  const link = u.searchParams.get('link') || '';
+  if (/^https:\/\/(video-downloads|lh3)\.googleusercontent\.com\//.test(link)) {
+    return { url: link, source: 'GDrive' };
+  }
+  return null; // bridge to somewhere unexpected — don't ship blind
+}
+
+// Task 34: gpdl-class URLs come in two shapes:
+//   a) https://gamerxyt.com/dl.php?link=<googleusercontent URL> — decode
+//      the bridge directly
+//   b) https://gpdl.hubcloud.*/?id=... — 302 front for a workers.dev
+//      backend; redirect-following HEAD probe, then decode whatever the
+//      chain lands on (currently some ids answer HTTP 500 → dead →
+//      PixelDrain fallback, others land on a gamerxyt bridge → decode)
+// Returns { url, source } or null — null lets the PixelDrain fallback run
+// (the old code accepted the bare gpdl URL unconditionally, which both
+// shipped dead cards and starved the HEAD-checked PixelDrain fallback).
+async function resolveGpdlTarget(gpdlUrl) {
+  try {
+    const u = new URL(gpdlUrl);
+    const isGamerxytBridge = /(^|\.)gamerxyt\.com$/.test(u.hostname) && u.pathname.includes('dl.php');
+    if (isGamerxytBridge) return decodeGamerxytBridge(u);
+    if (/^(gpdl|gpdl2)\.hubcloud\./.test(u.hostname)) {
+      const finalUrl = await probeGpdl(gpdlUrl);
+      if (finalUrl) {
+        const f = new URL(finalUrl);
+        if (/(^|\.)gamerxyt\.com$/.test(f.hostname) && f.pathname.includes('dl.php')) {
+          return decodeGamerxytBridge(f);
+        }
+        return { url: finalUrl, source: 'HubCloud-10Gbps' };
+      }
+    }
+    return null;
+  } catch (e) { return null; }
+}
+
 // ─── Resolve hubcloud.cx/drive/<fileId> → direct download URLs ────────────
 async function resolveFileUrl(fileId, fileName) {
   const fileUrl = `${HUBCLOUD_BASE}/drive/${fileId}`;
@@ -809,18 +879,48 @@ async function mapPool(items, limit, fn, outArr) {
   return out;
 }
 
-async function getStreams(tmdbId, type, season, episode) {
-  const startedAt = Date.now();
-  tmdbId = String(tmdbId);
-  const isTV = type === 'tv' || type === 'series';
-  console.log(`[MoviesDrive] Request: tmdb=${tmdbId} type=${type}` +
-              (isTV ? ` S${season}E${episode}` : ''));
+// ─── Discovery / pool caches (Task 34) ─────────────────────────────────────
+// Production (Render 0.1-CPU) timeline for a cold request: the discovery
+// half (TMDB → site search → post page → hubcloud token → search API) costs
+// 8-15s of the 21s resolve budget, so the wrapper's retry-on-empty re-ran
+// that whole half before the quality pool even started, then hit the 30s
+// wrapper race cap with 0-1 cards (production /debug/stream: count=0-1 at
+// durationMs≈23s while the same title resolved 4 streams in 3-6s from
+// sandbox). Two in-process caches make retry sweeps cheap and safe:
+//   - _discoveryCache: search+page+token results keyed per title — a retry
+//     skips straight to the quality pool
+//   - _poolCache: the LIVE pool promise + its out array — a retry RESUMES
+//     the same pool (harvesting chains that kept resolving in the
+//     background after the first deadline race returned) instead of
+//     doubling upstream load with a parallel pool
+const MDV2_CACHE_TTL_MS = parseInt(process.env.MDV2_CACHE_TTL_MS, 10) || (10 * 60 * 1000);
+const _discoveryCache = new Map(); // key -> {expires, info, best, qualityLinks, isAnime}
+const _poolCache = new Map();      // key -> {expires, poolPromise, poolOut}
+function mdv2CacheKey(tmdbId, isTV, season, episode) {
+  return tmdbId + '|' + (isTV ? 'tv' : 'movie') + '|' + (season || '') + '|' + (episode || '');
+}
+function mdv2CacheSet(map, key, value) {
+  for (const [k, v] of map) if (v.expires <= Date.now()) map.delete(k);
+  if (map.size > 64) map.delete(map.keys().next().value);
+  map.set(key, Object.assign(value, { expires: Date.now() + MDV2_CACHE_TTL_MS }));
+}
+function mdv2CacheLive(entry) {
+  return !!entry && entry.expires > Date.now();
+}
+
+async function discoverContent(tmdbId, type, season, episode, cacheKey) {
+  const cachedDiscovery = _discoveryCache.get(cacheKey);
+  if (mdv2CacheLive(cachedDiscovery)) {
+    console.log(`[MoviesDrive] ♻ Discovery cache hit — ${cachedDiscovery.qualityLinks.length} quality link(s), skipping search+page hops`);
+    return cachedDiscovery;
+  }
+  _poolCache.delete(cacheKey); // a live pool belongs to the old discovery — drop it
 
   // 1. Get TMDB info (with genres for anime detection)
   const info = await getTMDBInfo(tmdbId, type);
   if (!info) {
     console.log('[MoviesDrive] TMDB fetch failed');
-    return [];
+    return null;
   }
   // Detect anime: Animation genre (16) or Japanese original language
   const isAnime = (info.genres || []).includes(16) || info.originalLanguage === 'ja';
@@ -834,6 +934,7 @@ async function getStreams(tmdbId, type, season, episode) {
   //    network round-trip that costs seconds on Render, and the old serial
   //    ladder could burn ~24s of the source budget before any resolution
   //    work even started.
+  const isTV = type === 'tv' || type === 'series';
   let searchResults = await searchMoviesdrive(info.title, 10);
   let picked = pickBestPost(searchResults, info, isTV);
   if (!picked) {
@@ -856,7 +957,7 @@ async function getStreams(tmdbId, type, season, episode) {
   }
   if (!picked) {
     console.log(`[MoviesDrive] No confident match for "${info.title}" — refusing to serve a wrong-title post`);
-    return [];
+    return null;
   }
   const best = picked;
   console.log(`[MoviesDrive] Best match: ${best.title.slice(0, 60)} (${best.permalink})`);
@@ -867,11 +968,11 @@ async function getStreams(tmdbId, type, season, episode) {
     downloadLinks = await getDownloadLinks(best.permalink, season, episode);
   } catch (e) {
     console.log(`[MoviesDrive] Failed to fetch movie page: ${e.message}`);
-    return [];
+    return null;
   }
   if (downloadLinks.length === 0) {
     console.log('[MoviesDrive] No download links found on movie page');
-    return [];
+    return null;
   }
   console.log(`[MoviesDrive] Found ${downloadLinks.length} download link(s)`);
 
@@ -888,6 +989,29 @@ async function getStreams(tmdbId, type, season, episode) {
     seenQualities.add(quality);
     qualityLinks.push({ link, quality });
   }
+
+  // Cache only SUCCESSFUL discovery — a failed crawl must stay uncached so
+  // the next sweep retries the real hops.
+  if (qualityLinks.length > 0) {
+    mdv2CacheSet(_discoveryCache, cacheKey, { info, best, qualityLinks, isAnime });
+  }
+  return { info, best, qualityLinks, isAnime };
+}
+
+async function getStreams(tmdbId, type, season, episode) {
+  const startedAt = Date.now();
+  tmdbId = String(tmdbId);
+  const isTV = type === 'tv' || type === 'series';
+  const cacheKey = mdv2CacheKey(tmdbId, isTV, season, episode);
+  console.log(`[MoviesDrive] Request: tmdb=${tmdbId} type=${type}` +
+              (isTV ? ` S${season}E${episode}` : ''));
+
+  // Task 34: discovery (TMDB → site search → post page → quality links)
+  // moved to discoverContent() with a 10-min TTL cache — retry sweeps skip
+  // the slow discovery half (8-15s on Render) and go straight to the pool.
+  const discovery = await discoverContent(tmdbId, type, season, episode, cacheKey);
+  if (!discovery) return [];
+  const { info, best, qualityLinks, isAnime } = discovery;
 
   const resolveQualityLink = async ({ link, quality }) => {
     const language = detectLanguage(link.text + ' ' + best.title, isAnime);
@@ -1040,8 +1164,15 @@ async function getStreams(tmdbId, type, season, episode) {
         source = 'Cloudflare-Worker';
       }
       if (!playUrl && resolved.gpdlUrl) {
-        playUrl = resolved.gpdlUrl;
-        source = 'HubCloud-10Gbps';
+        // Task 34: gpdl-class URL → decode gamerxyt bridge / probe worker
+        // liveness; fall through to PixelDrain mirrors when dead/unusable
+        const gpdl = await resolveGpdlTarget(resolved.gpdlUrl);
+        if (gpdl) {
+          playUrl = gpdl.url;
+          source = gpdl.source;
+        } else {
+          console.log(`[MoviesDrive]   ✗ GPDL dead/unusable, trying PixelDrain mirrors`);
+        }
       }
       if (!playUrl && resolved.pixeldrainIds && resolved.pixeldrainIds.length > 0) {
         // Dead decoys are common — liveness-check each candidate, use the
@@ -1079,11 +1210,26 @@ async function getStreams(tmdbId, type, season, episode) {
   // 1-2 cards beat zero. Env-tunable for ops tuning without a redeploy.
   const RESOLVE_DEADLINE_MS = parseInt(process.env.MDV2_RESOLVE_DEADLINE_MS, 10) || 21000;
   const resolveBudgetMs = Math.max(3000, RESOLVE_DEADLINE_MS - (Date.now() - startedAt));
-  const poolOut = new Array(qualityLinks.length);
-  const poolPromise = mapPool(qualityLinks, 3, resolveQualityLink, poolOut);
-  // Defensive: the pool never rejects (per-item try/catch), but an unhandled
-  // rejection after the deadline race has already returned would crash Node.
-  poolPromise.catch(() => {});
+  // Task 34: pool continuation — if a previous sweep for this title is
+  // still resolving (its deadline race returned early and the wrapper is
+  // retrying), RESUME the live pool instead of starting a parallel one:
+  // chains that kept resolving in the background are harvested, and
+  // hubcloud/gamerxyt are not hit with a duplicate burst.
+  let poolOut;
+  let poolPromise;
+  const livePool = _poolCache.get(cacheKey);
+  if (mdv2CacheLive(livePool) && livePool.poolOut.length === qualityLinks.length) {
+    poolOut = livePool.poolOut;
+    poolPromise = livePool.poolPromise;
+    console.log('[MoviesDrive] ♻ Pool continuation — resuming in-flight quality pool');
+  } else {
+    poolOut = new Array(qualityLinks.length);
+    poolPromise = mapPool(qualityLinks, 3, resolveQualityLink, poolOut);
+    // Defensive: the pool never rejects (per-item try/catch), but an unhandled
+    // rejection after the deadline race has already returned would crash Node.
+    poolPromise.catch(() => {});
+    mdv2CacheSet(_poolCache, cacheKey, { poolPromise, poolOut });
+  }
   const raceWinner = await Promise.race([
     poolPromise,
     new Promise(r => setTimeout(() => r('__deadline__'), resolveBudgetMs)),
