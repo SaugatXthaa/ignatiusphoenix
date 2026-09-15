@@ -144,12 +144,17 @@ export class MoviesDriveV2 extends Source {
       const sourceType = s._sourceType || 'WebDL';
       const hdr = s._hdr || '';
       const fileSize = s._fileSize;
-      // Audio label from scraper (already anime-aware) or fallback
-      const audioLabel = isAnime ? 'Japanese + English' : 'Hindi + English';
+      // Task 33: audio label — prefer the scraper's per-file language
+      // detection (parsed from the actual release text: "English" for
+      // English-only files, "Dual-Audio" for Hindi+English, …) over the old
+      // hardcoded "Hindi + English" that mislabeled English-only files.
+      const audioLabel = s._language || (isAnime ? 'Japanese + English' : 'Hindi + English');
 
       // Country codes based on audio + anime
       const countryCodes = isAnime
         ? [CountryCode.multi, CountryCode.ja, CountryCode.en]
+        : audioLabel === 'English' ? [CountryCode.multi, CountryCode.en]
+        : audioLabel === 'Hindi' ? [CountryCode.multi, CountryCode.hi]
         : [CountryCode.multi, CountryCode.hi, CountryCode.en];
 
       // Build display title with enriched metadata

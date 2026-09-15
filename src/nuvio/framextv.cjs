@@ -283,9 +283,14 @@ async function getStreams(tmdbId, type, season, episode) {
         if (referer) headers.Referer = referer;
         if (ua) headers['User-Agent'] = ua;
 
+        // Task 33: when the API's server name equals the provider name the
+        // old title read "FrameX headhunter 1080p headhunter" — display-only
+        // dedup, stream objects unchanged.
+        const serverTag = server && server !== provider ? ` ${server}` : '';
+
         allStreams.push({
           name: `FrameX - ${quality} ${server} (${provider})`,
-          title: `FrameX ${provider} ${quality} ${server}`,
+          title: `FrameX ${provider} ${quality}${serverTag}`,
           url: src.url,
           quality,
           type: streamType,

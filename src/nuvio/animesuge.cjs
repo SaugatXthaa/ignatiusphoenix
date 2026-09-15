@@ -102,7 +102,8 @@ async function searchAnimeSuge(query) {
 
 // ─── Get Anime ID from Page ──────────────────────────────────────────────────
 // Also returns the full title from the page, which is more accurate than the
-// slug for matching purposes.
+// slug for matching purposes, and the anime's premiere YEAR — Task 33
+// requires an exact title AND year match before serving anything.
 async function getAnimeIdAndTitle(slug) {
   const html = await fetchText(`${AS_BASE}/anime/${slug}`);
   if (!html) return null;
@@ -130,12 +131,27 @@ async function getAnimeIdAndTitle(slug) {
     .replace(/^Watch\s+/i, '')
     .trim();
 
+  // Task 33: premiere year for the exact-year gate. The anime's own info
+  // panel carries <span itemprop="dateCreated">Oct 3, 2002</span> (verified
+  // across the catalog: naruto=2002, jujutsu-kaisen=2020, odin=1985);
+  // "Premiered: Fall 2002" is the fallback anchor. Without a parseable year
+  // a near-exact candidate is rejected (see scoring in getStreams) — an
+  // anime site must never serve content whose year we could not verify.
+  let year = null;
+  const dateCreated = html.match(/itemprop="dateCreated"[^>]*>[^<]*?((?:19|20)\d{2})/);
+  if (dateCreated) {
+    year = parseInt(dateCreated[1], 10);
+  } else {
+    const premiered = html.match(/Premiered:?\s*(?:[A-Za-z]+\s+)?((?:19|20)\d{2})/i);
+    if (premiered) year = parseInt(premiered[1], 10);
+  }
+
   // Find poster
   let poster = null;
   const posterMatch = html.match(/src="([^"]+\.webp)"/);
   if (posterMatch) poster = posterMatch[1];
 
-  return { id, slug, title, poster };
+  return { id, slug, title, year, poster };
 }
 
 // ─── Get Anime ID from Page (backward-compatible wrapper) ────────────────────
@@ -235,6 +251,29 @@ function normalizeTitle(s) {
     .trim();
 }
 
+// Task 33: bounded Levenshtein for near-exact spelling variants only
+// ("Naruto Shippuuden" vs "Naruto Shippuden" — the site doubles the 'u',
+// TMDB does not). Distances > maxDistance short-circuit to keep the DP
+// cheap; this is NOT a similarity score — it exists purely so a real
+// spelling variant is not lost while every loose fuzzy tier is removed.
+function levenshteinWithin(a, b, maxDistance) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > maxDistance) return false;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const curr = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      rowMin = Math.min(rowMin, curr[j]);
+    }
+    if (rowMin > maxDistance) return false; // early exit — cannot recover
+    prev = curr;
+  }
+  return prev[b.length] <= maxDistance;
+}
+
 // ─── Main: getStreams ────────────────────────────────────────────────────────
 async function getStreams(tmdbId, mediaType, season, episode) {
   console.log(`[AnimeSuge] getStreams: ${tmdbId} ${mediaType} S${season || '?'}E${episode || '?'}`);
@@ -264,47 +303,74 @@ async function getStreams(tmdbId, mediaType, season, episode) {
     );
     const validCandidates = candidates.filter(Boolean);
 
+    // Task 33 — EXACT title + year matching only.
+    //
+    // The old scoring had loose tiers (substring = 80, word-overlap ≤ 60,
+    // accept threshold 40) and NO year verification, so a live-action movie
+    // like "Mutiny" (2026) matched the 1985 anime "Odin: Starlight Mutiny"
+    // via the substring tier and shipped a Japanese-audio anime stream for
+    // a Jason Statham movie. New policy, per the exactness requirement:
+    //   1. Only an exact normalized-title equality (or a ≤2-edit spelling
+    //      variant such as "Shippuuden"/"Shippuden") qualifies at all.
+    //   2. The candidate's premiere year must match the requested year
+    //      (±1 for movies and first seasons; ±3 for later TV seasons —
+    //      catalog entries are series pages anchored at the first airing).
+    //   3. A near-exact variant whose year could not be parsed is refused;
+    //      a truly exact title with no parseable year is allowed through
+    //      with a warning (title identity is strong; the alternative is
+    //      zeroing real matches over a missing meta tag).
+    // Anything else → zero streams. Zero wrong matches beats one more card.
     const queryNorm = normalizeTitle(title);
+    const reqYear = parseInt(year, 10) || null;
     let bestMatch = null;
     let bestScore = 0;
 
     for (const c of validCandidates) {
       const candidateTitleNorm = normalizeTitle(c.title || c.slug);
-      let score = 0;
+      if (!candidateTitleNorm || !queryNorm) continue;
 
-      // Exact normalized title match
+      let score = 0;
       if (candidateTitleNorm === queryNorm) {
         score = 100;
-        // For S1, prefer "-tv" slugs and penalize non-TV slugs
-        if (!season || season === 1) {
-          if (c.slug.endsWith('-tv') || c.slug.includes('-tv-')) score += 20;
-          if (/specials?$|-special-|-ova-|-oad-|-movie-|0-movie/.test(c.slug)) score -= 25;
-        } else {
-          // For later seasons, prefer season-specific entries
-          if (c.slug.includes(`${season}nd-season`) || c.slug.includes(`${season}rd-season`)) score += 20;
+      } else if (
+        candidateTitleNorm.length >= 6 && queryNorm.length >= 6 &&
+        // Same token count required: "jujutsu kaisen 0" (the prequel movie)
+        // differs from "jujutsu kaisen" by a single appended token which a
+        // pure ≤2-edit test would accept — an appended/missing word is a
+        // DIFFERENT title, only intra-word spelling variants qualify here.
+        candidateTitleNorm.split(' ').length === queryNorm.split(' ').length &&
+        levenshteinWithin(candidateTitleNorm, queryNorm, 2)
+      ) {
+        score = 95; // spelling variant of the same title
+      }
+      if (score === 0) continue; // every loose tier removed — wrong-content risk
+
+      // Year gate
+      if (reqYear && c.year) {
+        const yearTol = (mediaType === 'tv' && season && season >= 2) ? 3 : 1;
+        if (Math.abs(c.year - reqYear) > yearTol) {
+          console.log(`[AnimeSuge] Rejecting "${c.title}" (${c.year}) — year ${c.year} ≠ requested ${reqYear} (tol ±${yearTol})`);
+          continue;
         }
-      }
-      // Query is substring of candidate title
-      else if (candidateTitleNorm.includes(queryNorm)) {
-        score = 80;
-        if (!season || season === 1) {
-          if (/2nd season|3rd season|culling|0 movie|specials|ova|oad/.test(c.slug)) score -= 30;
-          if (c.slug.endsWith('-tv') || c.slug.includes('-tv-')) score += 10;
-        }
-      }
-      // Candidate title is substring of query
-      else if (queryNorm.includes(candidateTitleNorm)) {
-        score = 70;
-      }
-      // Word overlap
-      else {
-        const queryWords = queryNorm.split(' ').filter(w => w.length > 2);
-        const candidateWords = candidateTitleNorm.split(' ').filter(w => w.length > 2);
-        const overlap = queryWords.filter(w => candidateWords.includes(w)).length;
-        score = (overlap / Math.max(queryWords.length, 1)) * 60;
+      } else if (score === 95 && reqYear && !c.year) {
+        console.log(`[AnimeSuge] Rejecting near-exact "${c.title}" — premiere year unparseable, cannot verify exact-year match`);
+        continue;
+      } else if (score === 100 && reqYear && !c.year) {
+        console.log(`[AnimeSuge] Exact-title candidate "${c.title}" has no parseable year — allowing (title identity exact)`);
       }
 
-      console.log(`[AnimeSuge] Candidate: "${c.title}" slug=${c.slug} score=${score}`);
+      // Season-aware preference WITHIN the qualifying tier
+      if (!season || season === 1) {
+        if (c.slug.endsWith('-tv') || c.slug.includes('-tv-')) score += 5;
+        if (/specials?$|-special-|-ova-|-oad-|0-movie/.test(c.slug)) score -= 10;
+      } else if (
+        c.slug.includes(`${season}nd-season`) || c.slug.includes(`${season}rd-season`) ||
+        c.slug.includes(`season-${season}`)
+      ) {
+        score += 5;
+      }
+
+      console.log(`[AnimeSuge] Candidate: "${c.title}" slug=${c.slug} year=${c.year || '?'} score=${score}`);
 
       if (score > bestScore) {
         bestScore = score;
@@ -312,8 +378,8 @@ async function getStreams(tmdbId, mediaType, season, episode) {
       }
     }
 
-    if (!bestMatch || bestScore < 40) {
-      console.log(`[AnimeSuge] No confident match found for "${title}" (best score: ${bestScore})`);
+    if (!bestMatch) {
+      console.log(`[AnimeSuge] No exact title+year match for "${title}" (${year || '?'}) — returning zero streams (exactness policy)`);
       return [];
     }
 

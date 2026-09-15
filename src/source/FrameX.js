@@ -24,13 +24,30 @@ import { TMDB_PRIMARY } from '../utils/site-secrets.cjs'; // central site-secret
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'framextv.cjs');
 
+// Task 33: ISO 639-1 → display language name (the subset TMDB actually
+// returns as original_language). Drives the per-content audio metadata.
+const ISO_LANG_NAMES = {
+  en: 'English', ja: 'Japanese', ko: 'Korean', hi: 'Hindi', es: 'Spanish',
+  fr: 'French', de: 'German', zh: 'Chinese', cn: 'Chinese', it: 'Italian',
+  ru: 'Russian', pt: 'Portuguese', ta: 'Tamil', te: 'Telugu', ml: 'Malayalam',
+  bn: 'Bengali', mr: 'Marathi', pa: 'Punjabi', ar: 'Arabic', tr: 'Turkish',
+  th: 'Thai', id: 'Indonesian', ms: 'Malay', fil: 'Filipino', tl: 'Filipino',
+  sv: 'Swedish', no: 'Norwegian', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian',
+  he: 'Hebrew', fa: 'Persian', vi: 'Vietnamese',
+};
+
 export class FrameX extends Source {
   constructor(fetcher) {
     super();
     this.id = 'framextv';
     this.label = 'FrameX';
     this.contentTypes = ['movie', 'series'];
-    this.countryCodes = [CountryCode.multi, CountryCode.en, CountryCode.ja, CountryCode.ko];
+    // Task 33: was [multi, en, ja, ko] — a hardcode that leaked Japanese+
+    // Korean flags onto EVERY card ("Audio: English, Japanese, Korean" on
+    // English-only films). Per-stream codes are now derived from the
+    // content's real audio (see enrichment below); this default only backs
+    // streams that somehow bypass enrichment.
+    this.countryCodes = [CountryCode.multi, CountryCode.en];
     this.baseUrl = 'https://framextv.tech';
     this.fetcher = fetcher;
     this.ttl = 10 * 60 * 1000; // 10min
@@ -49,23 +66,26 @@ export class FrameX extends Source {
     // The API resolves anime by TMDB TV ID directly — no AniList mapping needed.
     const apiType = tmdbId.season ? 'tv' : 'movie';
     let isAnime = false;
+    let originalLanguage = '';
 
-    // Detect anime for metadata enrichment (Japanese audio marker)
-    if (tmdbId.season) {
-      try {
-        const tmdbUrl = `https://api.themoviedb.org/3/tv/${tmdbId.id}?api_key=${TMDB_PRIMARY}`;
-        const { gotScraping } = await import('got-scraping');
-        const r = await gotScraping.get(tmdbUrl, {
-          headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
-          timeout: { request: 8000 }, throwHttpErrors: false, http2: false,
-        });
-        if (r.statusCode === 200) {
-          const data = JSON.parse(r.body);
-          isAnime = data.original_language === 'ja' &&
-            (data.genres || []).some(g => g.id === 16);
-        }
-      } catch { /* best effort */ }
-    }
+    // Task 33: probe TMDB for BOTH movies and series (previously movies were
+    // skipped entirely, so every movie stream inherited the source-level
+    // [en, ja, ko] default → wrong audio flags on English-only films). One
+    // 8s-capped call; failure falls back to the English default below.
+    try {
+      const tmdbUrl = `https://api.themoviedb.org/3/${apiType}/${tmdbId.id}?api_key=${TMDB_PRIMARY}`;
+      const { gotScraping } = await import('got-scraping');
+      const r = await gotScraping.get(tmdbUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+        timeout: { request: 8000 }, throwHttpErrors: false, http2: false,
+      });
+      if (r.statusCode === 200) {
+        const data = JSON.parse(r.body);
+        originalLanguage = data.original_language || '';
+        isAnime = originalLanguage === 'ja' &&
+          (data.genres || []).some(g => g.id === 16);
+      }
+    } catch { /* best effort */ }
 
     const streams = await callNuvioProvider(PROVIDER_PATH, {
       tmdbId: tmdbId.id,
@@ -84,20 +104,35 @@ export class FrameX extends Source {
       for (const s of streams) {
         // Parse quality markers from the stream name/title
         const height = parseHeight(s.quality);
-        const serverName = s.server || s.name || '';
+
+        // Task 33: audio metadata. The FrameX API returns audioTracks: null
+        // for its provider backends (verified live across movie/series/
+        // anime requests), and buildStreamResults then fell back to the
+        // source-level countryCodes — the old [multi, en, ja, ko] hardcode
+        // that produced "Audio: English, Japanese, Korean" on English-only
+        // films. When the API omits tracks, inject the content's REAL
+        // audio language instead: anime → Japanese (extractor handles the
+        // English dub), otherwise the TMDB original language, else English.
+        // This ONLY touches meta labels — URLs, counts and playability are
+        // untouched.
+        const apiTracks = normalizeAudioTracks(s.audioTracks);
+        if (apiTracks.length === 0) {
+          s.audioTracks = [isAnime ? 'Japanese' : (ISO_LANG_NAMES[originalLanguage] || 'English')];
+        }
 
         // Build enriched title with metadata markers
         let markers = [];
-        if (s.quality) markers.push(s.quality);
+        // Task 33: do NOT re-push s.quality — the scraper's title already
+        // embeds it ("FrameX <provider> <quality> <server>"), so the extra
+        // marker duplicated it on cards ("headhunter 1080p headhunter 1080p").
         markers.push('WEB-DL');
         if (height === 2160) { markers.push('HEVC'); markers.push('HDR'); }
-        else if (s.quality && s.quality.includes('1080')) markers.push('x264');
-        else markers.push('x264');
+        else { markers.push('x264'); }
 
         // Audio language — prefer the API's own audioTracks metadata
         // ("Dual Audio (Hindi + English)" / "Hindi" / …), which also drives
         // the language flags + DUAL/MULTI tags via buildStreamResults;
-        // fall back to the anime/English default when absent.
+        // fall back to the injected single-language track above.
         markers.push(buildAudioLabel(normalizeAudioTracks(s.audioTracks), s.hasMultipleAudio)
           || (isAnime ? 'Japanese' : 'English'));
 

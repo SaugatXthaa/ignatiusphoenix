@@ -72,7 +72,13 @@ async function getGotScraping() {
 // ─── HTTP helpers (got-scraping — bypasses Cloudflare) ─────────────────────
 async function fetchText(url, opts) {
   opts = opts || {};
-  const timeout = opts.timeout || 15000;
+  // Task 33: per-fetch timeout tightened 15s → 8s. The full chain is 5-8
+  // sequential hops; on Render's 0.1-CPU instances every hop runs 2-4x
+  // slower than sandbox, and a single 15s-stalled hop used to eat half of
+  // the source time budget before the quality pool even started. Normal
+  // hops answer in 1-3s; 8s keeps ~2.5x headroom while capping the damage
+  // of one dead hop. Env-tunable for ops without a redeploy.
+  const timeout = opts.timeout || (parseInt(process.env.MDV2_FETCH_TIMEOUT_MS, 10) || 8000);
   const gotScraping = await getGotScraping();
   if (!gotScraping) throw new Error('got-scraping unavailable');
   const headers = {
@@ -125,7 +131,9 @@ async function fetchRedirectChain(url, maxHops) {
           'Accept': 'text/html,*/*',
           'Referer': referer,
         },
-        timeout: { request: 10000 },
+        // Task 33: 10s → 6s per hop — the pixel chain is up to 5 hops, so a
+        // fully-stalled chain must not exceed ~30s of the source budget.
+        timeout: { request: 6000 },
         throwHttpErrors: false,
         followRedirect: false,
         http2: true,
@@ -166,18 +174,27 @@ async function fetchRedirectChain(url, maxHops) {
 }
 
 // ─── TMDB info ─────────────────────────────────────────────────────────────
+// Task 33: 10-min TTL cache for TMDB details (see getTMDBInfo below).
+const _tmdbInfoCache = new Map();
+const TMDB_INFO_TTL_MS = 10 * 60 * 1000;
 async function getTMDBInfo(tmdbId, type) {
   const isTV = type === 'tv' || type === 'series';
+  // Task 33: 10-min TTL cache — the wrapper retries on empty sweeps and
+  // each retry re-called TMDB; on Render every round-trip costs seconds of
+  // the source time budget. TMDB details are immutable for our purposes.
+  const cacheKey = `${isTV ? 'tv' : 'movie'}:${tmdbId}`;
+  const cachedHit = _tmdbInfoCache.get(cacheKey);
+  if (cachedHit && Date.now() - cachedHit.at < TMDB_INFO_TTL_MS) return cachedHit.info;
   const url = `https://api.themoviedb.org/3/${isTV ? 'tv' : 'movie'}/${tmdbId}` +
               `?api_key=${TMDB_API_KEY}&append_to_response=external_ids`;
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': UA },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const j = await res.json();
-    return {
+    const info = {
       title: (isTV ? j.name : j.title) || 'Unknown',
       year: ((isTV ? j.first_air_date : j.release_date) || '').slice(0, 4),
       imdbId: j.imdb_id || (j.external_ids && j.external_ids.imdb_id) || null,
@@ -185,6 +202,8 @@ async function getTMDBInfo(tmdbId, type) {
       originalLanguage: j.original_language || '',
       type, tmdbId: String(tmdbId),
     };
+    _tmdbInfoCache.set(cacheKey, { at: Date.now(), info });
+    return info;
   } catch (e) {
     console.log(`[MoviesDrive] TMDB lookup failed: ${e.message}`);
     return null;
@@ -765,6 +784,7 @@ function buildStream(url, info, quality, language, source, size, fileName, isAni
     _codec: codec,
     _sourceType: sourceType,
     _hdr: hdr,
+    _language: language,
     _fileSize: fileSizeBytes,
     _isAnime: isAnime,
     _hasSubs: hasSubs,
@@ -774,8 +794,11 @@ function buildStream(url, info, quality, language, source, size, fileName, isAni
 
 // ─── Main entry point ─────────────────────────────────────────────────────
 // ─── Bounded-concurrency map (keeps hubcloud happy — no unbounded burst) ───
-async function mapPool(items, limit, fn) {
-  const out = new Array(items.length);
+async function mapPool(items, limit, fn, outArr) {
+  // Task 33: accepts an optional pre-created out array so the caller can
+  // race the pool against a deadline and snapshot whichever quality chains
+  // resolved in time (deadline-driven partial delivery — see getStreams).
+  const out = outArr || new Array(items.length);
   let i = 0;
   await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
     while (i < items.length) {
@@ -787,6 +810,7 @@ async function mapPool(items, limit, fn) {
 }
 
 async function getStreams(tmdbId, type, season, episode) {
+  const startedAt = Date.now();
   tmdbId = String(tmdbId);
   const isTV = type === 'tv' || type === 'series';
   console.log(`[MoviesDrive] Request: tmdb=${tmdbId} type=${type}` +
@@ -805,21 +829,30 @@ async function getStreams(tmdbId, type, season, episode) {
 
   // 2. Search MoviesDrive (Task 24: wp-json search controller; search.php is
   //    broken upstream and returns the same latest posts for every query).
-  //    Query ladder: full title → title without subtitle tail → imdb id.
+  //    Query ladder: full title → (short title ∥ imdb id) — Task 33 runs the
+  //    two fallbacks CONCURRENTLY instead of sequentially: each search is a
+  //    network round-trip that costs seconds on Render, and the old serial
+  //    ladder could burn ~24s of the source budget before any resolution
+  //    work even started.
   let searchResults = await searchMoviesdrive(info.title, 10);
   let picked = pickBestPost(searchResults, info, isTV);
   if (!picked) {
     // index-gap fallback: drop everything after the first colon/dash segment
     const shortTitle = info.title.split(/[:–—-]/)[0].trim();
-    if (shortTitle && shortTitle.toLowerCase() !== info.title.toLowerCase()) {
-      const altResults = await searchMoviesdrive(shortTitle, 10);
-      picked = pickBestPost(altResults, info, isTV);
-      if (picked) console.log(`[MoviesDrive] Short-title fallback "${shortTitle}" matched: ${picked.title.slice(0, 50)}`);
+    const wantShort = shortTitle && shortTitle.toLowerCase() !== info.title.toLowerCase();
+    if (wantShort || info.imdbId) {
+      const [altResults, imdbResults] = await Promise.all([
+        wantShort ? searchMoviesdrive(shortTitle, 10) : Promise.resolve(null),
+        info.imdbId ? searchMoviesdrive(info.imdbId, 10) : Promise.resolve(null),
+      ]);
+      if (altResults) {
+        picked = pickBestPost(altResults, info, isTV);
+        if (picked) console.log(`[MoviesDrive] Short-title fallback "${shortTitle}" matched: ${picked.title.slice(0, 50)}`);
+      }
+      if (!picked && imdbResults) {
+        picked = imdbResults.find(r => r.imdbId === info.imdbId) || null;
+      }
     }
-  }
-  if (!picked && info.imdbId) {
-    const imdbResults = await searchMoviesdrive(info.imdbId, 10);
-    picked = imdbResults.find(r => r.imdbId === info.imdbId) || null;
   }
   if (!picked) {
     console.log(`[MoviesDrive] No confident match for "${info.title}" — refusing to serve a wrong-title post`);
@@ -1036,7 +1069,29 @@ async function getStreams(tmdbId, type, season, episode) {
     }
   };
 
-  const resolvedStreams = (await mapPool(qualityLinks, 3, resolveQualityLink)).filter(Boolean);
+  // Task 33: deadline-driven partial delivery. Each quality chain is 5-8
+  // sequential upstream fetches; on Render's 0.1-CPU instances a chain can
+  // take 20-40s while the wrapper's race cap is 30s — the old all-or-nothing
+  // await meant one slow chain discarded even the chains that HAD finished
+  // (production /debug/stream showed durationMs≈32.6s with count 0 while the
+  // same title resolved 4 streams in 3.3s from sandbox). Race the pool
+  // against a deadline and deliver whichever chains resolved in time:
+  // 1-2 cards beat zero. Env-tunable for ops tuning without a redeploy.
+  const RESOLVE_DEADLINE_MS = parseInt(process.env.MDV2_RESOLVE_DEADLINE_MS, 10) || 21000;
+  const resolveBudgetMs = Math.max(3000, RESOLVE_DEADLINE_MS - (Date.now() - startedAt));
+  const poolOut = new Array(qualityLinks.length);
+  const poolPromise = mapPool(qualityLinks, 3, resolveQualityLink, poolOut);
+  // Defensive: the pool never rejects (per-item try/catch), but an unhandled
+  // rejection after the deadline race has already returned would crash Node.
+  poolPromise.catch(() => {});
+  const raceWinner = await Promise.race([
+    poolPromise,
+    new Promise(r => setTimeout(() => r('__deadline__'), resolveBudgetMs)),
+  ]);
+  if (raceWinner === '__deadline__') {
+    console.log(`[MoviesDrive] ⏱ Resolve deadline (${resolveBudgetMs}ms) — delivering ${poolOut.filter(Boolean).length}/${qualityLinks.length} resolved chain(s)`);
+  }
+  const resolvedStreams = (raceWinner === '__deadline__' ? poolOut.slice() : raceWinner).filter(Boolean);
 
   const allStreams = [];
   const seenUrls = new Set();
