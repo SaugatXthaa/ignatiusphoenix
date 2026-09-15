@@ -130,7 +130,7 @@ export class VidKing extends Extractor {
     const cached = this.tmdbCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < this.TMDB_CACHE_TTL) {
       this.logger?.info?.(`VidKing: cache hit for tmdb=${tmdbId} (${cached.streams.length} streams)`);
-      return cached.streams;
+      return this._rebrandForCaller(cached.streams, meta);
     }
 
     // Dedupe in-flight calls — if another call for the same tmdbId is already
@@ -138,7 +138,7 @@ export class VidKing extends Extractor {
     const existing = this.tmdbInFlight.get(cacheKey);
     if (existing) {
       this.logger?.info?.(`VidKing: deduping in-flight call for tmdb=${tmdbId}`);
-      return existing;
+      return existing.then(streams => this._rebrandForCaller(streams, meta));
     }
 
     const promise = this._extractUncached(ctx, url, meta, preloaded, type, tmdbId, season, episode);
@@ -161,6 +161,30 @@ export class VidKing extends Extractor {
     } finally {
       this.tmdbInFlight.delete(cacheKey);
     }
+  }
+
+  // Re-brand shared cached/deduped results for THIS caller.
+  // The per-tmdbId cache + in-flight dedup share ONE result array across every
+  // source that rides the same speedracelight backend (vidsrcsbs, watchseries,
+  // cinewave, vidfast, primeshows, peachify, ...). The FIRST caller's
+  // meta.sourceId gets baked into the shared result objects — the resolver's
+  // final URL+sourceId dedup then treated every later caller's copy as a
+  // duplicate and dropped them, so those sources returned ZERO streams
+  // (vidsrcsbs zero-card regression). Clone per caller and stamp the caller's
+  // own identity: URLs, titles, quality and provider metadata are
+  // caller-independent for the same tmdbId — only sourceId/sourceLabel differ.
+  _rebrandForCaller(streams, meta) {
+    if (!Array.isArray(streams) || streams.length === 0) return [];
+    const callerSourceId = meta?.sourceId || 'vidking';
+    const callerSourceLabel = meta?.sourceLabel || 'VidKing';
+    return streams.map(s => ({
+      ...s,
+      meta: {
+        ...(s.meta || {}),
+        sourceId: callerSourceId,
+        sourceLabel: callerSourceLabel,
+      },
+    }));
   }
 
   async _extractUncached(ctx, url, meta, preloaded, type, tmdbId, season, episode) {

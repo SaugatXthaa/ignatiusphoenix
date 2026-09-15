@@ -35,12 +35,22 @@ export class VidSrcSbs extends Source {
 
     const title = name + (tmdbId.season ? ` ${TmdbId.formatSeasonAndEpisode(tmdbId)}` : ` (${year})`);
 
-    // Only pass meta.vidking for MOVIES — speedracelight returns wrong
-    // content for series/anime (fuzzy title matching issue).
-    const vidkingMeta = tmdbId.season ? null : {
+    // Pass meta.vidking for BOTH movies and series — it routes embed URLs that
+    // have no dedicated extractor (web.nxsha.app, cinesrc.st, player.videasy.net)
+    // to the VidKing extractor's speedracelight API. Without it the TV embeds
+    // match no extractor at all and the source returns ZERO series streams.
+    // The old "wrong content for series" note dates from the title-fuzzy
+    // matching era; the API now resolves TV by exact tmdbId + seasonId +
+    // episodeId (verified live: watchseries/cinewave/vidking deliver correct
+    // series content — BB S01E01 — through this exact path).
+    const vidkingMeta = {
       name,
       year,
       tmdbId: tmdbId.id,
+      ...(tmdbId.season && {
+        season: Number(tmdbId.season),
+        episode: Number(tmdbId.episode || 1),
+      }),
     };
 
     const results = [];
