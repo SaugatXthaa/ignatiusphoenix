@@ -113,6 +113,11 @@ export class VidEasy extends Source {
     // module. One empty sweep ≠ no streams. Empty sweeps fail fast
     // (~2-4s), so worst-case wall time stays under the resolver's 35s
     // per-source cutoff.
+    // Race cap 30s (not 45s): the resolver discards everything past its 35s
+    // SOURCE_TIMEOUT anyway, so a race beyond ~32s only wastes work — and on
+    // CPU-starved Render free-tier instances the cutoff fires mid-retry-loop,
+    // zeroing the whole source. 30s keeps every completed retry loop
+    // deliverable.
     const EMPTY_RETRY_MAX = 2;
     const EMPTY_RETRY_DELAY_MS = 2000;
 
@@ -127,7 +132,7 @@ export class VidEasy extends Source {
           }
           return out;
         })(),
-        new Promise(r => setTimeout(() => r(null), 45000)),
+        new Promise(r => setTimeout(() => r(null), 30000)),
       ]);
     } catch (e) {
       console.error(`[videasy] getStreams error: ${e?.message || e}`);

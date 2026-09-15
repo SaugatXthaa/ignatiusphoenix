@@ -109,10 +109,25 @@ export class MoviesDriveV2 extends Source {
     if (!mod || typeof mod.getStreams !== 'function') return [];
 
     const mediaType = tmdbId.season ? 'tv' : 'movie';
+    // Retry on empty sweeps: the search index and the hubcloud/gamerxyt hops
+    // fail stochastically per request (search index gaps, CF challenges on
+    // individual hops). One empty sweep ≠ no streams — the whole chain is
+    // fast (live-measured: success ~3.5s, empty fail ~2-5s), so 2 bounded
+    // retries stay far under the resolver's 35s per-source cutoff.
+    const EMPTY_RETRY_MAX = 2;
+    const EMPTY_RETRY_DELAY_MS = 1500;
+
     let streams;
     try {
       streams = await Promise.race([
-        mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null),
+        (async () => {
+          let out = await mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null);
+          for (let attempt = 0; Array.isArray(out) && out.length === 0 && attempt < EMPTY_RETRY_MAX; attempt++) {
+            await new Promise(r => setTimeout(r, EMPTY_RETRY_DELAY_MS));
+            out = await mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null);
+          }
+          return out;
+        })(),
         new Promise(r => setTimeout(() => r(null), 30000)),
       ]);
     } catch (e) {

@@ -403,6 +403,11 @@ export class StreamResolver {
       'videasy',
       // VideasyTo — Playwright headless browser takes 30-60s; must start early
       'videasyto',
+      // MoviesDrive v2 — 8-hop sequential chain (search → hubcloud → gamerxyt →
+      // workers.dev → googleusercontent); without priority it queues behind 15
+      // concurrent sources on Render's 0.1-CPU instances and hits the 35s
+      // SOURCE_TIMEOUT before the chain completes → zero cards every request
+      'moviesdrivev2',
       // NikaStream — Anivexa API takes 20-30s; must start early
       'nikastream',
       // AniKage — prox.anicore.tv API takes 15-25s; must start early
