@@ -1193,6 +1193,15 @@ app.get('/debug/source/:sourceId', async (req, res) => {
     config: { multi: 'on', en: 'on' },
   };
 
+  // Task 38: capture the scraper's console output so zero-stream sources can
+  // be diagnosed from production telemetry without Render log access.
+  const capturedLogs = [];
+  const origLog = console.log, origError = console.error, origWarn = console.warn;
+  console.log = (...a) => { const s = a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '); if (capturedLogs.length < 60) capturedLogs.push(s.slice(0, 220)); origLog(...a); };
+  console.error = (...a) => { const s = a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '); if (capturedLogs.length < 60) capturedLogs.push('[err] ' + s.slice(0, 220)); origError(...a); };
+  console.warn = (...a) => { const s = a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '); if (capturedLogs.length < 60) capturedLogs.push('[warn] ' + s.slice(0, 220)); origWarn(...a); };
+  const restoreConsole = () => { console.log = origLog; console.error = origError; console.warn = origWarn; };
+
   const t0 = Date.now();
   try {
     // Call handleInternal directly to bypass the cache
@@ -1201,8 +1210,9 @@ app.get('/debug/source/:sourceId', async (req, res) => {
       new Promise(r => setTimeout(() => r({ __timeout: true }), 35000)),
     ]);
     const dt = Date.now() - t0;
+    restoreConsole();
     if (results?.__timeout) {
-      return res.json({ source: sourceId, type, id: rawId, timedOut: true, durationMs: dt });
+      return res.json({ source: sourceId, type, id: rawId, timedOut: true, durationMs: dt, logs: capturedLogs });
     }
     // full=1 → untruncated stream URLs (up to 3). Diagnostic use only: the
     // default 150-char slice keeps responses small for humans, but it makes
@@ -1214,6 +1224,7 @@ app.get('/debug/source/:sourceId', async (req, res) => {
       type,
       id: rawId,
       durationMs: dt,
+      logs: capturedLogs,
       count: Array.isArray(results) ? results.length : 0,
       results: Array.isArray(results) ? results.slice(0, sliceLen).map(r => ({
         url: wantFull ? r.url?.href : r.url?.href?.slice(0, 150),
@@ -1223,11 +1234,13 @@ app.get('/debug/source/:sourceId', async (req, res) => {
     });
   } catch (e) {
     const dt = Date.now() - t0;
+    restoreConsole();
     return res.json({
       source: sourceId,
       type,
       id: rawId,
       durationMs: dt,
+      logs: capturedLogs,
       error: e?.message || String(e),
       stack: e?.stack?.split('\n').slice(0, 5),
     });
