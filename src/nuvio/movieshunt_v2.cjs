@@ -112,11 +112,58 @@ async function searchSite(title) {
 }
 
 // ---------------------------------------------------------------------------
+// Size/codec/bit-depth from a quality label like "1080p [3.3GB]" / "1080p 10Bit HEVC [2.1GB]"
+// (shared by the post-page context windows and the abhilinks archive headers)
+// ---------------------------------------------------------------------------
+function parseSizeToken(text) {
+  const m = String(text || '').match(/(\d+(?:\.\d+)?\s*(?:GB|MB))(?![a-z])/i);
+  return m ? m[1].replace(/\s+/g, '') : null;
+}
+function parseCodecToken(text) {
+  const t = String(text || '').toLowerCase();
+  if (t.includes('hevc') || t.includes('x265') || t.includes('h265') || t.includes('h.265')) return 'HEVC';
+  if (t.includes('x264') || t.includes('h264') || t.includes('h.264') || t.includes('avc')) return 'x264';
+  return null;
+}
+function parseBitDepthToken(text) {
+  return /10\s*-?\s*bit/i.test(String(text || '')) ? '10-bit' : null;
+}
+function parseSourceTypeToken(text) {
+  const t = String(text || '').toLowerCase();
+  if (t.includes('remux')) return 'BluRay Remux';
+  if (t.includes('bluray') || t.includes('bdrip') || t.includes('brrip')) return 'BluRay';
+  if (t.includes('web-dl') || t.includes('webdl')) return 'WebDL';
+  if (t.includes('webrip') || /\bweb\b/.test(t)) return 'WebRip';
+  if (t.includes('hdrip')) return 'HDRip';
+  if (t.includes('hdtv')) return 'HDTV';
+  return null;
+}
+// Audio from the post title — real patterns: "{Hindi-English}",
+// "Dual Audio [Hindi DD5.1 + English]", "Hindi ORG DD5.1", "[Hindi (ORG 2.0) + English]"
+function parseAudioToken(postTitle) {
+  const t = String(postTitle || '');
+  const langs = [];
+  const add = (name) => { if (name && !langs.includes(name)) langs.push(name); };
+  if (/\bhindi\b|\bhin\b|\borg\b/i.test(t)) add('Hindi');
+  if (/\benglish\b|\beng\b/i.test(t)) add('English');
+  if (/\btamil\b/i.test(t)) add('Tamil');
+  if (/\btelugu\b/i.test(t)) add('Telugu');
+  if (/\bmalayalam\b/i.test(t)) add('Malayalam');
+  if (/\bjapanese\b/i.test(t)) add('Japanese');
+  if (/\bkorean\b/i.test(t)) add('Korean');
+  return langs.length ? langs.join(' + ') : null;
+}
+
+// ---------------------------------------------------------------------------
 // Parse movie page for download links (abhilinks + hubcloud + gdflix)
 // Returns: [{ quality, url, type, archiveId?, fileId? }]
 // ---------------------------------------------------------------------------
 function parseDownloadLinks(html) {
   const links = [];
+
+  // Post H1/title — site's own audio/source text for the whole post
+  const h1Match = html.match(/<h1[^>]*>([\s\S]{0,300}?)<\/h1>/i);
+  const postTitle = h1Match ? h1Match[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
 
   // Find abhilinks.site links with quality from nearby text
   const abhiMatches = [...html.matchAll(/href="(https:\/\/abhilinks\.site\/archives\/(\d+)\/?)"/g)];
@@ -125,7 +172,8 @@ function parseDownloadLinks(html) {
     const context = html.slice(Math.max(0, idx - 500), idx + 200);
     const qMatch = context.match(/(2160p|1080p|720p|480p|4K)/i);
     const quality = qMatch ? qMatch[0].toLowerCase() : '?';
-    links.push({ quality, url: m[1], archiveId: m[2], type: 'abhilinks' });
+    const size = parseSizeToken(context);
+    links.push({ quality, url: m[1], archiveId: m[2], type: 'abhilinks', size });
   }
 
   // Find direct hubcloud links (both /drive/ and /video/ paths)
@@ -135,7 +183,8 @@ function parseDownloadLinks(html) {
     const context = html.slice(Math.max(0, idx - 500), idx + 200);
     const qMatch = context.match(/(2160p|1080p|720p|480p|4K)/i);
     const quality = qMatch ? qMatch[0].toLowerCase() : '?';
-    links.push({ quality, url: m[1], fileId: m[2], type: 'hubcloud' });
+    const size = parseSizeToken(context);
+    links.push({ quality, url: m[1], fileId: m[2], type: 'hubcloud', size });
   }
 
   // Find gdflix links
@@ -145,12 +194,13 @@ function parseDownloadLinks(html) {
     const context = html.slice(Math.max(0, idx - 500), idx + 200);
     const qMatch = context.match(/(2160p|1080p|720p|480p|4K)/i);
     const quality = qMatch ? qMatch[0].toLowerCase() : '?';
-    links.push({ quality, url: m[1], fileId: m[2], type: 'gdflix' });
+    const size = parseSizeToken(context);
+    links.push({ quality, url: m[1], fileId: m[2], type: 'gdflix', size });
   }
 
   // Dedupe by URL
   const seen = new Set();
-  return links.filter(l => { if (seen.has(l.url)) return false; seen.add(l.url); return true; });
+  return { links: links.filter(l => { if (seen.has(l.url)) return false; seen.add(l.url); return true; }), postTitle };
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +234,14 @@ async function resolveAbhilinks(abhilinksUrl, fallbackQuality) {
         const num = parseInt(em[1] || em[2], 10);
         if (num >= 1 && num <= 999) episode = num; // keep the LAST marker before the link
       }
-      links.push({ url: m[1], fileId: m[2], source: 'hubcloud', quality, episode });
+      // Task 39: real per-file metadata from the archive header window
+      // ("<h4>1080p [3.3GB]</h4>" / "1080p 10Bit HEVC [2.1GB]")
+      links.push({
+        url: m[1], fileId: m[2], source: 'hubcloud', quality, episode,
+        size: parseSizeToken(before),
+        codec: parseCodecToken(before),
+        bitDepth: parseBitDepthToken(before),
+      });
     }
     const gd = [...html.matchAll(/href="(https:\/\/(?:new\d+\.)?gdflix\.[a-z]+\/file\/([A-Za-z0-9]+))"/g)];
     for (const m of gd) links.push({ url: m[1], fileId: m[2], source: 'gdflix' });
@@ -354,13 +411,20 @@ async function resolveGdflix(gdflixUrl) {
 // ---------------------------------------------------------------------------
 function buildStream(opts) {
   const s = {
-    name: PROVIDER_NAME + ' - ' + opts.quality.toUpperCase(),
+    name: PROVIDER_NAME + ' - ' + (opts.quality || 'Download').toUpperCase(),
     title: opts.title,
     url: opts.url,
     quality: opts.quality === '4k' ? '2160p' : opts.quality,
     type: opts.mimeType || 'video/x-matroska',
     behaviorHints: { bingeGroup: opts.bingeGroup || ('movieshunt-' + opts.quality) },
   };
+  // Task 39: real metadata fields consumed by the wrapper — nothing here is
+  // synthesized; absent values stay absent.
+  if (opts.size) s.size = opts.size;
+  if (opts.codec) s.codec = opts.codec;
+  if (opts.sourceType) s.sourceType = opts.sourceType;
+  if (opts.bitDepth) s.bitDepth = opts.bitDepth;
+  if (opts.audio) s.audio = opts.audio;
   if (opts.filename) s.behaviorHints.filename = opts.filename;
   if (opts.url.includes('googleusercontent')) {
     s.behaviorHints.proxyHeaders = { request: { 'User-Agent': UA } };
@@ -409,9 +473,16 @@ async function getStreams(tmdbId, type, season, episode) {
   try { movieHtml = await fetchText(results[0].url); }
   catch (e) { console.log('[MoviesHunt] Movie page fetch failed: ' + e.message); return []; }
 
-  // Parse download links
-  const links = parseDownloadLinks(movieHtml);
+  // Parse download links — also grabs the post H1 (site's own audio/source text)
+  const { links, postTitle } = parseDownloadLinks(movieHtml);
   console.log('[MoviesHunt] Found ' + links.length + ' download links');
+
+  // Task 39: post-level metadata from the site's own title (e.g.
+  // "Obsession (2026) WEB-DL Dual Audio [Hindi ORG DD5.1 + English] 1080p …")
+  const postSource = parseSourceTypeToken(postTitle || results[0].slug.replace(/-/g, ' '));
+  const postCodec = parseCodecToken(postTitle);
+  const postBit = parseBitDepthToken(postTitle);
+  const postAudio = parseAudioToken(postTitle || results[0].slug.replace(/-/g, ' '));
 
   const allStreams = [];
   const seenFileIds = new Set();
@@ -442,6 +513,8 @@ async function getStreams(tmdbId, type, season, episode) {
             return buildStream({
               quality: q, title: info.title + ' [MoviesHunt ' + String(q).toUpperCase() + ']',
               url: resolved, bingeGroup: 'movieshunt-' + q + '-' + sub.fileId,
+              size: sub.size || link.size, codec: sub.codec || postCodec,
+              sourceType: postSource, bitDepth: sub.bitDepth || postBit, audio: postAudio,
             });
           } else if (sub.source === 'gdflix') {
             const resolved = await resolveGdflix(sub.url);
@@ -452,6 +525,8 @@ async function getStreams(tmdbId, type, season, episode) {
               quality: q, title: info.title + ' [MoviesHunt ' + String(q).toUpperCase() + ' GDFlix]',
               url: resolved.url, bingeGroup: 'movieshunt-gdflix-' + sub.fileId,
               mimeType: resolved.type === 'zip' ? 'application/zip' : 'video/x-matroska',
+              size: sub.size || link.size, codec: postCodec,
+              sourceType: postSource, bitDepth: postBit, audio: postAudio,
             });
           }
           return null;
@@ -465,6 +540,8 @@ async function getStreams(tmdbId, type, season, episode) {
           push(buildStream({
             quality: link.quality, title: info.title + ' [MoviesHunt ' + link.quality.toUpperCase() + ']',
             url: resolved, bingeGroup: 'movieshunt-' + link.quality + '-' + link.fileId,
+            size: link.size, codec: postCodec,
+            sourceType: postSource, bitDepth: postBit, audio: postAudio,
           }));
         }
       } else if (link.type === 'gdflix') {
@@ -476,6 +553,8 @@ async function getStreams(tmdbId, type, season, episode) {
             quality: link.quality, title: info.title + ' [MoviesHunt ' + link.quality.toUpperCase() + ' GDFlix]',
             url: resolved.url, bingeGroup: 'movieshunt-gdflix-' + link.fileId,
             mimeType: resolved.type === 'zip' ? 'application/zip' : 'video/x-matroska',
+            size: link.size, codec: postCodec,
+            sourceType: postSource, bitDepth: postBit, audio: postAudio,
           }));
         }
       }
@@ -509,6 +588,7 @@ async function getStreams(tmdbId, type, season, episode) {
 
 module.exports = {
   getStreams, getTMDBInfo, searchSite, parseDownloadLinks,
+  parseSizeToken, parseCodecToken, parseSourceTypeToken, parseAudioToken,
   resolveAbhilinks, resolveHubcloudDrive, resolveGdflix,
 };
 

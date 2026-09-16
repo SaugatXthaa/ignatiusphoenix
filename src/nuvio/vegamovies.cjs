@@ -200,12 +200,10 @@ function detectQuality(text) {
 
 function detectSize(text) {
   const m = (text || '').match(/([\d.]+)\s*(GB|MB)\s*(?:\/E|\])/i);
-  if (!m) {
-    const m2 = (text || '').match(/([\d.]+)\s*(GB|MB)\b/i);
-    if (!m2) return null;
-    return m2[0];
-  }
-  return m[0];
+  if (m) return m[1] + m[2].toUpperCase();
+  const m2 = (text || '').match(/([\d.]+)\s*(GB|MB)\b/i);
+  if (!m2) return null;
+  return m2[1] + m2[2].toUpperCase();
 }
 
 function detectCodec(text) {
@@ -271,7 +269,10 @@ async function fetchNexdrivePage(nexdriveUrl) {
  */
 function extractFastdlMap(nexdriveHtml) {
   const epMap = new Map();
-  const re = /https:\/\/fastdl\.zip\/embed\.php\?download=([A-Za-z0-9]+)/gi;
+  // Task 39: link form differs by post age — 2026+ posts use "embed.php?download=",
+  // older posts use "embed?download=" (no .php). Accept both or the whole
+  // pre-2026 catalog resolves to zero.
+  const re = /https:\/\/fastdl\.zip\/embed(?:\.php)?\?download=([A-Za-z0-9]+)/gi;
   let m;
   while ((m = re.exec(nexdriveHtml)) !== null) {
     const before = nexdriveHtml.slice(Math.max(0, m.index - 2500), m.index);
@@ -281,7 +282,7 @@ function extractFastdlMap(nexdriveHtml) {
       if (!epMap.has(ep)) epMap.set(ep, m[1]);
     }
   }
-  return { epMap, count: (nexdriveHtml.match(/fastdl\.zip\/embed\.php/g) || []).length };
+  return { epMap, count: (nexdriveHtml.match(/fastdl\.zip\/embed(?:\.php)?/g) || []).length };
 }
 
 // ─── fastdl embed → direct googleusercontent URL ──────────────────────────
@@ -361,8 +362,8 @@ async function getStreams(tmdbId, type, season, episode) {
             return null;
           }
         } else {
-          // movie: first fastdl id on the page
-          fastdlId = (ndHtml.match(/https:\/\/fastdl\.zip\/embed\.php\?download=([A-Za-z0-9]+)/) || [])[1] || null;
+          // movie: first fastdl id on the page (embed.php and embed forms — Task 39)
+          fastdlId = (ndHtml.match(/https:\/\/fastdl\.zip\/embed(?:\.php)?\?download=([A-Za-z0-9]+)/) || [])[1] || null;
         }
         if (!fastdlId) continue;
         const direct = await resolveFastdl(fastdlId);

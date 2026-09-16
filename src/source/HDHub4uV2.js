@@ -1,14 +1,20 @@
 // src/source/HDHub4uV2.js
-// new5.hdhub4u.cl + 4khdhub.one — movies/TV with direct download links (up to 4K)
+// new5.hdhub4u.cl — movies/TV with direct download links (up to 4K)
 //
-// Uses the all-in-one scraper (src/nuvio/hdhub4u_v2.cjs) which:
-//   1. Searches site sitemaps (post-sitemap*.xml)
-//   2. Finds hubcloud.cx/drive/{id} + hubcdn.sbs/file/{id} + hdstream4u.com/file/{id} links
-//   3. Resolves hubcloud → gamerxyt.com → GDrive (googleusercontent) or pixeldrain
-//   4. Resolves hubcdn → base64 decode → GDrive URL
-//   5. Resolves hdstream4u → Dean-Edwards JS unpack → HLS m3u8 URL
+// Uses the all-in-one scraper (src/nuvio/hdhub4u_v2.cjs) which (Task 39):
+//   1. Searches the site's sitemaps NEWEST-first, parallel + deadline-bounded
+//   2. Parses post pages: every download link inherits its nearest heading
+//      label — "720p 10Bit HEVC [760MB]" / "4K [2160p SDR WEB-DL – 9.5GB]"
+//   3. greenmotors.cc/?id= funnels are decoded server-side (same funnel
+//      Task 38 cracked for 4khdhub.one) → hubcloud/hubcdn/hblinks targets,
+//      resolved at play time by HubExtractor/HBLinks
+//   4. hdstream4u.com "Watch Online" links → Dean-Edwards unpack → HLS
 //
-// Returns direct playable URLs (MKV from GDrive, HLS from acek-cdn/dramiyos-cdn).
+// METADATA (Task 39): the scraper returns REAL quality/size/codec/sourceType/
+// audio parsed from the site's own headings and post title. Unknown fields are
+// omitted — the old wrapper fabricated "WEB-DL x264 Hindi-English" for every
+// stream (codec guessed from height, audio hardcoded), which enrichedMeta then
+// adopted as truth. Nothing is invented here anymore.
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,7 +23,7 @@ import bytes from 'bytes';
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
-import { buildStreamResults } from './nuvioHelpers.js';
+import { buildStreamResults, parseSize } from './nuvioHelpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'hdhub4u_v2.cjs');
@@ -76,33 +82,40 @@ export class HDHub4uV2 extends Source {
 
     if (!Array.isArray(streams) || streams.length === 0) return [];
 
-    // Convert scraper streams to buildStreamResults format
+    // Real values only — unknown fields stay out of the title so enrichMeta
+    // can't adopt fabricated specs as truth (Task 39).
     const enrichedStreams = streams.map(s => {
-      const height = parseHeight(s.quality) || 1080;
-      const isHls = s.type === 'application/vnd.apple.mpegurl' || (s.url || '').includes('.m3u8');
+      const height = parseHeight(s.quality);
+      const isHls = s.mime === 'application/vnd.apple.mpegurl' || (s.url || '').includes('.m3u8');
       const isGDrive = (s.url || '').includes('googleusercontent.com');
-      const codec = height >= 2160 ? 'HEVC' : 'x264';
 
-      // Parse file size from title if available
-      let fileSize = undefined;
-      const sizeMatch = (s.title || '').match(/([\d.]+)\s*(GB|MB)/i);
-      if (sizeMatch) {
-        const val = parseFloat(sizeMatch[1]);
-        const unit = sizeMatch[2].toUpperCase();
-        fileSize = unit === 'GB' ? val * 1024 * 1024 * 1024 : val * 1024 * 1024;
-      }
+      const specParts = [];
+      if (height) specParts.push(height + 'p');
+      if (s.sourceType) specParts.push(s.sourceType);
+      if (s.codec) specParts.push(s.codec);
+      if (s.bitDepth) specParts.push(s.bitDepth);
+      if (s.audio) specParts.push(s.audio);
+      const spec = specParts.length > 0 ? `[HDHub4u ${specParts.join(' ')}]` : '[HDHub4u]';
+
+      const fileSize = parseSize(s.size);
 
       return {
         url: s.url,
-        quality: height + 'p',
-        title: `[HDHub4u ${height}p WEB-DL ${codec} Hindi-English]`,
-        name: 'HDHub4u - ' + (s.quality || height + 'p'),
+        quality: height ? height + 'p' : (s.quality || undefined),
+        title: spec,
+        name: 'HDHub4u - ' + (s.quality || (height ? height + 'p' : 'Download')),
         size: fileSize ? bytes(fileSize) : undefined,
         headers: isGDrive ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' } : undefined,
+        // internal passthrough for the meta post-pass
+        _fileSize: fileSize,
+        _sourceType: s.sourceType || undefined,
+        _codec: s.codec || undefined,
+        _bitDepth: s.bitDepth || undefined,
+        _isHls: isHls,
       };
     });
 
-    return buildStreamResults({
+    const results = buildStreamResults({
       streams: enrichedStreams,
       title,
       sourceId: this.id,
@@ -110,5 +123,18 @@ export class HDHub4uV2 extends Source {
       countryCodes: this.countryCodes,
       ctx,
     });
+
+    // Attach the scraper's REAL fields to meta so the card's spec line,
+    // size line and audio flags show site-parsed values (VegaMovies pattern).
+    for (const r of results) {
+      const matched = enrichedStreams.find(s => s.url === r.url.href);
+      if (!matched) continue;
+      if (matched._sourceType) r.meta.sourceType = matched._sourceType;
+      if (matched._codec) r.meta.codec = matched._codec;
+      if (matched._bitDepth) r.meta.bitDepth = matched._bitDepth;
+      if (matched._fileSize) r.meta.bytes = matched._fileSize;
+    }
+
+    return results;
   }
 }

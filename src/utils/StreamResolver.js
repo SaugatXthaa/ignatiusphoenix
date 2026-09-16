@@ -436,6 +436,13 @@ export class StreamResolver {
       // behind wave 1) it burned 30s and shipped 0. Starting in wave 1 gives
       // it the full client budget instead of queue-then-die.
       'hindmoviez',
+      // Task 39: direct-download trio (hdhub4u/movieshunt/vegamovies). All
+      // three resolve fine in ISOLATION (3-7s) but queued behind wave-1 they
+      // started at t≈10s under 70-way concurrency and never fit the 15s
+      // client budget — the user saw 0 streams from sources that were alive.
+      // hdhub4u sitemaps + movieshunt abhilinks chains + vegamovies nexdrive
+      // chains all need the early start to land inside the budget cold.
+      'hdhub4uv2', 'movieshuntv2', 'vegamovies2',
     ]);
     const sortedSources = [...sources].sort((a, b) => {
       const aPriority = PRIORITY_SOURCE_IDS.has(a.id) ? 0 : 1;

@@ -68,6 +68,25 @@ function parseHeight(q) {
   return m ? parseInt(m[1]) : undefined;
 }
 
+// Task 39: real audio list from the post label — the site prints
+// "Dual Audio (Hindi DD5.1 + ESubs)" / "{Hindi-English}" / "Hindi ORG DD5.1".
+// Returns a canonical "Hindi + English"-style label or null (anime default
+// then applies). Only the site's own text is used — no invention.
+function parseAudioFromLabel(label) {
+  const t = String(label || '');
+  const langs = [];
+  const add = (name) => { if (name && !langs.includes(name)) langs.push(name); };
+  if (/\bhindi\b|\bhin\b|\borg\b/i.test(t)) add('Hindi');
+  if (/\benglish\b|\beng\b/i.test(t)) add('English');
+  if (/\btamil\b/i.test(t)) add('Tamil');
+  if (/\btelugu\b/i.test(t)) add('Telugu');
+  if (/\bmalayalam\b/i.test(t)) add('Malayalam');
+  if (/\bjapanese\b/i.test(t)) add('Japanese');
+  if (/\bkorean\b/i.test(t)) add('Korean');
+  if (langs.length === 0) return null;
+  return langs.join(' + ');
+}
+
 // Detect anime via TMDB genres + original language
 async function isAnimeContent(fetcher, ctx, tmdbId) {
   try {
@@ -131,7 +150,7 @@ export class VegaMoviesNew extends Source {
           ? parseFloat(sizeMatch[1]) * 1024 * 1024 * 1024
           : parseFloat(sizeMatch[1]) * 1024 * 1024)
         : null;
-      const audioLabel = isAnime ? 'Japanese + English' : 'Hindi + English';
+      const audioLabel = (isAnime ? parseAudioFromLabel(s.label) || 'Japanese' : parseAudioFromLabel(s.label) || 'Hindi + English');
 
       const countryCodes = isAnime
         ? [CountryCode.multi, CountryCode.ja, CountryCode.en]
@@ -153,6 +172,7 @@ export class VegaMoviesNew extends Source {
         _sourceType: sourceType,
         _codec: codec,
         _isAnime: isAnime,
+        _audioLabel: audioLabel,
       };
     });
 
@@ -173,10 +193,10 @@ export class VegaMoviesNew extends Source {
         if (matched._codec) r.meta.codec = matched._codec;
         if (matched._fileSize) r.meta.bytes = matched._fileSize;
         if (matched._isAnime) {
-          r.meta.audioLabel = 'Japanese + English';
+          r.meta.audioLabel = matched._audioLabel || 'Japanese + English';
           r.meta.isMultiAudio = true;
         } else {
-          r.meta.audioLabel = 'Hindi + English';
+          r.meta.audioLabel = matched._audioLabel || 'Hindi + English';
           r.meta.isMultiAudio = true;
         }
       }
