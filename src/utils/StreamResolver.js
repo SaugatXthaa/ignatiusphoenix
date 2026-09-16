@@ -567,6 +567,23 @@ export class StreamResolver {
       this.logger.info(`StreamResolver: client budget ${CLIENT_BUDGET_MS}ms hit (${settledCount}/${sortedSources.length} sources settled, ${urlResults.length} urlResults) — returning partial results; remaining sources complete in background and will be cached for the next request`);
     }
 
+    // Task 42: give fire-and-forget gated-host probes a short settle window.
+    // On cache-hit requests every source resolves instantly, so probes kicked
+    // in the same tick would never land before the card-build loop consults
+    // verdicts — gated-dead cards (vimeos 403-html, nexabloom, zips, dead
+    // trees) would ship on EVERY warm request. Bounded: max 3s and never past
+    // the client budget (the partial contract stays intact).
+    if (streamGate.pendingCount() > 0) {
+      const remainingBudget = CLIENT_BUDGET_MS - (Date.now() - resolveT0);
+      const waitMs = Math.max(0, Math.min(3000, remainingBudget - 1500));
+      if (waitMs > 0) {
+        await Promise.race([
+          streamGate.pendingSettled(),
+          new Promise(resolve => setTimeout(resolve, waitMs)),
+        ]);
+      }
+    }
+
     // Enrich metadata for all results (parse from title/URL — no source changes)
     for (const r of urlResults) {
       if (!r.error) enrichMeta(r);

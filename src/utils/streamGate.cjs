@@ -182,11 +182,11 @@ function isMediaBody(body) {
 //   'm3u8'  → valid playlist, body + first child line returned
 //   'media' → binary/video response (segment or direct file)
 //   'unknown' → inconclusive (network flake, 5xx, weird body)
-async function fetchHlsLevel(url) {
+async function fetchHlsLevel(url, headers = {}) {
   let res;
   let body = '';
   try {
-    res = await fetchWithTimeout(url, { headers: { 'user-agent': UA } });
+    res = await fetchWithTimeout(url, { headers: { 'user-agent': UA, ...headers } });
     body = (await res.text()).slice(0, 16384); // playlists are KB-sized
   } catch (e) {
     return { state: 'unknown' };
@@ -221,10 +221,10 @@ async function fetchHlsLevel(url) {
 // fetches. Catches alive-master-with-dead-children and html-segment trees.
 //   alive → every probed level is a valid playlist ending in real media
 //   dead  → any level 403/410/404/html/empty (definitive dead signals only)
-async function probeHls(url) {
+async function probeHls(url, headers = {}) {
   let current = url;
   for (let i = 0; i < MAX_HLS_FETCHES; i++) {
-    const lvl = await fetchHlsLevel(current);
+    const lvl = await fetchHlsLevel(current, headers);
     if (lvl.state === 'dead') return 'dead';
     if (lvl.state === 'unknown') return 'unknown';
     if (lvl.state === 'media') return 'alive';
@@ -232,6 +232,29 @@ async function probeHls(url) {
     current = lvl.childUrl;
   }
   return 'alive'; // 3 playlist levels deep and every level valid — real tree
+}
+
+// Unwrap /proxy|/range-proxy cards: probe the INNER upstream exactly as the
+// proxy would (url + referer/origin params as headers). Two wins: no self-
+// request round-trip through the addon (probe fan-out used to hit our own
+// Render URL), and no dependency on the https hostUrl hardcode (locally the
+// addon is plain HTTP, so self-probes TLS-failed → verdicts never landed).
+function unwrapProxy(href) {
+  try {
+    const u = new URL(href);
+    if (u.pathname === '/proxy' || u.pathname === '/range-proxy') {
+      const inner = u.searchParams.get('url');
+      if (inner) {
+        const headers = {};
+        const ref = u.searchParams.get('referer');
+        const org = u.searchParams.get('origin');
+        if (ref) headers.referer = ref;
+        if (org) headers.origin = org;
+        return { url: inner, headers, range: u.pathname === '/range-proxy' };
+      }
+    }
+  } catch (e) { /* fallthrough — probe as direct */ }
+  return null;
 }
 
 async function probe(url) {
@@ -242,7 +265,11 @@ async function probe(url) {
   if (activeProbes >= MAX_CONCURRENT) return 'unknown'; // busy — never queue-drop cards on latency
   await acquire();
   try {
-    if (/^pixeldrain\.(com|dev)$/i.test(host)) return await record(host, await probePixeldrain(url));
+    const un = unwrapProxy(url);
+    const target = un ? un.url : url;
+    const headers = { 'user-agent': UA, ...(un ? un.headers : {}) };
+    if (un && un.range) headers.range = 'bytes=0-2047'; // range-proxy cards: ranged GET like the player
+    if (/^pixeldrain\.(com|dev)$/i.test(host)) return await record(host, await probePixeldrain(target));
     // Serialize per upstream host: concurrent same-host probes can trip
     // upstream rate-limiters (403 bursts) → false dead verdicts. Chained
     // locks keep at most ONE probe chain in flight per gated host.
@@ -252,7 +279,11 @@ async function probe(url) {
     hostLocks.set(host, prev.then(() => myToken));
     await prev.catch(() => {});
     try {
-      return await record(host, await probeHls(url));
+      // Re-check after the lock wait: probes queued before the circuit opened
+      // must not fetch — verdict 'dead' without the upstream round-trip.
+      const circ2 = circuits.get(host);
+      if (circ2 && circ2.openUntil > Date.now()) return 'dead';
+      return await record(host, await probeHls(target, headers));
     } finally {
       releaseLock();
     }
@@ -281,6 +312,12 @@ function record(host, state) {
   circuits.set(host, circ);
   return state;
 }
+// Awaitable snapshot of in-flight probes — the resolver gives kicked probes
+// a short settle window on cache-hit requests (all sources resolve instantly
+// there, so same-tick probes would never land before the build loop).
+function pendingCount() { return inFlight.size; }
+function pendingSettled() { return Promise.allSettled([...inFlight.values()]); }
+
 // Fire-and-forget probe. Safe to call repeatedly: fresh verdicts short-
 // circuit, concurrent probes for the same URL coalesce.
 function kick(url) {
@@ -289,6 +326,14 @@ function kick(url) {
     const ttl = hit.state === 'alive' ? VERDICT_TTL_ALIVE_MS : VERDICT_TTL_DEAD_MS;
     if (Date.now() - hit.at < ttl) return;
     verdicts.delete(url);
+  }
+  // Circuit open → synchronous dead verdict, no probe at all (late-resolving
+  // sources get dropped in the SAME request that opens the circuit).
+  const circ = circuits.get(gateHostOf(url));
+  if (circ && circ.openUntil > Date.now()) {
+    if (verdicts.size > 2048) verdicts.clear();
+    verdicts.set(url, { state: 'dead', at: Date.now() });
+    return;
   }
   if (inFlight.has(url)) return;
   const p = probe(url)
@@ -317,4 +362,4 @@ function pdVideoOk(pixeldrainUrl) {
   return probe(pixeldrainUrl).then(s => s === 'alive');
 }
 
-module.exports = { isGatedHost, gateHostOf, kick, verdict, probe, pdVideoOk };
+module.exports = { isGatedHost, gateHostOf, kick, verdict, probe, pdVideoOk, pendingCount, pendingSettled };
