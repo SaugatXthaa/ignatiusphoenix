@@ -292,6 +292,13 @@ async function runChecks(child, logFile, bootLines) {
   let cfCount = cf?.count ?? 0;
   if (cfCount < 2) { await new Promise(r => setTimeout(r, 8000)); const cf2 = await getJson(`${base}/debug/source/cinefreak?type=movie&id=tmdb:27205`, 60000); cfCount = Math.max(cfCount, cf2?.count ?? 0); }
   check('cinefreak Inception >= 2 (revival guard)', cfCount >= 2, `count=${cfCount}`);
+  // cineby guard (Task 40): clean rewrite of the cineby.by → vidking.net →
+  // speedracelight chain. Yoru alone returns 4-5 Inception qualities (incl
+  // 2160p); threshold 2 keeps the guard immune to single-server flakiness.
+  const cb = await getJson(`${base}/debug/source/cineby?type=movie&id=tmdb:27205`, 60000);
+  let cbCount = cb?.count ?? 0;
+  if (cbCount < 2) { await new Promise(r => setTimeout(r, 8000)); const cb2 = await getJson(`${base}/debug/source/cineby?type=movie&id=tmdb:27205`, 60000); cbCount = Math.max(cbCount, cb2?.count ?? 0); }
+  check('cineby Inception >= 2 (Task 40 rewrite guard)', cbCount >= 2, `count=${cbCount}`);
   // animotvslash standing check (Task 28): anime hardsub/softsub source.
   // One-shot guard with a retry — videas CDN intermittently hangs Range
   // probes from datacenter IPs; a single slow round must not fail the run.

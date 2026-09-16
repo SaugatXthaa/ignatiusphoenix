@@ -329,16 +329,16 @@ export function buildStreamResults({ streams, title, sourceId, sourceLabel, coun
     // googleusercontent.com is also direct-play (GDrive CDN) — it doesn't
     // need a Referer and the NuvioExtractor routes it through /range-proxy
     // (which doesn't send Referer anyway).
-    // *.vimeos.zip (vidsrc-family CDN, backs speedracelight "m4uhd" server
-    // streams surfaced by videasy/videasyto) has an INVERTED hotlink gate:
-    // verified live 403 on any request carrying Referer: vidking.net (the
-    // scraper stamps that on every stream) and 200 #EXTM3U with no Referer.
-    // Skipping Referer routes it as direct HLS — plays clean.
+    // *.vimeos.zip AND *.vimeos.net (vidsrc-family CDN, backs speedracelight
+    // "m4uhd"/"lamovie" server streams — cineby Task 40 verified vimeos.net:
+    // live 403 on ANY request carrying Referer: vidking.net, 200 #EXTM3U with
+    // no Referer — same inverted gate as vimeos.zip) has an INVERTED hotlink
+    // gate: skipping Referer routes it as direct HLS — plays clean.
     // fetch.nexabloom.top / *.vyrnex.top (megaplay.buzz anime CDN since the
     // 2026-09 encrypted-sources change) hard-403 ALL DATACENTER IPs —
     // /proxy would fetch from THIS server and always 403. Skipping Referer
     // routes them as direct HLS so the PLAYER's residential IP fetches them.
-    const NO_REFERER_HOSTS = /pixeldrain\.(com|dev)|fastdlserver\.site|googleusercontent\.com|vimeos\.zip|nexabloom\.top|vyrnex\.top/i;
+    const NO_REFERER_HOSTS = /pixeldrain\.(com|dev)|fastdlserver\.site|googleusercontent\.com|vimeos\.(zip|net)|nexabloom\.top|vyrnex\.top/i;
     const skipReferer = NO_REFERER_HOSTS.test(url.hostname);
 
     const meta = {

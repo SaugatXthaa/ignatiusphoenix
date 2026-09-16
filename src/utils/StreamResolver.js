@@ -412,6 +412,9 @@ export class StreamResolver {
       'stellar', 'stellarrip',
       // VidEasy — speedracelight API takes 15-25s; must start early
       'videasy',
+      // Cineby — same speedracelight backend (cineby.by → vidking.net embeds);
+      // 6 endpoints in parallel + possible seed 429 backoff — start in wave-1
+      'cineby',
       // VideasyTo — Playwright headless browser takes 30-60s; must start early
       'videasyto',
       // MoviesDrive v2 — 8-hop sequential chain (search → hubcloud → gamerxyt →
