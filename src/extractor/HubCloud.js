@@ -7,6 +7,20 @@ import { Format } from '../types.js';
 import { findCountryCodes, findHeight, HUBCLOUD_CACHE_TTL } from '../utils/index.js';
 import { Extractor } from './Extractor.js';
 
+/**
+ * Task 41 (OOM fix): direct MEDIA FILE URLs must never be fetched as text or
+ * delegated to HubCloud.extractInternal — that method fetches the URL as TEXT
+ * to parse a redirect page, so handing it a file URL buffers the WHOLE VIDEO
+ * in memory (observed: 3.4 GB RSS → kernel OOM-kill during a single merged
+ * /stream request, after hubcdn pages began flowing through HubExtractor via
+ * hblinks.co archives). Returns true for hosts/paths that ARE the media file
+ * itself. Exported for HubExtractor's delegation decision too.
+ */
+export function isDirectFileUrl(url) {
+  if (/\.r2\.dev$|(^|\.)r2\.cloudflarestorage\.com$/i.test(url.hostname)) return true;
+  return /\.(mkv|mp4|avi|webm|mov|m3u8|ts)$/i.test(url.pathname);
+}
+
 /** Delay before retrying Hop 1 after a failed Hop 2 (ms). */
 const RETRY_DELAY_MS = 2500;
 
@@ -129,6 +143,21 @@ export class HubCloud extends Extractor {
   }
 
   async extractInternal(ctx, url, meta) {
+    // Task 41 (OOM fix): belt-and-suspenders — if a caller hands us a DIRECT
+    // FILE URL (r2.dev / media extension), there is no redirect page to
+    // parse. Fetching it as text would buffer the whole video in memory.
+    // Ship it as a direct card instead (same card the delegation would have
+    // produced, minus the fatal file-as-text download).
+    if (isDirectFileUrl(url)) {
+      const hls = /\.m3u8$/i.test(url.pathname);
+      return [{
+        url,
+        format: hls ? Format.hls : Format.mp4,
+        meta: { ...meta, extractorId: 'hubcloud_directfile' },
+        label: 'HubCloud (Direct)',
+        seekable: !hls,
+      }];
+    }
     const headers = { Referer: meta.referer ?? url.href };
 
     const redirectHtml = await this.fetcher.text(ctx, url, { headers });

@@ -667,6 +667,23 @@ async function headOk(url) {
   } catch (e) { return false; }
 }
 
+// Task 41: cached pixeldrain liveness. The user wants WORKING pixeldrain
+// cards shipped from supporting sources — but every request re-HEADing the
+// same IDs would burn the resolve deadline (each probe ≤6s). A file's decoy
+// status flips rarely, so cache the probe verdict per ID for 30 minutes:
+// the first chain pays one probe after its primary card is already resolved,
+// every request inside the TTL ships the extra card with zero added latency.
+const _pdAliveCache = new Map(); // pdId -> { alive, at }
+const PD_ALIVE_TTL_MS = 30 * 60 * 1000;
+async function pdAliveCached(pdId) {
+  const hit = _pdAliveCache.get(pdId);
+  if (hit && Date.now() - hit.at < PD_ALIVE_TTL_MS) return hit.alive;
+  const alive = await headOk(`https://pixeldrain.dev/api/file/${pdId}?download`);
+  if (_pdAliveCache.size > 256) _pdAliveCache.clear();
+  _pdAliveCache.set(pdId, { alive, at: Date.now() });
+  return alive;
+}
+
 // Task 34: gpdl.hubcloud.* is a 302 front for a workers.dev backend. Probe
 // it with a redirect-following HEAD and return the FINAL URL when the
 // backend is alive (a *.workers.dev URL survives the resolver's
@@ -1193,7 +1210,27 @@ async function getStreams(tmdbId, type, season, episode) {
       }
       console.log(`[MoviesDrive]   ✓ ${source}: ${playUrl.slice(0, 80)}...`);
 
-      return buildStream(playUrl, info, quality, language, source, resolved.size || '', fileName, isAnime);
+      const primary = buildStream(playUrl, info, quality, language, source, resolved.size || '', fileName, isAnime);
+
+      // Task 41: ship a liveness-verified PixelDrain mirror as an EXTRA card
+      // when the gamer page carries one. PixelDrain is the most robust
+      // delivery path for players — the file is fetched client-side with
+      // native Range support, no addon proxy hop and no expiring
+      // googleusercontent token (the 403/502-at-play class). Previously these
+      // mirrors shipped only as a single last-resort fallback, so a live
+      // googleusercontent chain starved them. Probe verdict is cached
+      // (pdAliveCached) so steady-state adds zero latency; the single probe
+      // runs AFTER the primary is resolved, so worst case the whole chain
+      // lands in the 5-min cache for the warm request instead of missing it.
+      let pdExtra = null;
+      if (resolved.pixeldrainIds && resolved.pixeldrainIds.length > 0) {
+        const pdId = resolved.pixeldrainIds.find(id => `https://pixeldrain.dev/api/file/${id}` !== playUrl);
+        if (pdId && await pdAliveCached(pdId)) {
+          pdExtra = buildStream(`https://pixeldrain.dev/api/file/${pdId}?download`, info, quality, language, 'PixelDrain', resolved.size || '', fileName, isAnime);
+          console.log(`[MoviesDrive]   ✓ PixelDrain mirror alive: ${pdId}`);
+        }
+      }
+      return pdExtra ? [primary, pdExtra] : primary;
     } catch (e) {
       console.log(`[MoviesDrive]   ✗ Resolution failed: ${e.message.slice(0, 80)}`);
       return null;
@@ -1247,7 +1284,10 @@ async function getStreams(tmdbId, type, season, episode) {
 
   const allStreams = [];
   const seenUrls = new Set();
-  for (const s of resolvedStreams) {
+  // Task 41: flat() — resolveQualityLink now returns [primary, pdExtra] pairs
+  // (PixelDrain mirror alongside the primary card); objects pass through
+  // unchanged so pre-Task-41 single-object returns stay compatible.
+  for (const s of resolvedStreams.flat()) {
     if (!s || !s.url || seenUrls.has(s.url)) continue;
     seenUrls.add(s.url);
     allStreams.push(s);

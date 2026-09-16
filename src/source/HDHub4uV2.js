@@ -110,6 +110,13 @@ export class HDHub4uV2 extends Source {
         name: 'HDHub4u - ' + (s.quality || (height ? height + 'p' : 'Download')),
         size: fileSize ? bytes(fileSize) : undefined,
         headers: isGDrive ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' } : undefined,
+        // Task 41: hdstream4u "Watch Online" HLS (acek-cdn/dramiyos-cdn hls2
+        // masters) 403s when a client fetches the signed master.m3u8 directly
+        // (IP-gated — verified live: direct 403, /proxy 200 with AND without
+        // Referer). Setting Referer makes NuvioExtractor route the whole HLS
+        // tree through /proxy?referer=…, which also rewrites variant/segment
+        // URLs so the entire tree authenticates through the addon.
+        ...(isHls && !isGDrive ? { headers: { Referer: 'https://hdstream4u.com/' } } : {}),
         // internal passthrough for the meta post-pass
         _fileSize: fileSize,
         _sourceType: s.sourceType || undefined,

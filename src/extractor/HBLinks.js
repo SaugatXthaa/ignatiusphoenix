@@ -57,14 +57,21 @@ export class HBLinks extends Extractor {
       }
     }
 
+    // Task 41: resolve the page's hub links in PARALLEL. The archive pages
+    // carry 2-3 independent targets (hubcloud.ist/drive, hubcdn.club/file,
+    // hubdrive.pics) and each hub resolution is a multi-hop chain (5-20s).
+    // The old sequential loop could take 30-60s wall time — far beyond
+    // hdhub4uv2's 33s wrapper race — so the resolved cards never made it
+    // into a live /stream response. HubExtractor.extract is in-flight-deduped
+    // and cache-backed, so concurrent calls for different links are safe.
     const results = [];
-    for (const hubUrl of uniqueLinks) {
+    await Promise.all(uniqueLinks.map(async (hubUrl) => {
       try {
         results.push(...await this.hubExtractor.extract(ctx, hubUrl, updatedMeta));
       } catch (error) {
         this.logger.warn(`HBLinks extraction failed for ${hubUrl.href}: ${error}`);
       }
-    }
+    }));
 
     return results;
   }

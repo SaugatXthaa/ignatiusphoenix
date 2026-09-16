@@ -628,7 +628,14 @@ app.get('/range-proxy', async (req, res) => {
     }
 
     if (!totalSize) {
-      // Can't determine size — fall back to direct stream without Range translation
+      // Can't determine size — fall back to direct stream without Range
+      // translation. Task 41: upstream errors must NOT masquerade as 200.
+      // The old code piped the upstream body blind with res.status(200), so
+      // an expired googleusercontent URL (403/502 at HEAD+GET time) shipped
+      // its HTML error page as a "video" — players hung on loading or threw
+      // "[mpv] unrecognized file format". Wait for the response event and
+      // pass the real upstream status through (same contract as the main
+      // byte-range path below).
       logger.log(`[${ADDON_NAME}] range-proxy: no Content-Length, streaming direct`);
       const stream = gotScraping.stream(targetUrl.href, {
         headers: { 'User-Agent': UA, 'Accept': '*/*' },
@@ -638,6 +645,23 @@ app.get('/range-proxy', async (req, res) => {
         isStream: true,
         http2: false,
       });
+      let upstreamStatus = null;
+      try {
+        upstreamStatus = await new Promise((resolve, reject) => {
+          stream.on('response', (resp) => resolve(resp.statusCode));
+          stream.on('error', (err) => reject(err));
+          setTimeout(() => reject(new Error('range-proxy upstream timeout')), 15000);
+        });
+      } catch (e) {
+        logger.error(`[${ADDON_NAME}] range-proxy direct stream failed: ${e.message}`);
+        try { stream.destroy(); } catch {}
+        return res.status(502).send('Upstream connection failed');
+      }
+      if (upstreamStatus >= 400) {
+        logger.error(`[${ADDON_NAME}] range-proxy upstream ${upstreamStatus} (direct path)`);
+        stream.destroy();
+        return res.status(upstreamStatus).send(`Upstream error: ${upstreamStatus}`);
+      }
       res.status(200);
       res.setHeader('Content-Type', contentType);
       if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition);
@@ -958,7 +982,14 @@ app.get('/reanime-proxy/*', async (req, res) => {
       const baseUrl = targetUrl;
       const basePath = baseUrl.pathname.replace(/\/[^/]*$/, '/');
       const baseOrigin = `${baseUrl.protocol}//${baseUrl.host}`;
-      const proxyBase = `${req.protocol}://${req.get('host')}/reanime-proxy`;
+      // Task 41: req.protocol is 'http' on Render (TLS terminates at the edge
+      // proxy and app.set('trust proxy') is intentionally not enabled), which
+      // produced http:// children that Render 301-redirects to https — an
+      // extra round trip per segment and a cross-protocol redirect hop that
+      // some HLS readers fail to follow ("stuck on loading"). Honor
+      // X-Forwarded-Proto when present; falls back to req.protocol locally.
+      const reanimeProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || req.protocol;
+      const proxyBase = `${reanimeProto}://${req.get('host')}/reanime-proxy`;
 
       const toAbsolute = (line) => {
         if (line.startsWith('http://') || line.startsWith('https://')) return line;
@@ -1018,7 +1049,16 @@ app.get('/reanime-proxy/*', async (req, res) => {
 // against the proxy URL itself and return 404.
 function rewriteM3u8Urls(m3u8Text, baseUrl, referer, req, extraParams) {
   const lines = m3u8Text.split('\n');
-  const proxyBase = `${req.protocol}://${req.get('host')}/proxy`;
+  // Task 41: emit https:// children on TLS-terminating hosts (Render).
+  // req.protocol is 'http' behind Render's edge proxy, so every rewritten
+  // variant/segment URL was http:// and Render 301-redirected each one to
+  // https — doubling round trips per segment and breaking HLS readers that
+  // don't follow cross-protocol redirects inside a playlist tree (manifests
+  // as "stuck on loading"). X-Forwarded-Proto is always set by Render;
+  // absent locally → req.protocol fallback keeps dev behavior byte-identical.
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const proxyProto = forwardedProto || req.protocol;
+  const proxyBase = `${proxyProto}://${req.get('host')}/proxy`;
 
   // Optional decrypt-mode params (xor/strip/ct) propagated onto every
   // rewritten /proxy URL so variant playlists and segments decrypt too

@@ -6,10 +6,19 @@ import * as cheerio from 'cheerio';
 import { Format } from '../types.js';
 import { DEAD_HUBCLOUD_HOSTS, findCountryCodes, findHeight, HUB_HOST_PATTERN, HUBCLOUD_CACHE_TTL } from '../utils/index.js';
 import { Extractor } from './Extractor.js';
-import { HubCloud } from './HubCloud.js';
+import { HubCloud, isDirectFileUrl } from './HubCloud.js';
 
 /** True CDN (GDrive) vs HubCloud host that would duplicate. */
 const isCdnDirectUrl = (url) => /googleusercontent\.com/.test(url.hostname);
+
+/**
+ * Task 41 (OOM fix): delegation is only for PAGES that need redirect-chain
+ * parsing. A direct file URL (r2.dev / .mkv / …) handed to
+ * HubCloud.extractInternal gets fetched as text — buffering the WHOLE VIDEO
+ * in memory (kernel OOM-kill observed). File URLs are already playable
+ * cards; never delegate them.
+ */
+const shouldDelegateToHubCloud = (url) => !isCdnDirectUrl(url) && !isDirectFileUrl(url);
 
 /** FNV-1a hash of URL pathname — unique bingeGroup per CDN link */
 export const cdnHash = (url) => {
@@ -283,7 +292,7 @@ export class HubExtractor extends Extractor {
           const linkParam = new URL(reurlValue).searchParams.get('link');
           if (linkParam) {
             const targetUrl = new URL(linkParam);
-            return { url: targetUrl, delegateToHubCloud: !isCdnDirectUrl(targetUrl) };
+            return { url: targetUrl, delegateToHubCloud: shouldDelegateToHubCloud(targetUrl) };
           }
         } catch { /* fallthrough */ }
       }
@@ -295,7 +304,7 @@ export class HubExtractor extends Extractor {
           const decoded = atob(rMatch[1]);
           const linkMatch = decoded.match(/[?&]link=(.+)$/);
           const finalUrl = linkMatch?.[1] ? new URL(decodeURIComponent(linkMatch[1])) : new URL(decoded);
-          return { url: finalUrl, delegateToHubCloud: !isCdnDirectUrl(finalUrl) };
+          return { url: finalUrl, delegateToHubCloud: shouldDelegateToHubCloud(finalUrl) };
         } catch { /* fallthrough */ }
       }
 
@@ -303,7 +312,7 @@ export class HubExtractor extends Extractor {
       if (!reurlValue.includes('/dl/?link=')) {
         try {
           const directUrl = new URL(reurlValue);
-          return { url: directUrl, delegateToHubCloud: !isCdnDirectUrl(directUrl) };
+          return { url: directUrl, delegateToHubCloud: shouldDelegateToHubCloud(directUrl) };
         } catch { /* fallthrough */ }
       }
     }
@@ -313,7 +322,7 @@ export class HubExtractor extends Extractor {
     if (vdMatch?.[1]) {
       try {
         const vdUrl = new URL(vdMatch[1]);
-        return { url: vdUrl, delegateToHubCloud: !isCdnDirectUrl(vdUrl) };
+        return { url: vdUrl, delegateToHubCloud: shouldDelegateToHubCloud(vdUrl) };
       } catch { /* next */ }
     }
 

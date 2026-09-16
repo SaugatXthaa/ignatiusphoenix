@@ -33,6 +33,14 @@ import { HUB_HOST_PATTERN } from '../utils/index.js';
 // HLS/video files on these hosts keep their normal NuvioExtractor routing.
 const EMBED_PAGE_HOST_PATTERN = /(^|\.)(vidsrc-embed\.ru|vidking\.net|vidzee\.wtf|videasy\.net|megaplay\.buzz|vidnest\.fun)$/i;
 
+// Download-page hosts that a dedicated extractor resolves server-side.
+// Task 41: hblinks.co/<archive> pages (emitted by hdhub4u_v2's greenmotors
+// decode) shipped RAW as direct cards — the player fetched an HTML archive
+// page and threw "[mpv] unrecognized file format" / 403s. Returning [] lets
+// the registry fall through to the HBLinks extractor (supports /hblinks/),
+// which parses the page's hubcloud/hubcdn/hubdrive links into real files.
+const DOWNLOAD_PAGE_HOST_PATTERN = /(^|\.)hblinks\.co$/i;
+
 // Nuvio source IDs handled by this extractor
 const NUVIO_SOURCE_IDS = new Set([
   'cineby', 'hindmoviez',
@@ -168,6 +176,12 @@ export class NuvioExtractor extends Extractor {
     // [] here lets the registry's fallback chain hand the URL to
     // HubExtractor, which resolves the page into real direct-file URLs.
     if (HUB_HOST_PATTERN.test(url.hostname)) {
+      return [];
+    }
+
+    // hblinks.co archive pages — same poison class, dedicated extractor
+    // downstream (HBLinks). Task 41: see DOWNLOAD_PAGE_HOST_PATTERN comment.
+    if (!hls && !videoFile && DOWNLOAD_PAGE_HOST_PATTERN.test(url.hostname)) {
       return [];
     }
 
