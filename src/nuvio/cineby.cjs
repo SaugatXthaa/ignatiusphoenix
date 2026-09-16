@@ -50,6 +50,12 @@ const SPEEDRACELIGHT_API_BASE = 'https://api.speedracelight.com';
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '439c478a771f35c05022f9feabcca01c';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+// Shared seed store (Task 40) — the API rotates seeds per /seed request, so
+// parallel fetches for the same mediaId (VidKing extractor / VidEasy / cineby
+// all in resolver wave-1) invalidate each other → 401/decrypt-fail storms.
+// srlSeed.cjs coalesces them into ONE upstream fetch and caches for 25s.
+const srlSeed = require('../utils/srlSeed.cjs');
+
 // vidking.net origin/referer — the API 403s without them, and the peakstorm
 // CDN hotlink-gate is INVERTED for this family: it serves the files WITH a
 // vidking.net referer (the old cineby.at referer got 403s — see Task 31 notes
@@ -80,43 +86,48 @@ const HDMOVIE_ENDPOINT = 'hdmovie/sources-with-title';
 // Task 40) — attaching its URLs would ship dead subtitles. Skip that host.
 const DEAD_SUB_HOSTS = /api\.playhq\.net/i;
 
-const SEED_CACHE_TTL = 25_000; // server seed TTL ~30s; refresh a touch early
-const seedCache = new Map();   // tmdbId → { seed, ts }
-
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function fetchSeed(tmdbId) {
   const key = String(tmdbId);
-  const cached = seedCache.get(key);
-  if (cached && Date.now() - cached.ts < SEED_CACHE_TTL) return cached.seed;
+  const cached = srlSeed.getCached(key);
+  if (cached) return cached;
+  const existing = srlSeed.getInFlight(key);
+  if (existing) return existing;
 
-  let lastErr;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(`${SPEEDRACELIGHT_API_BASE}/seed?mediaId=${encodeURIComponent(key)}`, {
-        headers: HEADERS,
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (res.status === 429) {
-        const ra = parseInt(res.headers.get('retry-after') || '', 10);
-        await sleep(Number.isFinite(ra) && ra > 0 ? Math.min(ra, 10) * 1000 : 2000);
-        lastErr = new Error('seed HTTP 429');
-        continue;
+  const p = (async () => {
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`${SPEEDRACELIGHT_API_BASE}/seed?mediaId=${encodeURIComponent(key)}`, {
+          headers: HEADERS,
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (res.status === 429) {
+          const ra = parseInt(res.headers.get('retry-after') || '', 10);
+          await sleep(Number.isFinite(ra) && ra > 0 ? Math.min(ra, 10) * 1000 : 2000);
+          lastErr = new Error('seed HTTP 429');
+          continue;
+        }
+        if (!res.ok) throw new Error(`seed HTTP ${res.status}`);
+        const json = await res.json();
+        if (!json || !json.seed) throw new Error('seed response missing seed field');
+        srlSeed.storeSeed(key, json.seed);
+        return json.seed;
+      } catch (e) {
+        lastErr = e;
       }
-      if (!res.ok) throw new Error(`seed HTTP ${res.status}`);
-      const json = await res.json();
-      if (!json || !json.seed) throw new Error('seed response missing seed field');
-      seedCache.set(key, { seed: json.seed, ts: Date.now() });
-      return json.seed;
-    } catch (e) {
-      lastErr = e;
     }
-  }
-  throw lastErr || new Error('seed fetch failed');
+    throw lastErr || new Error('seed fetch failed');
+  })();
+
+  const tracked = p.finally(() => srlSeed.clearInFlight(key));
+  srlSeed.setInFlight(key, tracked);
+  return tracked;
 }
 
 function invalidateSeed(tmdbId) {
-  seedCache.delete(String(tmdbId));
+  srlSeed.invalidateSeed(String(tmdbId));
 }
 
 // TMDB fallback — only used when the wrapper did not preload title/year/imdbId.
@@ -160,7 +171,7 @@ async function fetchProviderJson(seed, provider, meta) {
 
   const res = await fetch(u, {
     headers: { ...HEADERS, 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(12_000),
   });
   if (!res.ok) {
     const err = new Error(`provider HTTP ${res.status}`);
@@ -203,7 +214,10 @@ function mapSubtitles(json) {
 
 // Run one provider (with one 401-retry), returning
 // { endpoint, serverName, sources: [{url, quality}], subtitles, master } or null.
-async function runProvider(meta, provider) {
+// t0 = getStreams start — the 401 retry round is skipped when the elapsed time
+// already makes it unable to finish inside the wrapper's 30s race (production
+// TV run Task 40: round-1 hangs + 401 rotation + full round-2 = 30s+ → 0).
+async function runProvider(meta, provider, t0) {
   for (let attempt = 0; attempt < 2; attempt++) {
     let seed;
     try {
@@ -222,7 +236,7 @@ async function runProvider(meta, provider) {
         master: typeof json.playlist === 'string' && json.playlist ? json.playlist : null,
       };
     } catch (e) {
-      if (e?.status === 401 && attempt === 0) {
+      if (e?.status === 401 && attempt === 0 && (Date.now() - t0) < 12_000) {
         invalidateSeed(meta.tmdbId);
         continue; // fresh seed, retry once
       }
@@ -233,6 +247,7 @@ async function runProvider(meta, provider) {
 }
 
 async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
+  const t0 = Date.now();
   try {
     const type = mediaType === 'tv' ? 'tv' : 'movie';
     const meta = {
@@ -256,7 +271,7 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
     if (!meta.title) return [];
 
     // One run per unique endpoint — hdmovie is fetched ONCE and shared.
-    const runs = await Promise.all(PROVIDERS.map(p => runProvider(meta, p)));
+    const runs = await Promise.all(PROVIDERS.map(p => runProvider(meta, p, t0)));
 
     const streams = [];
     const seen = new Set();

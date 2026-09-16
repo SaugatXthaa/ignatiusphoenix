@@ -152,44 +152,55 @@ export const PROVIDERS = [
 ];
 
 // === API client ===
-// Small in-process cache for seeds (TTL 25s — slightly less than the 30s server TTL)
-const seedCache = new Map();
-const SEED_CACHE_TTL = 25_000;
+// Seed handling moved to the SHARED store (src/utils/srlSeed.cjs, Task 40):
+// the API rotates seeds per /seed request, so parallel fetches for the same
+// mediaId (VidKing extractor + cineby source both in wave-1) invalidate each
+// other. The shared store caches (25s TTL) and coalesces concurrent fetches
+// via an in-flight registry. The actual fetch still uses the repo Fetcher.
+import srlSeed from './srlSeed.cjs';
 
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 export async function fetchSeed(fetcher, ctx, tmdbId) {
   const key = String(tmdbId);
-  const cached = seedCache.get(key);
-  if (cached && Date.now() - cached.ts < SEED_CACHE_TTL) return cached.seed;
+  const cached = srlSeed.getCached(key);
+  if (cached) return cached;
+  const existing = srlSeed.getInFlight(key);
+  if (existing) return existing;
 
-  const url = new URL(`/seed?mediaId=${encodeURIComponent(key)}`, SPEEDRACELIGHT_API_BASE);
-  const headers = {
-    'Origin': 'https://www.vidking.net',
-    'Referer': 'https://www.vidking.net/',
-  };
+  const p = (async () => {
+    const url = new URL(`/seed?mediaId=${encodeURIComponent(key)}`, SPEEDRACELIGHT_API_BASE);
+    const headers = {
+      'Origin': 'https://www.vidking.net',
+      'Referer': 'https://www.vidking.net/',
+    };
 
-  // Retry on 429 with the server-provided Retry-After (or 2s default)
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const json = await fetcher.json(ctx, url, { headers, timeout: 10000 });
-      if (!json || !json.seed) throw new Error('seed response missing seed field');
-      seedCache.set(key, { seed: json.seed, ts: Date.now() });
-      return json.seed;
-    } catch (e) {
-      if (e instanceof TooManyRequestsError && attempt < 2) {
-        const wait = e.retryAfter > 0 ? Math.min(e.retryAfter, 10000) : 2000;
-        await sleep(wait);
-        continue;
+    // Retry on 429 with the server-provided Retry-After (or 2s default)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const json = await fetcher.json(ctx, url, { headers, timeout: 10000 });
+        if (!json || !json.seed) throw new Error('seed response missing seed field');
+        srlSeed.storeSeed(key, json.seed);
+        return json.seed;
+      } catch (e) {
+        if (e instanceof TooManyRequestsError && attempt < 2) {
+          const wait = e.retryAfter > 0 ? Math.min(e.retryAfter, 10000) : 2000;
+          await sleep(wait);
+          continue;
+        }
+        throw e;
       }
-      throw e;
     }
-  }
+  })();
+
+  const tracked = p.finally(() => srlSeed.clearInFlight(key));
+  srlSeed.setInFlight(key, tracked);
+  return tracked;
 }
 
 // Drop the cached seed (after a 401, the bundle calls Lf() to invalidate)
 export function invalidateSeed(tmdbId) {
-  seedCache.delete(String(tmdbId));
+  srlSeed.invalidateSeed(String(tmdbId));
 }
 
 // Fetch one provider's sources. Returns the parsed JSON object
