@@ -9,6 +9,13 @@ const BASE_URL_CACHE_TTL = 4 * 60 * 60 * 1000;
 const DEAD_DOMAIN_TTL = 24 * 60 * 60 * 1000;
 
 const sourceResultCache = new Map();
+// In-flight dedupe (Task 43): while the client-budget partial response keeps
+// sources resolving in the BACKGROUND, a new request for the same title must
+// NOT start a second identical scrape — on Render's 0.1 CPU the duplicate
+// halves the throughput of BOTH and delays the cache warm-up. Concurrent
+// callers share one promise; it is removed on completion so the 15s empty /
+// 5min filled result-cache rules still apply on the next request.
+const inflightHandles = new Map();
 const baseUrlCache = new Map();
 const deadDomains = new Map();
 let domainsJsonCache = null;
@@ -64,6 +71,18 @@ export class Source {
       return cached.data;
     }
 
+    // In-flight dedupe: share the running scrape instead of double-fetching
+    const running = inflightHandles.get(cacheKey);
+    if (running) return running;
+
+    const promise = this._handleUncached(ctx, type, id, cacheKey).finally(() => {
+      inflightHandles.delete(cacheKey);
+    });
+    inflightHandles.set(cacheKey, promise);
+    return promise;
+  }
+
+  async _handleUncached(ctx, type, id, cacheKey) {
     // Aggressive eviction to prevent OOM on Render's 512MB free tier.
     // Each cached source result can hold 10+ stream objects with URLs,
     // metadata, and titles — 100 entries can use 50+MB.

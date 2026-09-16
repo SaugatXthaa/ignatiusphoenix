@@ -86,7 +86,9 @@ export class VideasyTo extends Source {
       // cap on useful-server latency; slow-tail servers are useless anyway).
       // Race at 32s — anything computed past the resolver's 35s per-source
       // cutoff would be discarded, so cap the work before it's wasted.
-      // PRIORITY_SOURCE_IDS in StreamResolver ensures this starts early.
+      // Wave scheduling in StreamResolver routes Playwright-based resolution
+      // to the background wave (30-60s solo) — its results cache for warm
+      // requests instead of burning race slots on cold ones.
       streams = await Promise.race([
         mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null),
         new Promise(r => setTimeout(() => r(null), 32000)),

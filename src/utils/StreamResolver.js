@@ -395,64 +395,101 @@ export class StreamResolver {
     // the tail drains in background and caches for the next request.
     const MAX_CONCURRENT_SOURCES = 10;
 
-    // Priority sources — these are started FIRST, before other sources, so they
-    // don't get stuck waiting in the queue behind 85+ other sources. Without this,
-    // Cinejoy (which needs ~6s of CPU) would wait 10-15s in the queue, leaving
-    // only 15-20s for execution — tight enough that it sometimes times out.
-    // Priority sources — these are started FIRST, before other sources, so they
-    // don't get stuck waiting in the queue behind 75+ other sources. Without this,
-    // slow sources (Cinejoy's lumen-gate-v1 crypto, StellarRip's PoW + 19-server
-    // probing) would wait 10-15s in the queue, leaving too little of the client
-    // budget (STREAM_CLIENT_BUDGET_MS) for actual execution.
-    const PRIORITY_SOURCE_IDS = new Set([
-      'cinejoyaio', 'zinkmovies', '4khdhub', 'playimdb',
-      // Task 38: 3-8s resolvers (gateway chains, got-scraping, PoW) that die
-      // in the queue under concurrency — start in wave-1 to fit the budget
-      'uhdmovies', 'bollyflix', 'fourkhdhubone',
-      // Stellar sources — PoW + AES-GCM takes 5-10s; must start early
-      'stellar', 'stellarrip',
-      // VidEasy — speedracelight API takes 15-25s; must start early
-      'videasy',
-      // Cineby — same speedracelight backend (cineby.by → vidking.net embeds);
-      // 6 endpoints in parallel + possible seed 429 backoff — start in wave-1
-      'cineby',
-      // VideasyTo — Playwright headless browser takes 30-60s; must start early
-      'videasyto',
-      // MoviesDrive v2 — 8-hop sequential chain (search → hubcloud → gamerxyt →
-      // workers.dev → googleusercontent); without priority it queues behind 15
-      // concurrent sources on Render's 0.1-CPU instances and hits the 35s
-      // SOURCE_TIMEOUT before the chain completes → zero cards every request
-      'moviesdrivev2',
-      // NikaStream — Anivexa API takes 20-30s; must start early
-      'nikastream',
-      // AniKage — prox.anicore.tv API takes 15-25s; must start early
-      'anikage',
-      // AniNeko — vivibebe.site API takes 15-25s; must start early
-      'anineko',
-      // AnimeWorldIN — play.zephyrix.top API takes 15-25s; must start early
-      'animeworldindia',
-      // Itachi — VidHawk API (3 servers × resolve + play) takes 10-20s
-      'itachi',
-      // StreamXTV — api.framextv.tech 20-provider sweep takes 10-25s
-      'streamxtv',
-      // HindMoviez — gdrive-class workers.dev MKV host; production isolation
-      // run resolved 4 cards in 18s but under 70-way concurrency (queued
-      // behind wave 1) it burned 30s and shipped 0. Starting in wave 1 gives
-      // it the full client budget instead of queue-then-die.
-      'hindmoviez',
-      // Task 39: direct-download trio (hdhub4u/movieshunt/vegamovies). All
-      // three resolve fine in ISOLATION (3-7s) but queued behind wave-1 they
-      // started at t≈10s under 70-way concurrency and never fit the 15s
-      // client budget — the user saw 0 streams from sources that were alive.
-      // hdhub4u sitemaps + movieshunt abhilinks chains + vegamovies nexdrive
-      // chains all need the early start to land inside the budget cold.
-      'hdhub4uv2', 'movieshuntv2', 'vegamovies2',
+    // ─── THREE-WAVE SCHEDULING (Task 43 — data-driven, production-measured)
+    //
+    // Symptom (user report): "only 7-8 sources show streams, others show
+    // none". Root cause measured on production (isolated /debug/source runs,
+    // Sep 2026): the old single PRIORITY set held 23 sources — many of them
+    // slow or zero-yield (stellarrip content drought 22s/0, cinejoyaio
+    // crypto 0, anineko DB outage, nikastream 20-30s) — while genuinely fast
+    // productive sources (raflix 7@2.1s, cinewave 46@1.5s, hdhub4uv2 6@4.1s,
+    // movieshuntv2 5@10.1s) queued BEHIND all of them and never started
+    // within the 15s client budget. Cold request settled only ~11 sources,
+    // half of them 0-yield.
+    //
+    // Fix: three waves, ordered by MEASURED cold productivity:
+    //   wave 0 (race-critical): fast (<8s) + productive — occupy the 10 slots
+    //     first, settle 3-12s, land in the cold response.
+    //   wave 1 (medium): 8-16s sources — start as wave-0 slots free; some
+    //     land cold, the rest complete in background and cache (5min TTL).
+    //   wave 2 (background-only): slow (>budget), Playwright, PoW-heavy, or
+    //     known-dead upstreams — they never landed cold anyway; starting them
+    //     last frees race slots. Results still cache for warm requests.
+    // Anime-only sources are type-aware: wave 1 for series (primary anime
+    // deliverers), wave 2 for movies (anime movies are covered by the
+    // general wave-0/1 sources — 4khdhub/cineby/streamxtv/hdhub4u verified).
+    //
+    // NOTE: final card order is independent of this sort (urlResults are
+    // re-sorted by height/bytes/priority before the build loop).
+    // ORDER WITHIN WAVE 0 MATTERS: only 10 slots exist; light sources (1-3s)
+    // must start first so slots churn and the next sources start early.
+    // Heavy aggregators (cinewave 46 cards, watchseries 11) hold a slot 12s+
+    // fresh — they go LAST in the wave (their results cache for warm
+    // requests via background continuation).
+    // This is an ORDERED array — the resolver starts these sources in exactly
+    // this sequence (index becomes the sort rank; wave 1 = 100, wave 2 = 200).
+    const WAVE1_SOURCE_ORDER = [
+      // light embed/API sources — measured 1-3s fresh, free slots fast
+      'moviebox',      // 1 @2.7s local fresh
+      'vidlink2',      // 3 @3.1s local fresh
+      'vidfast',       // 4 @~2s
+      'vidking',       // 4 @~2s
+      'vidsrcsbs',     // 3 @~2s
+      'vegamovies',    // 4 @~2s
+      // proven cold landers in production 15s races (must not regress)
+      '4khdhub',       // 6 @3.1s local fresh
+      'fourkhdhubone', // 6
+      'playimdb',      // 3 @1.6s local fresh
+      'cineby',        // 11 @7.2s local fresh
+      'hdhub4uv2',     // 6 @4.1s production isolated (user-reported source)
+      'acermovies',    // 3 @2.1s local fresh
+      'hindmovie',     // 1 @4.4s
+      'primeshows',    // 6 @4.0s
+      'meinecloud',    // 4 @3.8s
+      'raflix',        // 7 @2.1s production isolated
+      'videasy',       // 6 (proven cold lander, slower fresh)
+      // heavy multi-server aggregators — last in wave, warm via cache
+      'necro',         // 5
+      'watchseries',   // 11
+      'cinewave',      // 46
+    ];
+    const WAVE2_SOURCE_IDS = new Set([
+      // measured 8-16s solo — partial cold landing, rest cached in background
+      'movieshuntv2',  // 5 @10.1s
+      'streamxtv',     // 4-5
+      'moviesdrivev2', // 3-4 (8-hop chain)
+      'uhdmovies', 'bollyflix', 'stellar', 'vegamovies2',
+      'hindmoviez', 'cinebyrocks', 'nowhdtime', 'zxcstream',
+      'imdbplay', 'framextv', 'dahmermovies', 'dahmermovies4k',
+      'vixsrc', 'kmmovies', 'vidzee', 'pantyflix', 'peckle',
+      'netlio', 'rivestream', 'cinefreak', 'cinehdplus',
     ]);
-    const sortedSources = [...sources].sort((a, b) => {
-      const aPriority = PRIORITY_SOURCE_IDS.has(a.id) ? 0 : 1;
-      const bPriority = PRIORITY_SOURCE_IDS.has(b.id) ? 0 : 1;
-      return aPriority - bPriority;
-    });
+    const BACKGROUND_ONLY_SOURCE_IDS = new Set([
+      // never land within the 15s budget (measured) or known-dead upstreams;
+      // run last so their slots don't starve the race — results still cache
+      'stellarrip',     // PoW 22.8s + upstream content drought
+      'cinejoyaio',     // Noise/crypto CPU-heavy, 0 yield
+      'desiflix',       // 23.5s aggregation chain
+      'videasyto',      // Playwright headless 30-60s
+      'verhdlink', 'movix', 'persianstremio',
+    ]);
+    const ANIME_ONLY_SOURCE_IDS = new Set([
+      'animeflix', 'anineko', 'anikoto', 'anikage', 'anibd', '2dhive',
+      'anidoor', 'animegg', 'hianime', 'animekai', 'animesdigital',
+      'itachi', 'anikototv', 'animeworldindia', 'animezey', 'animotvslash',
+      'allwish', 'animesuge', 'reanime', 'nikastream', 'anichan',
+    ]);
+    const waveOf = (sourceId, requestType) => {
+      const w1 = WAVE1_SOURCE_ORDER.indexOf(sourceId);
+      if (w1 !== -1) return w1; // 0..19 — exact start order within wave 0
+      if (ANIME_ONLY_SOURCE_IDS.has(sourceId)) return requestType === 'series' ? 100 : 200;
+      if (WAVE2_SOURCE_IDS.has(sourceId)) return 100;
+      if (BACKGROUND_ONLY_SOURCE_IDS.has(sourceId)) return 200;
+      return 100; // unclassified future sources: medium — get a chance, never starve wave-0
+    };
+    const sortedSources = [...sources].sort(
+      (a, b) => waveOf(a.id, type) - waveOf(b.id, type)
+    );
 
     let activeCount = 0;
     const waitQueue = [];
