@@ -117,6 +117,10 @@ async function searchSeriesLadder(title) {
     words.slice(0, 6).join(' '),
     words.slice(0, 3).join(' '),
   ])].filter(q => q && q.length >= 3);
+  // Task 41b: MERGE all rungs (dedupe by slug) instead of stopping at the
+  // first productive one. WP search is quirky — "Frieren: Beyond Journey's
+  // End" returns ONLY the Season-2 posts while plain "Frieren" also surfaces
+  // the base (Season 1) post; first-productive-wins never saw the base post.
   const seen = new Set();
   const out = [];
   for (const q of attempts) {
@@ -126,14 +130,20 @@ async function searchSeriesLadder(title) {
       seen.add(x.slug);
       out.push(x);
     }
-    if (out.length) break; // first productive rung wins
   }
   return out;
 }
 
 function pickBestSeries(results, tmdbTitle, tmdbYear, season) {
+  // Task 41b: wrapper now walks the RANKED list (tryPostCandidates) — the top
+  // pick alone loses when the best-scoring post only offers P2P servers while
+  // a lower-ranked sibling (e.g. the sub variant) has real ones.
+  return rankSeries(results, tmdbTitle, tmdbYear, season)[0] || null;
+}
+
+function rankSeries(results, tmdbTitle, tmdbYear, season) {
   const qNorm = normalizeTitle(tmdbTitle);
-  let best = null, bestScore = 0;
+  const ranked = [];
   for (const r of results) {
     const isDubVariant = /\(dub\)/i.test(r.title) || /-dub(-|$)/.test(r.slug);
     // Sub requests never want "(Dub)" catalog entries; a dub request prefers
@@ -151,29 +161,36 @@ function pickBestSeries(results, tmdbTitle, tmdbYear, season) {
     }
     if (score <= 0) continue;
 
-    // Season awareness: S1 prefers the base slug; S>1 prefers "-season-N"
+    ranked.push({ ...r, score });
+  }
+  // Season awareness — Task 41b: match "-season-N" ANYWHERE in the slug
+  // (slugs like "...-season-2-dub" defeat $-anchored regexes), treat dub
+  // suffixes as neutral, and penalize the base slug when an S>1 post exists.
+  for (const r of ranked) {
+    const slugSeasonM = r.slug.match(/-season-(\d+)(?:-|$)/i);
+    const slugSeason = slugSeasonM ? parseInt(slugSeasonM[1]) : null;
     if (season && season > 1) {
-      if (new RegExp(`[- ]season[- ]?${season}$`, 'i').test(r.slug) || new RegExp(`-s0?${season}$`, 'i').test(r.slug)) score += 25;
-      else if (/-season-\d+$/.test(r.slug) && !new RegExp(`season-${season}$`, 'i').test(r.slug)) score -= 30;
-      else if (!/-season-/.test(r.slug)) score -= 10;
+      if (slugSeason === season) r.score += 25;
+      else if (slugSeason != null) r.score -= 30;
+      else r.score -= 10; // base slug — only right when no season post exists
     } else {
-      if (/-season-\d+$/.test(r.slug)) score -= 25;
-      if (/-special|-ova|-movie-|-ona/.test(r.slug)) score -= 30;
+      // S1 (or no season requested): prefer the base slug
+      if (slugSeason != null && slugSeason !== 1) r.score -= 25;
+      if (/-special|-ova|-movie-|-ona/.test(r.slug)) r.score -= 30;
     }
-    // dub variant flag: slight penalty for sub requests, bonus for dub
-    if (isDubVariant) score += 0; // bucket labels decide delivery; keep both alive
     // year sanity when the slug carries one
-    if (tmdbYear && new RegExp(`-${tmdbYear}(-|$)`).test(r.slug)) score += 5;
-
-    console.log(`[${PROVIDER_NAME}] candidate "${r.title}" slug=${r.slug} score=${score}`);
-    if (score > bestScore) { bestScore = score; best = r; }
+    if (tmdbYear && new RegExp(`-${tmdbYear}(-|$)`).test(r.slug)) r.score += 5;
   }
-  if (!best || bestScore < 50) {
-    console.log(`[${PROVIDER_NAME}] no confident match for "${tmdbTitle}" (best=${bestScore})`);
-    return null;
+  // sort score desc; ties break toward the non-dub post (sub posts carry more
+  // server variety on this site — dub variants are often P2P-only)
+  ranked.sort((a, b) => (b.score - a.score) ||
+    ((a.slug.endsWith('-dub') ? 1 : 0) - (b.slug.endsWith('-dub') ? 1 : 0)));
+  if (!ranked.length || ranked[0].score < 50) {
+    console.log(`[${PROVIDER_NAME}] no confident match for "${tmdbTitle}" (best=${ranked[0]?.score ?? 0})`);
+    return [];
   }
-  console.log(`[${PROVIDER_NAME}] best: ${best.slug} (${bestScore})`);
-  return best;
+  console.log(`[${PROVIDER_NAME}] ranked: ${ranked.slice(0, 3).map(r => `${r.slug}(${r.score})`).join(', ')}`);
+  return ranked;
 }
 
 // Find the episode-page URL for the requested episode on a detail page.
@@ -513,32 +530,49 @@ async function getStreams(tmdbId, mediaType, season, episode) {
     console.log(`[${PROVIDER_NAME}] TMDB: "${rawTitle}" (${year}) S${season || '-'}E${episode || '-'}`);
     const cleanTitle = String(rawTitle || '').replace(/\s*\(.*?\)\s*$/, '').trim() || rawTitle;
 
-    // 2. search (ladder) + pick best series page
+    // 2. search (ladder) + rank series posts
     const results = await searchSeriesLadder(cleanTitle);
     if (!results.length) { console.log(`[${PROVIDER_NAME}] no search results`); return []; }
-    const best = pickBestSeries(results, cleanTitle, year, season);
-    if (!best) return [];
+    const ranked = rankSeries(results, cleanTitle, year, season);
+    if (!ranked.length) return [];
 
-    // 3. detail page → episode URL + metadata
-    const { url: epUrl, meta: detailMeta } = await findEpisodeUrl(best.url, episode);
-    if (!epUrl) return [];
-    const animeTitle = detailMeta.title || best.title;
+    // 3-5. Walk near-equal top candidates (within 5 points of the leader —
+    // effectively sub/dub variants of the SAME season post) — ship the first
+    // that yields resolvable (non-P2P) servers. The best-scoring post alone
+    // loses when it only offers WebTorrent embeds while its sibling has real
+    // players (Frieren S2: "-season-2-dub" = P2P-only, "-season-2" =
+    // ANIMO-M/ANIMO-O). The narrow band also PREVENTS cross-season leakage:
+    // an S1 request must never fall through to a lower-scoring S2 post.
+    const topScore = ranked[0].score;
+    const band = ranked.filter(r => r.score >= topScore - 5).slice(0, 3);
+    for (const best of band) {
+      const { url: epUrl, meta: detailMeta } = await findEpisodeUrl(best.url, episode);
+      if (!epUrl) continue;
+      const animeTitle = detailMeta.title || best.title;
 
-    // 4. episode page → resolve all servers in parallel
-    const resolved = await parseEpisodePage(epUrl);
-    if (!resolved.length) { console.log(`[${PROVIDER_NAME}] 0 resolvable servers`); return []; }
+      const resolved = await parseEpisodePage(epUrl);
+      if (!resolved.length) {
+        console.log(`[${PROVIDER_NAME}] post ${best.slug} → 0 resolvable servers, trying next candidate`);
+        continue;
+      }
 
-    // 5. dedupe by URL, build stream objects (sub first, then softsub, then dub)
-    const seen = new Set();
-    const order = { sub: 0, soft_sub: 1, dub: 2 };
-    const streams = [];
-    for (const r of resolved.sort((a, b) => (order[a.bucket] ?? 9) - (order[b.bucket] ?? 9))) {
-      if (seen.has(r.url)) continue;
-      seen.add(r.url);
-      streams.push(buildStream(r, animeTitle, episode));
+      // dedupe by URL, build stream objects (sub first, then softsub, then dub)
+      const seen = new Set();
+      const order = { sub: 0, soft_sub: 1, dub: 2 };
+      const streams = [];
+      for (const r of resolved.sort((a, b) => (order[a.bucket] ?? 9) - (order[b.bucket] ?? 9))) {
+        if (seen.has(r.url)) continue;
+        seen.add(r.url);
+        streams.push(buildStream(r, animeTitle, episode));
+      }
+      if (streams.length) {
+        console.log(`[${PROVIDER_NAME}] post ${best.slug} → returning ${streams.length} stream(s)`);
+        return streams;
+      }
+      console.log(`[${PROVIDER_NAME}] post ${best.slug} → 0 playable streams, trying next candidate`);
     }
-    console.log(`[${PROVIDER_NAME}] returning ${streams.length} stream(s)`);
-    return streams;
+    console.log(`[${PROVIDER_NAME}] all candidates exhausted`);
+    return [];
   } catch (e) {
     console.error(`[${PROVIDER_NAME}] Error: ${e?.message || e}`);
     return [];

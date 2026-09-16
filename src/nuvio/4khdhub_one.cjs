@@ -368,18 +368,45 @@ function extractEpisodeLinks(html, targetSeason, targetEpisode) {
   const $ = cheerio.load(html);
   const blocks = [];
 
+  // 2026-09+ layout drift: some posts pack MULTIPLE seasons into ONE
+  // .season-content block (e.g. kaiju-no-8-series-50 holds S01/S02/S04 items),
+  // so a block-level "first .episode-number == S{target}" filter discards every
+  // item. Resolve the season PER ITEM instead:
+  //   1. item file title "…S01E01…" (most precise — the actual file's tag)
+  //   2. nearest .episode-number in the enclosing .download-item header
+  //   3. legacy block-level first .episode-number (old one-season-per-block layout)
   $('.season-content').each((_i, seasonEl) => {
-    const seasonText = $(seasonEl).find('.episode-number').first().text().trim();
-    const seasonNum = seasonText.match(/S(\d+)/)?.[1];
-    if (!seasonNum || parseInt(seasonNum) !== targetSeason) return;
-
     $(seasonEl).find('.episode-download-item').each((_j, el) => {
-      // Episode filter: badge-psa "Episode-NN" (packs list every episode file)
-      if (targetEpisode) {
-        const psa = ($(el).find('.badge-psa').first().text() || '').trim();
-        const m = psa.match(/Episode[-\s]*0*(\d{1,3})/i);
-        if (m && parseInt(m[1]) !== targetEpisode) return;
+      const $el = $(el);
+      const itemTitle = ($el.find('.episode-file-title').first().text() || '').trim();
+      const titleMatch = itemTitle.match(/S(\d{1,2})E(\d{1,3})/i);
+      let itemSeason = titleMatch ? parseInt(titleMatch[1]) : null;
+      let itemEpisode = titleMatch ? parseInt(titleMatch[2]) : null;
+
+      if (itemSeason === null || itemEpisode === null) {
+        // Episode fallback: badge-psa "Episode-NN" (packs list every episode file)
+        if (itemEpisode === null && targetEpisode) {
+          const psa = ($el.find('.badge-psa').first().text() || '').trim();
+          const m = psa.match(/Episode[-\s]*0*(\d{1,3})/i);
+          if (m) itemEpisode = parseInt(m[1]);
+        }
+        // Season fallback: enclosing .download-item header badge
+        if (itemSeason === null) {
+          const headerNum = $el.closest('.download-item').find('.episode-number').first().text().trim();
+          const hNum = headerNum.match(/S(\d+)/)?.[1];
+          if (hNum) itemSeason = parseInt(hNum);
+        }
+        // Season fallback: legacy block-level first .episode-number
+        if (itemSeason === null) {
+          const seasonText = $(seasonEl).find('.episode-number').first().text().trim();
+          const sNum = seasonText.match(/S(\d+)/)?.[1];
+          if (sNum) itemSeason = parseInt(sNum);
+        }
       }
+
+      if (itemSeason !== null && itemSeason !== targetSeason) return;
+      if (itemEpisode !== null && targetEpisode && itemEpisode !== targetEpisode) return;
+
       const parsed = parseFileBlock($, el);
       if (parsed && (parsed.greenmotorsHrefs.length || parsed.legacyHubcloudHrefs.length)) {
         blocks.push(parsed);

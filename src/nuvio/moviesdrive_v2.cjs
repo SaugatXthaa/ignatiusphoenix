@@ -1113,7 +1113,15 @@ async function getStreams(tmdbId, type, season, episode) {
           // first sweep has no episode match, retry the search with an
           // episode-targeted query before giving up.
           if (epMatches.length === 0) {
-            const epQuery = `${titleClean} E${epNum} ${qNum}p`;
+            // Task 41b: hubcloud's search tokenizes bare "E1"/"E01" badly — the
+            // retry query floods with unrelated movie files (reproduced on the
+            // Demon Slayer S1-4 post: "…Yaiba E1 1080p" → 20 Infinity-Castle
+            // hits, zero episodes) while the SxxExx form pinpoints the exact
+            // episode file ("…Yaiba S01E01 1080p" → 1 hit). Retry with BOTH
+            // forms, zero-padded SxxExx first.
+            const sPad = String(season).padStart(2, '0');
+            const ePad = String(epNum).padStart(2, '0');
+            const epQuery = `${titleClean} S${sPad}E${ePad} ${qNum}p`;
             console.log(`[MoviesDrive]   ⚠ No episode ${epNum} in first sweep, retrying: "${epQuery}"`);
             const epHits = await searchHubcloud(token, epQuery);
             const epQualityHits = epHits.filter(h => {
@@ -1121,6 +1129,15 @@ async function getStreams(tmdbId, type, season, episode) {
               return fn.includes(qNum) || (quality === '2160p' && fn.includes('4k'));
             });
             epMatches = findEpMatch(epQualityHits.length ? epQualityHits : epHits);
+            if (epMatches.length === 0) {
+              const epQuery2 = `${titleClean} E${epNum} ${qNum}p`;
+              const epHits2 = await searchHubcloud(token, epQuery2);
+              const epQualityHits2 = epHits2.filter(h => {
+                const fn = (h.file_name || '').toLowerCase();
+                return fn.includes(qNum) || (quality === '2160p' && fn.includes('4k'));
+              });
+              epMatches = findEpMatch(epQualityHits2.length ? epQualityHits2 : epHits2);
+            }
           }
           if (epMatches.length > 0) {
             target = epMatches[0];

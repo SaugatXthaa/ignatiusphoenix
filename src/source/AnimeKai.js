@@ -63,6 +63,41 @@ async function getStream(malId, episode, type) {
   try { return deobfuscate(m[1]); } catch { return null; }
 }
 
+// Task 41b: parse watch links from a search page (shared by curl + got paths)
+function parseWatchLinks(html) {
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const results = [];
+  const bySlug = new Map();
+  $('a').each((_, el) => {
+    const href = $(el).attr('href') || '';
+    const m = href.match(/\/watch\/([^/]+)\/?$/);
+    if (!m) return;
+    const text = $(el).text().trim();
+    if (!bySlug.has(m[1])) {
+      bySlug.set(m[1], { title: text || m[1].replace(/-/g, ' '), slug: m[1] });
+    } else if (text.length > bySlug.get(m[1]).title.length) {
+      // poster-card anchors have empty text; a later anchor may carry the
+      // real title — prefer the most informative occurrence
+      bySlug.get(m[1]).title = text;
+    }
+  });
+  bySlug.forEach(v => results.push(v));
+  return results;
+}
+
+// got-scraping fallback when plain curl comes back empty (CF TLS fingerprinting)
+async function gotSearch(query) {
+  try {
+    const res = await gotScraping.get(`${BASE}/?s=${encodeURIComponent(query)}`, {
+      headers: { ...hg.getHeaders({ httpVersion: '2' }), 'User-Agent': UA, 'Accept': 'text/html,*/*' },
+      timeout: { request: 12000 }, throwHttpErrors: false, http2: true,
+    });
+    if (res.statusCode !== 200) return null;
+    return res.body;
+  } catch { return null; }
+}
+
 export class AnimeKai extends Source {
   constructor(fetcher) {
     super();
@@ -80,25 +115,41 @@ export class AnimeKai extends Source {
     const [name, year] = await getTmdbNameAndYear(this.fetcher, ctx, tmdbId);
     const titleBase = name + (tmdbId.season ? ` ${TmdbId.formatSeasonAndEpisode(tmdbId)}` : ` (${year})`);
 
-    // Step 1: Search via curl (animekai.at has CF JS Detection)
-    const searchHtml = curlGet(`${BASE}/?s=${encodeURIComponent(name)}`);
-    if (!searchHtml) return [];
+    // Task 41b: Step 1 — progressive search. animekai's site search is strict:
+    // the full TMDB title "Frieren: Beyond Journey's End" returns 0 hits while
+    // "Frieren" (before the colon) hits exactly; "Sousou no Frieren" (original
+    // title) also returns 0. Candidates: full title → pre-colon segment →
+    // first 2 words → first word. Each candidate tries curl, then got-scraping.
+    const candidates = [];
+    const push = (t) => {
+      const v = (t || '').trim();
+      if (v.length >= 3 && !candidates.includes(v)) candidates.push(v);
+    };
+    push(name);
+    const colonIdx = name.search(/[:–—]\s/);
+    if (colonIdx > 0) push(name.slice(0, colonIdx).trim());
+    const words = name.split(/\s+/);
+    if (words.length > 2) push(words.slice(0, 2).join(' '));
+    if (words.length > 1) push(words[0]);
 
-    const $ = cheerio.load(searchHtml);
-    const results = [];
-    const seen = new Set();
-    $('a').each((_, el) => {
-      const href = $(el).attr('href') || '';
-      const m = href.match(/\/watch\/([^/]+)\/?$/);
-      if (m && !seen.has(m[1])) {
-        seen.add(m[1]);
-        results.push({ title: $(el).text().trim() || m[1].replace(/-/g, ' '), slug: m[1] });
+    let results = [];
+    let usedCandidate = '';
+    for (const cand of candidates) {
+      let searchHtml = curlGet(`${BASE}/?s=${encodeURIComponent(cand)}`);
+      let parsed = parseWatchLinks(searchHtml);
+      if (!parsed.length) {
+        searchHtml = await gotSearch(cand);
+        parsed = parseWatchLinks(searchHtml);
       }
-    });
+      if (parsed.length) { results = parsed; usedCandidate = cand; break; }
+    }
+    console.log(`[AnimeKai] search "${name}" → candidate "${usedCandidate}" → ${results.length} hits`);
     if (!results.length) return [];
 
     // Pick best match — require fuzzy score >= 60 to avoid false matches
-    const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    // Apostrophes are dropped BEFORE tokenizing so "Journey's" == "journeys"
+    // (TMDB title text vs site slug artifact otherwise never converge).
+    const normalize = (s) => s.toLowerCase().replace(/['\u2019]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
     const nameNorm = normalize(name);
     let best = null;
     let bestScore = 0;
@@ -112,15 +163,25 @@ export class AnimeKai extends Source {
       }
       if (score > bestScore) { bestScore = score; best = r; }
     }
-    if (!best || bestScore < 60) return [];
+    if (!best || bestScore < 60) {
+      console.log(`[AnimeKai] no match >=60 (best=${best ? bestScore.toFixed(1) : 'none'}) for "${name}"`);
+      return [];
+    }
+    console.log(`[AnimeKai] matched "${best.slug}" (score=${bestScore.toFixed(1)})`);
 
     // Step 2: Get anime info (POST_ID, MAL_ID) via curl
     const watchUrl = `${BASE}/watch/${best.slug}/`;
     const watchHtml = curlGet(watchUrl, `${BASE}/`);
-    if (!watchHtml) return [];
+    if (!watchHtml) {
+      console.log('[AnimeKai] watch page fetch failed');
+      return [];
+    }
 
     const malId = watchHtml.match(/MAL_ID\s*=\s*["'](\d+)["']/)?.[1];
-    if (!malId) return [];
+    if (!malId) {
+      console.log('[AnimeKai] MAL_ID not found on watch page');
+      return [];
+    }
 
     // Step 3: Fetch streams for both sub and dub via zokoanime.video
     const epNum = tmdbId.season ? (tmdbId.episode || 1) : 1;
@@ -141,6 +202,20 @@ export class AnimeKai extends Source {
           ? [CountryCode.multi, CountryCode.en]
           : [CountryCode.multi, CountryCode.ja];
 
+        // Task 41b: attach the stream's real inline subtitles (zoko payload
+        // carries {lang, label, src} VTT tracks per audio category).
+        const subs = Array.isArray(data.subtitles)
+          ? data.subtitles
+              .filter(s => s?.src && typeof s.src === 'string')
+              .map((s, i) => {
+                const lang = (s.lang || s.label || 'en').toString().slice(0, 8);
+                try {
+                  return { id: `${lang}${i}`.slice(0, 8), url: new URL(s.src).href, lang };
+                } catch { return null; }
+              })
+              .filter(Boolean)
+          : [];
+
         results2.push({
           url: parsed,
           format: Format.hls,
@@ -150,11 +225,12 @@ export class AnimeKai extends Source {
             sourceId: this.id,
             sourceLabel: this.label,
             height: 1080,
+            ...(subs.length > 0 && { subtitles: subs }),
           },
         });
       } catch { /* skip */ }
     }
-
+    console.log(`[AnimeKai] S${tmdbId.season || 1}E${epNum} mal=${malId} → ${results2.length} stream(s) (sub+dub attempted)`);
     return results2;
   }
 }

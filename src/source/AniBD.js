@@ -70,17 +70,22 @@ export class AniBD extends Source {
     const title = name + (tmdbId.season ? ` ${TmdbId.formatSeasonAndEpisode(tmdbId)}` : ` (${year})`);
 
     // Step 1a: Try AniList GraphQL API to get the anilist ID by English title.
-    // This is more reliable than text matching because AniBD indexes by
-    // Japanese romanization (e.g. "Shingeki no Kyojin") while TMDB gives
-    // English titles (e.g. "Attack on Titan"). AniList maps both.
+    // Task 41b: walk the SCORED candidate list until the epeng episodes API
+    // yields servers — SEARCH_MATCH alone can rank a spinoff ONA first (its
+    // romanization shares more tokens), and the spinoff has no episodes.
     let anilistId = null;
     let serverName = '';
+    let servers = null;
     try {
-      const anilistData = await this.getAniListId(name);
-      if (anilistData?.id) {
-        anilistId = String(anilistData.id);
-        // Use romaji title for display if available
-        if (anilistData.romaji) serverName = anilistData.romaji;
+      const candidates = await this.getAniListCandidates(name, tmdbId.season, year);
+      for (const cand of candidates.slice(0, 3)) {
+        const srv = await apiGet(`${EPISODES_API}?epid=${cand.id}`);
+        if (Array.isArray(srv) && srv.length > 0 && srv[0]?.server_data?.length) {
+          anilistId = String(cand.id);
+          serverName = cand.romaji || '';
+          servers = srv;
+          break;
+        }
       }
     } catch { /* fall through to text search */ }
 
@@ -94,8 +99,10 @@ export class AniBD extends Source {
     }
 
     // Step 2: Get episodes (epid = anilist ID)
-    const servers = await apiGet(`${EPISODES_API}?epid=${anilistId}`);
-    if (!Array.isArray(servers) || servers.length === 0) return [];
+    if (!servers) {
+      servers = await apiGet(`${EPISODES_API}?epid=${anilistId}`);
+      if (!Array.isArray(servers) || servers.length === 0) return [];
+    }
 
     // Step 3: Find the requested episode
     // Only one server ("S-sub") exists — SUB-only site
@@ -156,13 +163,15 @@ export class AniBD extends Source {
     return results;
   }
 
-  // Look up the AniList ID + romaji title via GraphQL API.
-  // This maps English TMDB titles to the AniList ID (which AniBD uses as
-  // its 'epid' parameter) without relying on text matching against the
-  // Japanese romanization that AniBD indexes by.
-  async getAniListId(name) {
+  // Look up AniList candidates via GraphQL API.
+  // Task 41b: single-Media SEARCH_MATCH is fragile — for "Frieren: Beyond
+  // Journey's End" it returns a 2026 SPINOFF ONA ("Sousou no Frieren: ●● no
+  // Mahou", id 170068) instead of the main TV series (154587), and epeng has
+  // no servers for the spinoff → instant 0. Return a SCORED CANDIDATE LIST
+  // instead; the caller walks it until epeng yields servers.
+  async getAniListCandidates(name, season, year) {
     const { gotScraping } = await import('got-scraping');
-    const query = 'query($search: String) { Media(search: $search, type: ANIME, sort: SEARCH_MATCH) { id title { romaji english } } }';
+    const query = 'query($search: String) { Page(perPage: 6) { media(search: $search, type: ANIME) { id title { romaji english } format episodes startDate { year } } } }';
     try {
       const res = await gotScraping.post('https://graphql.anilist.co', {
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': UA },
@@ -171,17 +180,40 @@ export class AniBD extends Source {
         throwHttpErrors: false,
         http2: false,
       });
-      if (res.statusCode !== 200) return null;
+      if (res.statusCode !== 200) return [];
       const data = JSON.parse(res.body);
-      const media = data?.data?.Media;
-      if (!media?.id) return null;
-      return {
-        id: media.id,
-        romaji: media.title?.romaji || '',
-        english: media.title?.english || '',
-      };
+      const mediaList = data?.data?.Page?.media || [];
+      const norm = (s) => String(s || '').toLowerCase().replace(/[\u2019']/g, '').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+      const nameNorm = norm(name);
+      const yearNum = year ? parseInt(String(year), 10) : null;
+      const scored = mediaList.map(m => {
+        const eng = m.title?.english || '';
+        const rom = m.title?.romaji || '';
+        const bestTitle = eng || rom;
+        const tNorm = norm(bestTitle);
+        let score = 0;
+        if (m.format === 'TV') score += 40;
+        if (tNorm === nameNorm) score += 30;
+        else if (tNorm.includes(nameNorm) || nameNorm.includes(tNorm)) score += 15;
+        // Season title awareness: "... Season 2" entries
+        const sMention = tNorm.match(/season\s*(\d+)/);
+        if (season && season > 1) {
+          if (sMention && parseInt(sMention[1]) === season) score += 20;
+          else if (sMention) score -= 15;
+        } else if (sMention) {
+          score -= 10;
+        }
+        const mYear = m.startDate?.year || null;
+        if (yearNum && mYear) {
+          if (Math.abs(mYear - yearNum) <= 1) score += 10;
+          else if (Math.abs(mYear - yearNum) > 2) score -= 10;
+        }
+        return { id: m.id, romaji: rom, english: eng, score };
+      });
+      scored.sort((a, b) => b.score - a.score);
+      return scored.filter(c => c.id);
     } catch {
-      return null;
+      return [];
     }
   }
 
