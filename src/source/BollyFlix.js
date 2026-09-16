@@ -116,7 +116,7 @@ export class BollyFlix extends Source {
     // player fetching one gets HTTP 200 text/html → "[mpv] unrecognized file
     // format". Probe each URL and drop HTML/erroring streams; the GDrive
     // (fastdlserver) direct links pass.
-    const liveStreams = await filterDeadStreams(streams);
+    const liveStreams = await filterDeadStreams(streams, { dropOnNetworkError: false });
     if (liveStreams.length === 0) {
       console.log(`[bollyflix] ${streams.length} stream(s) from scraper, 0 playable (all landing pages/dead)`);
       return [];

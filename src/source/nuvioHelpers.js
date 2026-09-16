@@ -466,7 +466,7 @@ export async function callNuvioProvider(providerPath, { tmdbId, mediaType, seaso
  * @param {Object} opts    — { timeoutMs = 8000 }
  * @returns {Promise<Array>} — the subset of streams that answered with real content
  */
-export async function filterDeadStreams(streams, { timeoutMs = 8000 } = {}) {
+export async function filterDeadStreams(streams, { timeoutMs = 8000, dropOnNetworkError = true } = {}) {
   const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
   const checked = await Promise.all((streams || []).map(async (s) => {
     if (!s?.url || typeof s.url !== 'string' || !s.url.startsWith('http')) return null;
@@ -489,8 +489,14 @@ export async function filterDeadStreams(streams, { timeoutMs = 8000 } = {}) {
       }
       return s;
     } catch (e) {
+      // Task 38: under resolver concurrency (Render 0.1-CPU) these probes can
+      // time out for streams that play fine from the player's own connection —
+      // an abort/timeout is NOT proof of death. Callers that opt out keep the
+      // stream on network errors; only definitive 4xx/5xx/HTML responses drop.
+      // Default unchanged (true) for existing consumers (dahmermovies×2,
+      // hindmoviez — do-not-touch byte-parity).
       console.log(`[liveness] drop (${(e?.message || e).slice?.(0, 40) || 'error'}) ${host}`);
-      return null;
+      return dropOnNetworkError ? null : s;
     }
   }));
   const kept = checked.filter(Boolean);
