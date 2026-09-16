@@ -39,8 +39,11 @@ for (const [type, id, label, sources] of CHECKS) {
     if (pass === 1) {
       for (const s of all) {
         const u = s.url || '';
+        // toroplay/nested third-party proxies legitimately embed gated hosts
+        // as params (their servers do the upstream fetching, not ours)
+        const nested = u.includes('toroplay') || /url=https?(:|%3A|%2F%2F).*nexabloom/.test(u);
         const hit = BAD_HOSTS.find(h => u.includes(h));
-        if (hit && hit !== 'player.zxcstream.xyz') badHosts[hit] = (badHosts[hit] || 0) + 1;
+        if (hit && hit !== 'player.zxcstream.xyz' && !nested) badHosts[hit] = (badHosts[hit] || 0) + 1;
         const m = /phoenix-([a-z0-9_]+)-/.exec(s.behaviorHints?.bingeGroup || '');
         const sid = m ? m[1] : '?';
         if (sources.includes(sid)) perSource[sid] = (perSource[sid] || 0) + 1;

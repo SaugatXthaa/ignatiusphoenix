@@ -29,6 +29,15 @@
 //      shared); 2026-09-17 vidbolt master+variant 200 but SEGMENTS return
 //      text/html. Trees recover later (peakstorm verified alive again next
 //      day), so verdicts must SELF-HEAL, not ban permanently.
+//   6. prox.anicore.tv (anikage HLS/MP4 relay, Origin-gated → routed through
+//      our /proxy): Task 44 final sweep caught the relay DOWN — 5/5 cards
+//      502 simultaneously (5 distinct fresh tokens, same host) while every
+//      other source was healthy. Probe fidelity is EXACT here: the card URL
+//      the player fetches IS our /proxy, i.e. our own server does the
+//      upstream fetch — a 502 to the probe is a 502 to the player. Relay
+//      outages are transient (upstream redeploys), so the self-healing
+//      verdicts apply: dead phase → drop cards (no stuck-loading), alive
+//      phase → ship normally.
 //
 // HOW (zero budget impact — Task 36 architecture untouched):
 //   Probes NEVER block resolution. StreamResolver fires a non-blocking
@@ -48,6 +57,8 @@
 
 'use strict';
 
+const dns = require('node:dns');
+
 // Verdict cache: positive entries live longer than negative ones (a dead
 // file can be re-uploaded under the same ID far less often than a flaky
 // host recovers).
@@ -66,7 +77,8 @@ const MAX_CONCURRENT = 6;       // probe chains in flight (fire-and-forget CPU g
 //   vidbolt.xyz         — vidking family m3u8 proxy (segments went html)
 //   nexabloom.top       — CF 403-html anime CDN (itachi/anikoto/…)
 //   nhdapi.com          — HTML page shipped as stream URL (raflix)
-const GATED_HOST_RE = /(^|\.)pixeldrain\.(com|dev)$|(^|\.)vimeos\.(zip|net)$|(^|\.)peakstorm\.top$|(^|\.)animeapps\.top$|(^|\.)vidbolt\.xyz$|(^|\.)nexabloom\.top$|(^|\.)nhdapi\.com$|(^|\.)urbansolardiyprojectshub\.site$/i;
+//   anicore.tv          — anikage relay; whole-host 502 outages (see WHY #6)
+const GATED_HOST_RE = /(^|\.)pixeldrain\.(com|dev)$|(^|\.)vimeos\.(zip|net)$|(^|\.)peakstorm\.top$|(^|\.)animeapps\.top$|(^|\.)vidbolt\.xyz$|(^|\.)nexabloom\.top$|(^|\.)nhdapi\.com$|(^|\.)urbansolardiyprojectshub\.site$|(^|\.)anicore\.tv$/i;
 const VIDEO_EXT_RE = /\.(mkv|mp4|webm|avi|ts|m2ts|mov|flv|wmv|mpg|mpeg|m4v)(?:[?#]|$)/i;
 const ARCHIVE_EXT_RE = /\.(zip|rar|7z|tar|gz|001)(?:[?#]|$)/i;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
@@ -116,6 +128,17 @@ function release() {
   if (w) w();
 }
 
+// Definitive network failures. ENOTFOUND is DNS NXDOMAIN — the NAME does
+// not exist (Node reports temporary resolver failures as EAI_AGAIN, not
+// ENOTFOUND), so no client-side flake path recovers it. Verified with a
+// second OS-resolver lookup before committing to 'dead'. Only used for
+// GATED families where the probe IS the player's fetch path (proxied) or
+// the host is user-independent (pixeldrain). Everything else — timeouts,
+// aborts, EAI_AGAIN, TLS, 5xx — stays 'unknown' (never drop on inconclusive).
+function isNxDomainErr(e) {
+  return String(e?.cause?.code || e?.code || '').toUpperCase() === 'ENOTFOUND';
+}
+
 async function fetchWithTimeout(url, opts) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
@@ -141,6 +164,11 @@ async function probePixeldrain(url) {
       res = await fetchWithTimeout(url, { headers: { 'user-agent': UA, 'range': 'bytes=0-2047' } });
       try { await res.body.cancel(); } catch (_) { /* already consumed or errored */ }
     } catch (e2) {
+      if (isNxDomainErr(e2)) {
+        // Double-check DNS once: NXDOMAIN confirmed twice (OS resolver) → the
+        // host is gone for every user; a one-shot resolver hiccup → 'unknown'.
+        try { await dns.promises.lookup(new URL(url).hostname); return 'unknown'; } catch (_) { return 'dead'; }
+      }
       return 'unknown'; // network flake — never drop on inconclusive
     }
   }
@@ -189,6 +217,13 @@ async function fetchHlsLevel(url, headers = {}) {
     res = await fetchWithTimeout(url, { headers: { 'user-agent': UA, ...headers } });
     body = (await res.text()).slice(0, 16384); // playlists are KB-sized
   } catch (e) {
+    if (isNxDomainErr(e)) {
+      // DNS NXDOMAIN (Task 44: prox.anicore.tv relay outage — every anikage
+      // card unresolvable). Confirm with a second OS-resolver lookup so a
+      // one-shot resolver hiccup stays 'unknown' while a real NXDOMAIN
+      // (host gone for the player too) is definitive death.
+      try { await dns.promises.lookup(new URL(url).hostname); return { state: 'unknown' }; } catch (_) { return { state: 'dead', err: 'ENOTFOUND' }; }
+    }
     return { state: 'unknown' };
   }
   const status = res.status;

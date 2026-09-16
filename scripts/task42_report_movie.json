@@ -1,0 +1,727 @@
+{
+ "mode": "movie",
+ "label": "Inception (movie)",
+ "startedAt": "2026-09-16T23:26:46.056Z",
+ "sources": {
+  "4khdhub": {
+   "total": 6,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 4,
+   "kinds": {
+    "unknown": 4
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fsolitary-meadow-dee4.tixexa39416724.workers.dev%2F38ca1d38a1335ccb897bc5c28b2c3c84d25e95e59f5efbe01b61d1e9688987a3",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fjolly-river-860a.terapiyo254.workers.dev%2F3bf35579f6c0cc7b00da78a6b72310eecc16891b1f697c0a7989e75c99483a560578169",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fgreen-snow-8e07.jawosar4657699.workers.dev%2Fa5c9ad863ed42db44c9da09aec4767dd89ae513e0ca622a85a43c224a711dfe24e223",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Ffiles.humancdn.workers.dev%2Fb2139c3e79de40d84fa29efba3377ef48bee1217902d0374329cb7f1d3572c13b32f45aa57a195fef4b72",
+     "kind": "mkv",
+     "status": 206
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fworkers.telegramcdn.workers.dev%2Fe885127292edaee2da60ac320237a4c72b118faa87fecbaf0f46e78520a236240ea003295f0f17af",
+     "kind": "mkv",
+     "status": 206
+    }
+   ]
+  },
+  "fourkhdhubone": {
+   "total": 6,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 4,
+   "kinds": {
+    "unknown": 4
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fsolitary-meadow-dee4.tixexa39416724.workers.dev%2F38ca1d38a1335ccb897bc5c28b2c3c84d25e95e59f5efbe01b61d1e9688987a3",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fgreen-snow-8e07.jawosar4657699.workers.dev%2Fa5c9ad863ed42db44c9da09aec4767dd89ae513e0ca622a85a43c224a711dfe24e223",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Ffiles.humancdn.workers.dev%2Fb2139c3e79de40d84fa29efba3377ef48bee1217902d0374329cb7f1d3572c13b32f45aa57a195fef4b72",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fworkers.telegramcdn.workers.dev%2Fe885127292edaee2da60ac320237a4c72b118faa87fecbaf0f46e78520a236240ea003295f0f17af",
+     "kind": "mkv",
+     "status": 206
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fjolly-river-860a.terapiyo254.workers.dev%2F3bf35579f6c0cc7b00da78a6b72310eecc16891b1f697c0a7989e75c99483a560578169",
+     "kind": "mkv",
+     "status": 206
+    }
+   ]
+  },
+  "kmmovies": {
+   "total": 8,
+   "ok": 8,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "https://3a771b2296d1c87878ede7f6b1346c1e.r2.cloudflarestorage.com/hub/e96414ea9277af518d957c592ddf1827?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=eb323da",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "https://pixeldrain.dev/api/file/AkQQ255z?download",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "cinewave": {
+   "total": 15,
+   "ok": 14,
+   "html": 0,
+   "err": 0,
+   "bad": 1,
+   "kinds": {
+    "unknown": 1
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fperegrinepalaver.space%2Fpl%2FH4sIAAAAAAAAAwXB206DMAAA0F_qBTYw2YtKuYUKg5bSt94SpAXJooL7es9xCUwwANHVJomJnbNYGZzEcaKt",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "https://pixeldrain.dev/api/file/6mdZVzQC?download",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "movieshuntv2": {
+   "total": 5,
+   "ok": 5,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "https://pixeldrain.dev/api/file/5aCZxqu5?download",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "https://pixeldrain.dev/api/file/AfTp464t?download",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "uhdmovies": {
+   "total": 1,
+   "ok": 1,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2nEqzjzz88IFj0USzC3J7Vd3SworaJFzpXCVbVScz5HJayahKvN2tDY58ce7vDc",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "hdhub4uv2": {
+   "total": 9,
+   "ok": 9,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "https://pixeldrain.dev/api/file/dGi4LqCG?download",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "https://pixeldrain.dev/api/file/6mdZVzQC?download",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "vidsrcsbs": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "vidfast": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "vidking": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "vegamovies": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "primeshows": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "meinecloud": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "cineby": {
+   "total": 1,
+   "ok": 1,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fsun.peakstorm.top%2Fr6%2Fma9yIsUHLd1oEUKmveBRD6CL9aSh9fi08J7f9fAYJaJBpCdYD0B-GAdVd7Zg6lACo8F67V8n20Xhl51_593TUkhcd",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "necro": {
+   "total": 5,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 1,
+   "kinds": {
+    "unknown": 1
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fperegrinepalaver.space%2Fpl%2FH4sIAAAAAAAAAw3L226DIAAA0F8ClFaX9GENonOBCogM3rzGKMVlWWrr12_n_UznNpkGFOMkisY.Pk1DmiII",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "watchseries": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "videasy": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "verhdlink": {
+   "total": 5,
+   "ok": 4,
+   "html": 1,
+   "err": 0,
+   "bad": 0,
+   "kinds": {
+    "html": 1
+   },
+   "sampleBad": [
+    {
+     "url": "https://a-delivery49.mxcontent.net/v2/9wqm8kmpa33qplw.mp4?s=PovvrW7uwpT6jk-orf1Dxg&e=1789622839&_t=1789606857",
+     "kind": "html",
+     "status": 403,
+     "ct": "text/html"
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "pantyflix": {
+   "total": 5,
+   "ok": 5,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fcloud-dl.gh4w70d5e5d.workers.dev%2F28b4b7a77bd8e3b0705c45cb655663aa3788cdda146d8072550602ea83fe0e542f2f4b9a42860a1",
+     "kind": "mkv",
+     "status": 206
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fcloud-dl.y1xz31barae.workers.dev%2Fff93b4f7182dd636cef1ed0b868b12925768631772ceedf275b2465854d82d3de0377236e41f6e8",
+     "kind": "mkv",
+     "status": 206
+    }
+   ]
+  },
+  "framextv": {
+   "total": 6,
+   "ok": 5,
+   "html": 0,
+   "err": 0,
+   "bad": 1,
+   "kinds": {
+    "m3u8deadchild": 1
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fployan.me%2Fhls%2F588723d2419b6609-7ad2b28a1734352ce119f467-698109a7138da26398a90503677b30e3d8031b44bebe4fd6fe79ed",
+     "kind": "m3u8deadchild",
+     "status": 200,
+     "ct": "application/vnd.apple.mpegurl; charset=utf-8",
+     "childKind": "error",
+     "childStatus": 0,
+     "childErr": "This operation was aborted"
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s2160p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJbldWTmlURTVPcmZmZzpRY0Q3OHVOMWl4NlBTVnc4bDFuWEhB%2Findex-s1080p-v1-a1.m3u8&r",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "stellar": {
+   "total": 1,
+   "ok": 1,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fcdn.reallyfast.ch%2Fplaylist%2Fp%2FT19SvGsVV5vVAkTiRf9ECE2wxp69pG6givWKBdGq4vSS8O4WQPB9SAhUU_NdhfaOdw%3Ft%3D178960",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "moviesdrivev2": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2lE0st-FUMOoSgVZa_FMUwfPVtw2N4nbaQO-tu3EH3oh3lBBPxYOasPi5rBB_0c",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2mCj2OMsq0tK7FeYjFTQhdVZ7kZ2rAzRPJ_UKaeAlvZMbEusFqNAp9WDw7iydQ3",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "bollyflix": {
+   "total": 5,
+   "ok": 5,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2kNqLFNyz4sPhiqQhQ-XckHA3YDZRE87AtkeHFqzjt05iQnhmmbK9NMK0-w6YQ9",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2lxxelfmy7fOo9CTddXiMR9NcE8VZMvLjxqihqySGroSCcIUQmTgtrApe_3SktJ",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "cinefreak": {
+   "total": 3,
+   "ok": 3,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2kRaoDrqRXx2Hf46aYifUAYZnbyDtY-yOqU6LKf-DVkRA5yp9XAxlXcge5INTvj",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2kKAQTTmaomhuBncgFVSRWD4kLU-RWeoHdQXzsQhbxdILEygbzdGKKw3LiT3MKe",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "moviebox": {
+   "total": 1,
+   "ok": 1,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fbcdnxw.hakunaymatata.com%2Ftran-audio%2F20250609%2F1342d59d48fb22675d2b3dd4ed2ce8a5.mp4%3Fsign%3Db5efbe3513f5d48b7",
+     "kind": "mp4",
+     "status": 206
+    }
+   ]
+  },
+  "vidlink2": {
+   "total": 3,
+   "ok": 0,
+   "html": 0,
+   "err": 0,
+   "bad": 3,
+   "kinds": {
+    "unknown": 3
+   },
+   "sampleBad": [
+    {
+     "url": "https://bcdn.hakunaymatata.com/tran-audio/20250609/1342d59d48fb22675d2b3dd4ed2ce8a5.mp4?sign=9ea7fb8f41e22a0130901158dd485e51&t=1789500732",
+     "kind": "unknown",
+     "status": 428,
+     "ct": "text/html"
+    },
+    {
+     "url": "https://bcdn.hakunaymatata.com/resource/a58dd00af907b9b8cc3b5c04b1a422c9.mp4?sign=c53e66929beddc7695de4c27a3ef0d69&t=1789499889",
+     "kind": "unknown",
+     "status": 428,
+     "ct": "text/html"
+    },
+    {
+     "url": "https://bcdn.hakunaymatata.com/bt/63ee0f898b116dda97c96443b1fc839d.mp4?sign=39387b290a01ec5353e42d6d865a4888&t=1789497312",
+     "kind": "unknown",
+     "status": 428,
+     "ct": "text/html"
+    }
+   ],
+   "sampleOk": []
+  },
+  "hindmovie": {
+   "total": 1,
+   "ok": 0,
+   "html": 0,
+   "err": 0,
+   "bad": 1,
+   "kinds": {
+    "unknown": 1
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fgdshine.gpone202joshmoviescom.workers.dev%2Fd%2FBfnM-Ekzcg89v9f7MGYIobKCFRc4WN6FUr-7oJH10dhDR-TUvDpFYCpnr99KcEWuLl",
+     "kind": "unknown",
+     "status": 502,
+     "ct": "text/html; charset=utf-8"
+    }
+   ],
+   "sampleOk": []
+  },
+  "acermovies": {
+   "total": 3,
+   "ok": 3,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2lWvbea36eNYvegfDVCbNBoRtmZy_cbA7nB1QCZm_Xf_RZvpEa0iQMthWVP6lM1",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2nEvy89eUolPloJ-_wF4bhxYCkqFydaeNqzk2xiuVpcOedThqaVzqx_X-su4oDj",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "playimdb": {
+   "total": 3,
+   "ok": 3,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fonlinevisibilitysystem.site%2FqHjc679HE%2Fpl%2FH4sIAAAAAAAAAwXBa3eCIBgA4L8ESiv20YTKhh6VS_ANfdtMyHY6rou_fs9zJt_rTXJ",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fonlinevisibilitysystem.site%2FqHjc679HE%2Fpl%2FH4sIAAAAAAAAAw3DYXOCIBgA4L.EQCv2bSbqVdKJvjD5JtKOU7Sybma_fnvuHoou7U9",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "cinebyrocks": {
+   "total": 3,
+   "ok": 3,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fscraper.vidbolt.xyz%2Fproxy%2Fm3u8%2FaHR0cHM6Ly9vbmxpbmV2aXNpYmlsaXR5c3lzdGVtLnNpdGUvcUhqYzY3OUhFL3BsL0g0c0lBQUFBQ",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fscraper.vidbolt.xyz%2Fproxy%2Fm3u8%2FaHR0cHM6Ly9vbmxpbmV2aXNpYmlsaXR5c3lzdGVtLnNpdGUvcUhqYzY3OUhFL3BsL0g0c0lBQUFBQ",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "vegamovies2": {
+   "total": 2,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2m3qqUp-WZc-GqAXUF5mOxcPW5qBI7v35RIRCQ8A68chqZX7UlhDVLt5eSqI3Su",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2lAJw4xbeQecHYMtvdO6cgKF-sPxDBz2EOg6FTI-fjZxK0kRMwzWq6Qg9V1tVlU",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  }
+ }
+}

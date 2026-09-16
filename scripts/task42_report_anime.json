@@ -1,0 +1,681 @@
+{
+ "mode": "anime",
+ "label": "Frieren S1E1",
+ "startedAt": "2026-09-16T23:30:17.432Z",
+ "sources": {
+  "cinewave": {
+   "total": 6,
+   "ok": 6,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "https://3a771b2296d1c87878ede7f6b1346c1e.r2.cloudflarestorage.com/hub/0abfb73a8c5260ed4fcc89e8d26a29d6?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=eb323da",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FSlpBYjh1WlM0blZsczFSYVQ3Sy1SUTpVTzNVZnE4MlVpVFpQLXhmSktOdTBCcVcxMWE4Y3JFWld0VkZON",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "cineby": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FQ185cEhCejdtZGZENWhjcmtaSWhDdzpRNkdJQTliWnVxUGVmNlF3ekJlWnlsUWJPWTN4VE9tUXV4bXN5e",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FRWotc0J1RTNFYWQxR3ZnX1RNUmIyQTpkVC1rMnVvNFV3Zm1SVm1VQ2xmbE82Zk0ycTFvUVJBc1FORXlOZ",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "fourkhdhubone": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "https://3a771b2296d1c87878ede7f6b1346c1e.r2.cloudflarestorage.com/hub/0abfb73a8c5260ed4fcc89e8d26a29d6?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=eb323da",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "https://pixeldrain.dev/api/file/s9n2pheL?download",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "4khdhub": {
+   "total": 4,
+   "ok": 3,
+   "html": 0,
+   "err": 0,
+   "bad": 1,
+   "kinds": {
+    "unknown": 1
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fbroad-water-0d54.xidoyo1675.workers.dev%2Fd9fded24d26f6f79236bb77e1cfc24e646abcd87021bf64cc102b6254cbcd42cd5d9299d",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "https://3a771b2296d1c87878ede7f6b1346c1e.r2.cloudflarestorage.com/hub/0abfb73a8c5260ed4fcc89e8d26a29d6?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=eb323da",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "https://pixeldrain.dev/api/file/s9n2pheL?download",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "vidsrcsbs": {
+   "total": 3,
+   "ok": 3,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FRWotc0J1RTNFYWQxR3ZnX1RNUmIyQTpkVC1rMnVvNFV3Zm1SVm1VQ2xmbE82Zk0ycTFvUVJBc1FORXlOZ",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FSlpBYjh1WlM0blZsczFSYVQ3Sy1SUTpVTzNVZnE4MlVpVFpQLXhmSktOdTBCcVcxMWE4Y3JFWld0VkZON",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "vidking": {
+   "total": 3,
+   "ok": 3,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FSlpBYjh1WlM0blZsczFSYVQ3Sy1SUTpVTzNVZnE4MlVpVFpQLXhmSktOdTBCcVcxMWE4Y3JFWld0VkZON",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FRWotc0J1RTNFYWQxR3ZnX1RNUmIyQTpkVC1rMnVvNFV3Zm1SVm1VQ2xmbE82Zk0ycTFvUVJBc1FORXlOZ",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "bollyflix": {
+   "total": 4,
+   "ok": 4,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2kWsanjLouAS02tqT1PbCp4zzB81yVXqnd_pMLPJVB2xNkI5LxM4qRMpRoIyID7",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2lLNLYpLFIqROjNssFrB09_1McWQxbpXZGuOKHOtzT2dyd4w5rrZILChRjSFfYu",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "vidlink2": {
+   "total": 3,
+   "ok": 0,
+   "html": 0,
+   "err": 0,
+   "bad": 3,
+   "kinds": {
+    "unknown": 3
+   },
+   "sampleBad": [
+    {
+     "url": "https://bcdn.hakunaymatata.com/resource/67c0851400e9c520d3d10476cb9625b7.mp4?sign=05526cddc2333dd7582a5541deba6acc&t=1789557543",
+     "kind": "unknown",
+     "status": 428,
+     "ct": "text/html"
+    },
+    {
+     "url": "https://bcdn.hakunaymatata.com/resource/h265/6b9d1e4848656c06bb9d55dc4a970e9e.mp4?sign=91ca1b5c9bf847ba146c5b5155e116f2&t=1789558093",
+     "kind": "unknown",
+     "status": 428,
+     "ct": "text/html"
+    },
+    {
+     "url": "https://bcdn.hakunaymatata.com/resource/h265/632e0d50b0d4fec8f5cfcc5891a6dc37.mp4?sign=92fd0d6ff2f3c89902fa0d141c456200&t=1789555125",
+     "kind": "unknown",
+     "status": 428,
+     "ct": "text/html"
+    }
+   ],
+   "sampleOk": []
+  },
+  "moviebox": {
+   "total": 3,
+   "ok": 3,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fbcdnxw.hakunaymatata.com%2Fresource%2F67c0851400e9c520d3d10476cb9625b7.mp4%3Fsign%3D189ecceff1cfc0daa03e540759bb3b",
+     "kind": "mp4",
+     "status": 206
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fbcdnxw.hakunaymatata.com%2Fresource%2Fb526fb99d1153fced79d4e6b1da16510.mp4%3Fsign%3Df7a4be2bb697b4e9884a56aa2b85ce",
+     "kind": "mp4",
+     "status": 206
+    }
+   ]
+  },
+  "watchseries": {
+   "total": 3,
+   "ok": 3,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FRWotc0J1RTNFYWQxR3ZnX1RNUmIyQTpkVC1rMnVvNFV3Zm1SVm1VQ2xmbE82Zk0ycTFvUVJBc1FORXlOZ",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FSlpBYjh1WlM0blZsczFSYVQ3Sy1SUTpVTzNVZnE4MlVpVFpQLXhmSktOdTBCcVcxMWE4Y3JFWld0VkZON",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "anikage": {
+   "total": 5,
+   "ok": 0,
+   "html": 0,
+   "err": 0,
+   "bad": 5,
+   "kinds": {
+    "unknown": 5
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fprox.anicore.tv%2Fm3u8%2FDB5BNEcPGmMcCUYvI2Q2IAwnFQ5aCBQcGyg2fDg-By8uX1UyYgN0MgxUI1kFdHAGXV5RfFIBVHRMXAIuKHM6cUAjW",
+     "kind": "unknown",
+     "status": 502,
+     "ct": "text/html; charset=utf-8"
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fprox.anicore.tv%2Fm3u8%2FDB5BNEcPGmMcCUYvI2Q2IAwnFQ5aCBQcGyg2fDg-By8uX1UyYgN0MgxUI1kFdHAGXV5RfFIBVHRMXAIuKHM6cUAjW",
+     "kind": "unknown",
+     "status": 502,
+     "ct": "text/html; charset=utf-8"
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fprox.anicore.tv%2Fm3u8%2FDB5BNEcPGmMKAFM1LiQ_axUoHg9QBglCHGkyPCl_HHBkE1YzPAIuNEIEd1wEfX9QU1oMcAQGBXtIXEJ4eXNhckVzQ",
+     "kind": "unknown",
+     "status": 502,
+     "ct": "text/html; charset=utf-8"
+    }
+   ],
+   "sampleOk": []
+  },
+  "anibd": {
+   "total": 1,
+   "ok": 1,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fplayeng.animeapps.top%2Fr2%2Fcachehd%2F20260827094030720p42997154860578412%2Findex.m3u8&referer=https%3A%2F%2Fanib",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "playimdb": {
+   "total": 2,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Furbansolardiyprojectshub.site%2FBOmJJT2bG%2Fpl%2FH4sIAAAAAAAAAw3OW3KCMBQA0C3lQVT6V5SAVuNwIQnmDwgONRGxTbVl9XUBZ.Yso",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Furbansolardiyprojectshub.site%2FBOmJJT2bG%2Fpl%2FH4sIAAAAAAAAAw3J0XqCIBgA0Ff6Ad2Xu2sVpCYlChp3IG6aZX7llvr069yewCCoS",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "necro": {
+   "total": 1,
+   "ok": 1,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fbric-a-brac-bulwark.site%2Fpl%2FH4sIAAAAAAAAAw3H3W6DIBgA0FcSP2q0SS9mg1pbqSKgcof_cbiZxqnr02_n7mjH09jrewS6c2r3PyfbdX",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "animegg": {
+   "total": 8,
+   "ok": 7,
+   "html": 0,
+   "err": 0,
+   "bad": 1,
+   "kinds": {
+    "unknown": 1
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fwww.animegg.org%2Fplay%2F445674%2Fvideo.mp4%3Ffor%3D101789601432349&referer=https%3A%2F%2Fwww.animegg.org%2F",
+     "kind": "unknown",
+     "status": 502,
+     "ct": "text/html; charset=utf-8"
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fwww.animegg.org%2Fplay%2F447567%2Fvideo.mp4%3Ffor%3D101789601428995&referer=https%3A%2F%2Fwww.animegg.org%2F",
+     "kind": "mp4",
+     "status": 206
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fwww.animegg.org%2Fplay%2F447563%2Fvideo.mp4%3Ffor%3D101789601428995&referer=https%3A%2F%2Fwww.animegg.org%2F",
+     "kind": "mp4",
+     "status": 206
+    }
+   ]
+  },
+  "hianime": {
+   "total": 2,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fhls2.aniwatchtv.uk%2Fv%2Fscxqicy%2F55ejtphmn9%2Fe38a115ezb%2Fdnfinmtr3wdbax%2Fmaster.m3u8&referer=https%3A%2F%2Fzo",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fhls2.aniwatchtv.uk%2Fv%2Fscxqicy%2F55ejtphmn9%2Fe38a115ezb%2Fowo1cmqlz6vs35%2Fmaster.m3u8&referer=https%3A%2F%2Fzo",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "animekai": {
+   "total": 2,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fhls2.aniwatchtv.uk%2Fv%2Fscxqicy%2F55ejtphmn9%2Fe38a115ezb%2Fdnfinmtr3wdbax%2Fmaster.m3u8&referer=https%3A%2F%2Fzo",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fhls2.aniwatchtv.uk%2Fv%2Fscxqicy%2F55ejtphmn9%2Fe38a115ezb%2Fowo1cmqlz6vs35%2Fmaster.m3u8&referer=https%3A%2F%2Fzo",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "reanime": {
+   "total": 2,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/reanime-proxy/playlist.m3u8?url=https%3A%2F%2Ffetch8.flixcloud.cc%2F_v7%2F60aa496b-cea9-45a8-a4f4-8395990c0d06%2Fmaster.m3u8%3Ftoken%3DeyJ",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/reanime-proxy/playlist.m3u8?url=https%3A%2F%2Ffetch8.flixcloud.cc%2F_v7%2F60aa496b-cea9-45a8-a4f4-8395990c0d06%2Fmaster.m3u8%3Ftoken%3DeyJ",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "videasy": {
+   "total": 3,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 1,
+   "kinds": {
+    "m3u8deadchild": 1
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FQ185cEhCejdtZGZENWhjcmtaSWhDdzpRNkdJQTliWnVxUGVmNlF3ekJlWnlsUWJPWTN4VE9tUXV4bXN5e",
+     "kind": "m3u8deadchild",
+     "status": 200,
+     "ct": "application/vnd.apple.mpegurl; charset=utf-8",
+     "childKind": "unknown",
+     "childStatus": 502
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FRWotc0J1RTNFYWQxR3ZnX1RNUmIyQTpkVC1rMnVvNFV3Zm1SVm1VQ2xmbE82Zk0ycTFvUVJBc1FORXlOZ",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FSlpBYjh1WlM0blZsczFSYVQ3Sy1SUTpVTzNVZnE4MlVpVFpQLXhmSktOdTBCcVcxMWE4Y3JFWld0VkZON",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "anichan": {
+   "total": 5,
+   "ok": 5,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fc.toroplay.cymru%2Fapi%2Fwatch%2Fm3u8%3Furl%3Dhttps%253A%252F%252Ffetch.nexabloom.top%252Fanime%252Fbb6d2babd7797d",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fc.toroplay.cymru%2Fapi%2Fwatch%2Fm3u8%3Furl%3Dhttps%253A%252F%252Fhls2.aniwatchtv.uk%252Fv%252Fscxqicy%252F55ejtph",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "imdbplay": {
+   "total": 2,
+   "ok": 1,
+   "html": 0,
+   "err": 0,
+   "bad": 1,
+   "kinds": {
+    "unknown": 1
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fbric-a-brac-bulwark.site%2Fpl%2FH4sIAAAAAAAAAw3M0ZJDMBQA0F8Sie3amb6khF0VElzkLWRUNdTM2qn267fvZw7pkfY6r0M9JmhA5NMfiD",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fbric-a-brac-bulwark.site%2Fpl%2FH4sIAAAAAAAAAxXK0U6DMBQA0F.iQBma.IKs4CLVlntb6Bu0wYmlgJu6.PXG83xoPDlLpzzLkyRyU24dSW",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "cinebyrocks": {
+   "total": 2,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fscraper.vidbolt.xyz%2Fproxy%2Fm3u8%2FaHR0cHM6Ly91cmJhbnNvbGFyZGl5cHJvamVjdHNodWIuc2l0ZS9CT21KSlQyYkcvcGwvSDRzSUFBQ",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fscraper.vidbolt.xyz%2Fproxy%2Fm3u8%2FaHR0cHM6Ly91cmJhbnNvbGFyZGl5cHJvamVjdHNodWIuc2l0ZS9CT21KSlQyYkcvcGwvSDRzSUFBQ",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "streamxtv": {
+   "total": 2,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FSlpBYjh1WlM0blZsczFSYVQ3Sy1SUTpVTzNVZnE4MlVpVFpQLXhmSktOdTBCcVcxMWE4Y3JFWld0VkZON",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FRWotc0J1RTNFYWQxR3ZnX1RNUmIyQTpkVC1rMnVvNFV3Zm1SVm1VQ2xmbE82Zk0ycTFvUVJBc1FORXlOZ",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "animesdigital": {
+   "total": 2,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fcdn-sv01.maximaimg.online%2Fstream%2Fs%2Fsousou-no-frieren%2F01.mp4%2Findex.m3u8&referer=https%3A%2F%2Fanimesdigit",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fcdn-sv01.maximaimg.online%2Fstream%2Fs%2Fsousou-no-frieren-dublado%2F01.mp4%2Findex.m3u8&referer=https%3A%2F%2Fani",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "stellar": {
+   "total": 1,
+   "ok": 1,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fcdn.reallyfast.ch%2Fplaylist%2Fp%2FgK73GjAr4sn3_kTe4dzW65pM1E-wRLcXMM2bi6dUiza-y_j48kdr3Z0vzJCRdYZtcA%3Ft%3D178960",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "animeworldindia": {
+   "total": 1,
+   "ok": 1,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fplay.zephyrix.org%2Fcdn%2Fhls%2Fa693585b9a146f10110cc02796e18144%2Fmaster.m3u8%3Fmd5%3DjpVQ61x9P7jmOh08hqDq6Q%26ex",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "framextv": {
+   "total": 5,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 3,
+   "kinds": {
+    "unknown": 3
+   },
+   "sampleBad": [
+    {
+     "url": "https://bcdn.hakunaymatata.com/resource/67c0851400e9c520d3d10476cb9625b7.mp4?sign=05526cddc2333dd7582a5541deba6acc&t=1789557543",
+     "kind": "unknown",
+     "status": 428,
+     "ct": "text/html"
+    },
+    {
+     "url": "https://bcdn.hakunaymatata.com/resource/h265/6b9d1e4848656c06bb9d55dc4a970e9e.mp4?sign=91ca1b5c9bf847ba146c5b5155e116f2&t=1789558093",
+     "kind": "unknown",
+     "status": 428,
+     "ct": "text/html"
+    },
+    {
+     "url": "https://bcdn.hakunaymatata.com/resource/h265/632e0d50b0d4fec8f5cfcc5891a6dc37.mp4?sign=92fd0d6ff2f3c89902fa0d141c456200&t=1789555125",
+     "kind": "unknown",
+     "status": 428,
+     "ct": "text/html"
+    }
+   ],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FSlpBYjh1WlM0blZsczFSYVQ3Sy1SUTpVTzNVZnE4MlVpVFpQLXhmSktOdTBCcVcxMWE4Y3JFWld0VkZON",
+     "kind": "m3u8tree",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fr2%2Fcdn1%2FRWotc0J1RTNFYWQxR3ZnX1RNUmIyQTpkVC1rMnVvNFV3Zm1SVm1VQ2xmbE82Zk0ycTFvUVJBc1FORXlOZ",
+     "kind": "m3u8tree",
+     "status": 200
+    }
+   ]
+  },
+  "moviesdrivev2": {
+   "total": 2,
+   "ok": 2,
+   "html": 0,
+   "err": 0,
+   "bad": 0,
+   "kinds": {},
+   "sampleBad": [],
+   "sampleOk": [
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2mrGJuvy4tJX-JM1wq89RiSKmWRVRoDch_FxxOpcskgbmX6CkGgGuA-XHnG0QUt",
+     "kind": "mkv",
+     "status": 200
+    },
+    {
+     "url": "http://127.0.0.1:4596/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent.com%2FADGPM2lr9F08XjvrGbCiWI78zgIVgAx0iavkBabbnyKpBJ2BtzIm5cEUI2SeB-Bgl90V",
+     "kind": "mkv",
+     "status": 200
+    }
+   ]
+  },
+  "hindmoviez": {
+   "total": 3,
+   "ok": 0,
+   "html": 0,
+   "err": 1,
+   "bad": 2,
+   "kinds": {
+    "unknown": 2,
+    "error": 1
+   },
+   "sampleBad": [
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmy.maintwo133hindmoviezday.workers.dev%2F0%3A%2Fweb%2FFrieren.Beyond.Journeys.End%2F720p%2FFrieren.Beyond.Journeys",
+     "kind": "unknown",
+     "status": 500,
+     "ct": "text/html; charset=utf-8"
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmy.maintwo133hindmoviezday.workers.dev%2F0%3A%2Fweb%2FFrieren.Beyond.Journeys.End%2F1080p%2FFrieren.Beyond.Journey",
+     "kind": "unknown",
+     "status": 403,
+     "ct": "text/html; charset=utf-8"
+    },
+    {
+     "url": "http://127.0.0.1:4596/proxy?url=https%3A%2F%2Fmy.maintwo133hindmoviezday.workers.dev%2F0%3A%2Fweb%2FFrieren.Beyond.Journeys.End%2F720p%252010bit%2FFrieren.Beyon",
+     "kind": "error",
+     "status": 0,
+     "err": "This operation was aborted"
+    }
+   ],
+   "sampleOk": []
+  }
+ }
+}
