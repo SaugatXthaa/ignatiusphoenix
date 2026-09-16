@@ -23,6 +23,7 @@ import { MoviesHuntV2 } from './MoviesHuntV2.js';
 import { MoviesDriveV2 } from './MoviesDriveV2.js';
 import { Eurostreaming } from './Eurostreaming.js';
 import { FourKHDHub } from './FourKHDHub.js';
+import { CineFreak } from './CineFreak.js';
 import { MeineCloud } from './MeineCloud.js';
 import { MostraGuarda } from './MostraGuarda.js';
 import { MovieBox } from './MovieBox.js';
@@ -122,6 +123,9 @@ export const createSources = (fetcher) => {
   return [
     // multi
     new FourKHDHub(fetcher),
+    // cinefreak.net — movies/series with direct googleusercontent MKV
+    // (revived Task 38: search-api.php JSON + cinecloud /w/ direct URL)
+    new CineFreak(fetcher),
     new MovieBox(fetcher),
     new CineWave(fetcher),
     new WatchSeries(fetcher),

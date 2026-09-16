@@ -391,12 +391,36 @@ export function buildStreamResults({ streams, title, sourceId, sourceLabel, coun
 }
 
 /**
- * Load a Nuvio CommonJS provider module and call getStreams with a timeout.
+ * Retry-on-empty wrapper for flaky scrapers (Task 38).
  *
- * @param {string} providerPath — Absolute path to the .cjs file
- * @param {Object} params        — { tmdbId, mediaType, season, episode, timeoutMs }
- * @returns {Promise<Array>}    — Array of stream objects, or [] on failure
+ * Production evidence: uhdmovies/bollyflix/stellar/stellarrip resolve fine in
+ * isolation MOST of the time, but transient upstream windows (gateway flakes,
+ * PoW/availability flickers) produce empty results that then poison the
+ * per-source 60s negative cache — the user sees nothing for a minute.
+ * A single bounded retry inside the wrapper absorbs those windows.
+ *
+ * A non-array result (race-cap timeout sentinel `null`) is propagated
+ * immediately — the caller's timeout already fired, retrying is pointless.
+ * The retry only happens while elapsed < maxTotalMs/2 so attempt 2 always has
+ * at least half the budget; the caller's outer race still bounds the worst case.
  */
+export async function withRetryOnEmpty(fn, { attempts = 2, maxTotalMs = 12000, backoffMs = 400, tag = 'nuvio' } = {}) {
+  const t0 = Date.now();
+  let last = [];
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0 && Date.now() - t0 >= maxTotalMs) break;
+    const r = await fn();
+    if (!Array.isArray(r)) return r; // timeout sentinel or unexpected shape
+    if (r.length > 0) return r;
+    last = r;
+    if (i < attempts - 1 && Date.now() - t0 < maxTotalMs / 2) {
+      console.log(`[${tag}] empty resolve (attempt ${i + 1}/${attempts}), retrying`);
+      await new Promise(rr => setTimeout(rr, backoffMs));
+    } else break;
+  }
+  return last;
+}
+
 export async function callNuvioProvider(providerPath, { tmdbId, mediaType, season, episode, timeoutMs = 25000 }) {
   const require_ = createRequire(providerPath);
 

@@ -27,7 +27,7 @@ import bytes from 'bytes';
 import { CountryCode } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
-import { filterDeadStreams } from './nuvioHelpers.js';
+import { filterDeadStreams, withRetryOnEmpty } from './nuvioHelpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require_ = createRequire(import.meta.url);
@@ -97,7 +97,10 @@ export class BollyFlix extends Source {
     let streams;
     try {
       streams = await Promise.race([
-        mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode),
+        // Task 38: bounded retry-on-empty — gdflix/gateway windows transiently
+        // fail the whole resolve; without retry the 60s negative cache hides
+        // the recovery from users.
+        withRetryOnEmpty(() => mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode), { maxTotalMs: 20000, tag: 'bollyflix' }),
         new Promise(r => setTimeout(() => r(null), 25000)),
       ]);
     } catch (e) {

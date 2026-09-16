@@ -1,15 +1,61 @@
 // src/source/FourKHDHub.js
-// Ported from research/webstreamr-mbg/src/source/FourKHDHub.ts
+// 4khdhub (formerly 4khdhub.link — domain now redirects to 4khdhub.one)
+//
+// Task 38 (2026-09): 4khdhub.link now 301s to 4khdhub.one, whose pages were
+// redesigned (content-file blocks + greenmotors.cc ad-funnel links instead of
+// direct hubcloud hrefs). The old .movie-card/.download-item selectors matched
+// nothing → 0 streams forever. This source now resolves through the SAME
+// shared scraper as FourKHDHubOne (src/nuvio/4khdhub_one.cjs) — including the
+// server-side greenmotors token decode → hubcloud.ist URLs — while keeping its
+// own source id, label, country codes and card naming, so both 4khdhub
+// registrations keep delivering independently (dedupe is URL+sourceId).
+//
+// Flow:
+//   1. TMDB id → title (+season/episode for series)
+//   2. Shared scraper: search 4khdhub.one → match → decode greenmotors links
+//   3. Raw hubcloud.ist URLs ship — ESM HubExtractor → HubCloud extractor
+//      resolves them downstream (workers.dev / pixeldrain direct CDN)
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import bytes from 'bytes';
-import * as cheerio from 'cheerio';
-import Fuse from 'fuse.js';
-import { CountryCode } from '../types.js';
-import { DEAD_HUBCLOUD_HOSTS, findCountryCodes, getTmdbId, getTmdbNameAndYear, HUB_HOST_PATTERN } from '../utils/index.js';
-import { resolveRedirectUrl } from './hd-hub-helper.js';
+import { CountryCode, Format } from '../types.js';
+import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
 
-const PIXEL_PATTERNS = /pixel\.(hubcdn|rohitkiskk)/;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require_ = createRequire(import.meta.url);
+const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', '4khdhub_one.cjs');
+
+let _scraperMod = null;
+function getScraperModule() {
+  if (_scraperMod) return _scraperMod;
+  try { _scraperMod = require_(PROVIDER_PATH); }
+  catch (e) { console.error(`[4khdhub] failed to load scraper: ${e?.message || e}`); }
+  return _scraperMod;
+}
+
+function parseHeight(q) {
+  if (!q) return undefined;
+  const s = String(q).toLowerCase();
+  if (s.includes('2160') || s.includes('4k') || s.includes('uhd')) return 2160;
+  const m = s.match(/(\d{3,4})/);
+  return m ? parseInt(m[1]) : undefined;
+}
+
+function parseSize(size) {
+  if (!size || typeof size !== 'string') return undefined;
+  try { return bytes.parse(size) || undefined; } catch { return undefined; }
+}
+
+function detectSourceType(text) {
+  const lower = (text || '').toLowerCase();
+  if (lower.includes('remux')) return 'BluRay Remux';
+  if (lower.includes('bluray') || lower.includes('bdrip')) return 'BluRay';
+  if (lower.includes('web-dl') || lower.includes('webdl') || lower.includes('webrip')) return 'WebDL';
+  return undefined;
+}
 
 export class FourKHDHub extends Source {
   constructor(fetcher) {
@@ -18,174 +64,68 @@ export class FourKHDHub extends Source {
     this.label = '4KHDHub';
     this.contentTypes = ['movie', 'series'];
     this.countryCodes = [CountryCode.multi, CountryCode.hi, CountryCode.ta, CountryCode.te];
-    this.baseUrl = 'https://4khdhub.link';
-    this.domainKey = '4kHDHub';
+    // 4khdhub.link now redirects here; the scraper hardcodes the live domain.
+    this.baseUrl = 'https://4khdhub.one';
     this.fetcher = fetcher;
-    this.FALLBACK_CANDIDATES = [
-      'https://4khdhub.link',
-      'https://4khdhub.click',
-      'https://4khdhub.ink',
-      'https://4khdhub.one',
-      'https://4khdhub.to',
-      'https://4khdhub.cc',
-    ];
+    this.ttl = 30 * 60 * 1000;
   }
 
   async handleInternal(ctx, _type, id) {
     const tmdbId = await getTmdbId(this.fetcher, ctx, id);
+    const [name, year] = await getTmdbNameAndYear(this.fetcher, ctx, tmdbId);
+    const title = name + (tmdbId.season ? ` ${TmdbId.formatSeasonAndEpisode(tmdbId)}` : ` (${year})`);
 
-    const pageUrl = await this.fetchPageUrl(ctx, tmdbId);
-    if (!pageUrl) {
+    const mod = getScraperModule();
+    if (!mod || typeof mod.getStreams !== 'function') return [];
+
+    const mediaType = tmdbId.season ? 'tv' : 'movie';
+    let streams;
+    try {
+      streams = await Promise.race([
+        mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode),
+        new Promise(r => setTimeout(() => r(null), 28000)),
+      ]);
+    } catch (e) {
+      console.error(`[4khdhub] getStreams error: ${e?.message || e}`);
       return [];
     }
 
-    // Use got-scraping for CF bypass on Render (plain Fetcher is sometimes
-    // blocked by Cloudflare from Render's egress IPs).
-    let html;
-    try {
-      const { gotScraping } = await import('got-scraping');
-      const res = await gotScraping(pageUrl.href, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          'Accept': 'text/html',
-        },
-        timeout: { request: 15000 },
-        throwHttpErrors: false,
-      });
-      html = res.body;
-    } catch {
-      html = await this.fetcher.text(ctx, pageUrl);
-    }
-    const $ = cheerio.load(html);
+    if (!Array.isArray(streams) || streams.length === 0) return [];
 
-    if (tmdbId.season) {
-      const results = await Promise.all(
-        $(`.episode-item`)
-          .filter((_i, el) => $('.episode-title', el).text().includes(`S${String(tmdbId.season).padStart(2, '0')}`))
-          .map((_i, el) => ({
-            countryCodes: [CountryCode.multi, ...findCountryCodes($(el).html())],
-            downloadItem: $('.episode-download-item', el)
-              .filter((_i, el) => $(el).text().includes(`Episode-${String(tmdbId.episode).padStart(2, '0')}`))
-              .get(0),
-          }))
-          .filter((_i, { downloadItem }) => downloadItem !== undefined)
-          .map(async (_id, { countryCodes, downloadItem }) => await this.extractSourceResults(ctx, $, downloadItem, countryCodes))
-          .toArray(),
-      );
-      return results.flat();
-    }
-
-    const results = await Promise.all(
-      $(`.download-item`)
-        .map(async (_i, el) => await this.extractSourceResults(ctx, $, el, [CountryCode.multi, ...findCountryCodes($(el).html())]))
-        .toArray(),
-    );
-    return results.flat();
-  }
-
-  async fetchPageUrl(ctx, tmdbId) {
-    const [name, year] = await getTmdbNameAndYear(this.fetcher, ctx, tmdbId);
-
-    const searchUrl = new URL(`/?s=${encodeURIComponent(name)}`, await this.getBaseUrl(ctx));
-    // Use got-scraping for CF bypass on Render
-    let html;
-    try {
-      const { gotScraping } = await import('got-scraping');
-      const res = await gotScraping(searchUrl.href, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          'Accept': 'text/html',
-        },
-        timeout: { request: 15000 },
-        throwHttpErrors: false,
-      });
-      html = res.body;
-    } catch {
-      html = await this.fetcher.text(ctx, searchUrl);
-    }
-
-    const $ = cheerio.load(html);
-
-    const typeSlug = tmdbId.season ? '-series-' : '-movie-';
-
-    return $(`.movie-card`)
-      .filter((_i, el) => {
-        const href = String($(el).attr('href'));
-        return href.includes(typeSlug);
-      })
-      .filter((_i, el) => {
-        const movieCardYear = parseInt($('.movie-card-meta', el).text());
-        return Math.abs(movieCardYear - year) <= 1;
-      })
-      .filter((_i, el) => {
-        const movieCardTitle = $('.movie-card-title', el)
-          .text()
-          .replace(/\[.*?]/, '')
-          .trim();
-
-        const fuse = new Fuse([movieCardTitle], { threshold: 0.3 });
-        return fuse.search(name).length > 0;
-      })
-      .map(async (_i, el) => new URL($(el).attr('href'), await this.getBaseUrl(ctx)))
-      .get(0);
-  }
-
-  async extractSourceResults(ctx, $, el, countryCodes) {
-    const localHtml = $(el).html();
-
-    const sizeMatch = localHtml.match(/([\d.]+ ?[GM]B)/);
-    const heightMatch = localHtml.match(/\d{3,}p/);
-
-    const meta = {
-      countryCodes: [...new Set([...countryCodes, ...findCountryCodes(localHtml)])],
-      height: parseInt(heightMatch?.[0]),
-      title: $('.file-title, .episode-file-title', el).text().trim(),
-      ...(sizeMatch && { bytes: bytes.parse(sizeMatch[1]) }),
-    };
-
-    const urls = [];
+    const results = [];
     const seenUrls = new Set();
+    for (const s of streams) {
+      if (!s || !s.url || typeof s.url !== 'string') continue;
+      if (!s.url.startsWith('http')) continue;
+      if (seenUrls.has(s.url)) continue;
+      seenUrls.add(s.url);
 
-    $('a', el)
-      .filter((_i, a) => {
-        const href = $(a).attr('href');
-        return !!href && HUB_HOST_PATTERN.test(href.toLowerCase());
-      })
-      .each((_i, a) => {
-        const href = $(a).attr('href');
-        try {
-          const url = new URL(href);
-          if (seenUrls.has(url.href)) return;
-          seenUrls.add(url.href);
+      let url;
+      try { url = new URL(s.url); } catch { continue; }
 
-          if (DEAD_HUBCLOUD_HOSTS.has(url.hostname)) return;
-          if (PIXEL_PATTERNS.test(url.href)) return;
+      const height = parseHeight(s.quality);
+      const fileSize = parseSize(s.size);
+      const sourceType = detectSourceType(s.quality + ' ' + (s.title || ''));
 
-          urls.push(url);
-        } catch {
-          // skip invalid URLs
-        }
+      const qualityLabel = s.quality || (height ? `${height}p` : 'Download');
+      const sizeLabel = s.size ? ` [${s.size}]` : '';
+      const displayTitle = `${title} (4KHDHub ${qualityLabel})${sizeLabel}`;
+
+      results.push({
+        url,
+        format: Format.mp4,
+        meta: {
+          countryCodes: [...new Set([...this.countryCodes, CountryCode.en])],
+          title: displayTitle,
+          sourceId: this.id,
+          sourceLabel: this.label,
+          ...(height && { height }),
+          ...(sourceType && { sourceType }),
+          ...(fileSize && { bytes: fileSize }),
+        },
       });
-
-    return Promise.all(urls.map(async url => ({
-      url: await this.resolveIfRedirect(ctx, url),
-      meta,
-    })));
-  }
-
-  async resolveIfRedirect(ctx, url) {
-    if (HUB_HOST_PATTERN.test(url.hostname)) {
-      return url;
     }
 
-    try {
-      return await resolveRedirectUrl(ctx, this.fetcher, url);
-    } catch {
-      return url;
-    }
-  }
-
-  async getBaseUrl(ctx) {
-    return this.probeBaseUrl(ctx, this.fetcher, this.domainKey, this.FALLBACK_CANDIDATES);
+    return results;
   }
 }

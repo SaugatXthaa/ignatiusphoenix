@@ -4,9 +4,18 @@
 // Flow:
 //   1. Search via /?s={title} (HTML, no CF challenge)
 //   2. Match by title + year (movies) or season (TV)
-//   3. For movies: extract hubcloud/hubdrive links grouped by quality
-//   4. For series: filter by season+episode, extract hubcloud/hubdrive links
-//   5. HubExtractor handles hubcloud.ist and hubdrive.tips URLs
+//   3. For movies: extract download links grouped by quality (content-file blocks)
+//   4. For series: filter by season+episode, extract links (season-item blocks)
+//   5. GREENMOTORS (2026-09): 4khdhub.one replaced direct hubcloud.ist/hubdrive.tips
+//      hrefs with ad-funnel links (greenmotors.cc/?id=<encrypted>). The funnel's
+//      landing HTML embeds a localStorage token whose decode chain yields the
+//      REAL file URL — fully server-side resolvable, no browser needed:
+//          token = atob(atob(rot13(atob(token))))  → JSON {l, w, o}
+//          realUrl = atob(json.o)                  → hubcloud.ist/drive/<id> etc.
+//   6. hubcloud.ist URLs ship raw — the ESM HubExtractor → HubCloud extractor
+//      pipeline resolves them downstream (workers.dev / pixeldrain direct CDN).
+//      hubdrive.pics results are SKIPPED: its download API is login-gated
+//      (401 "Not signed in" for guests; verified 2026-09).
 //
 // Supports: movies, TV series, up to 4K/2160p when available.
 
@@ -205,122 +214,195 @@ async function findBestMatch(results, tmdbTitle, tmdbYear, isMovie) {
   return null;
 }
 
-// Extract download links from a movie post page
-// Returns hubcloud.ist URLs (skips hubdrive.tips) because hubdrive.tips now
-// requires sign-in (returns 401 "Not signed in" on /ajax.php?ajax=info),
-// while hubcloud.ist resolves cleanly via HubExtractor → HubCloud →
-// pixel.hubcloud.cx / workers.dev direct CDN URLs.
-// Each quality on 4khdhub.one has both a hubcloud.ist and a hubdrive.tips
-// link; hubcloud.ist appears first in the HTML, so the dedup-by-quality
-// logic keeps it and the hubdrive.tips duplicate is skipped.
-function extractMovieLinks(html) {
-  const $ = cheerio.load(html);
-  const links = [];
-  const seen = new Set();
+// ===========================================================================
+// GREENMOTORS RESOLUTION (2026-09)
+// ===========================================================================
+// greenmotors.cc/?id=<X> returns a 1.4KB page whose only job is to stash a
+// token in localStorage and redirect through an ad mediator. The token is
+// EMBEDDED IN THE RESPONSE HTML:
+//     s('o', '<token>', 180*1000);
+// Decode chain (reversed from the mediator's deobfuscated pr()):
+//     atob → atob → rot13 → atob → JSON {"l": <landing>, "w": <secs>, "o": <b64>}
+//     realUrl = atob(json.o)
+// Verified 2026-09: lands on hubcloud.ist/drive/<id> (resolvable) or
+// hubdrive.pics/file/<id> (login-gated → skip).
 
-  $('a[href*="hubcloud"]').each((_i, el) => {
-    const href = $(el).attr('href') || '';
-    const text = $(el).text().trim();
-    if (seen.has(href)) return;
-    seen.add(href);
-
-    // Walk up to find quality badges in the same container
-    let quality = '';
-    let size = '';
-    let parent = $(el);
-    for (let depth = 0; depth < 8; depth++) {
-      parent = parent.parent();
-      if (!parent.length) break;
-
-      parent.find('.badge').each((_j, badge) => {
-        const badgeText = $(badge).text().trim();
-        if (badgeText.match(/2160p|1080p|720p|480p|4K|HDR|UHD|IMAX|BluRay|WEB|REMUX|HEVC|x264|x265|10bit|Dual/i) && !quality) {
-          quality = badgeText;
-        }
-        if (badgeText.match(/[\d.]+\s*(?:GB|MB)/i) && !size) {
-          size = badgeText;
-        }
-      });
-      if (quality) break;
-    }
-
-    // Fallback: check span elements
-    if (!quality) {
-      let p = $(el);
-      for (let depth = 0; depth < 5; depth++) {
-        p = p.parent();
-        if (!p.length) break;
-        p.find('span').each((_j, span) => {
-          const t = $(span).text().trim();
-          if (t.match(/2160p|1080p|720p|480p|4K|HDR|UHD|IMAX|BluRay|REMUX|HEVC/i) && !quality && t.length < 50) {
-            quality = t;
-          }
-        });
-        if (quality) break;
-      }
-    }
-
-    if (!quality) quality = 'Download';
-
-    links.push({ url: href, quality, size, text, host: text.replace('Download ', '') });
+// ROT13 used by the mediator's String.prototype.pen
+function rot13(s) {
+  return String(s).replace(/[a-zA-Z]/g, c => {
+    const base = c <= 'Z' ? 65 : 97;
+    return String.fromCharCode(((c.charCodeAt(0) - base + 13) % 26) + base);
   });
-
-  return links;
 }
 
+// atob equivalent that never throws on odd padding
+function b64decode(s) {
+  return Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('binary');
+}
+
+// Resolve one greenmotors URL → { url, host } or null
+async function resolveGreenmotors(href) {
+  try {
+    const html = await fetchText(href, { timeout: 12000, headers: { Referer: BASE_URL + '/' } });
+    const tokenMatch = html.match(/s\(\s*['"]o['"]\s*,\s*['"]([A-Za-z0-9+/=]+)['"]/);
+    if (!tokenMatch) { console.log('[4KHDHubOne] greenmotors: no token on ' + href.slice(0, 60)); return null; }
+    let s = b64decode(tokenMatch[1]);
+    s = b64decode(s);
+    s = rot13(s);
+    s = b64decode(s);
+    const json = JSON.parse(s);
+    if (!json || !json.o) return null;
+    const real = b64decode(json.o);
+    if (!/^https?:\/\//.test(real)) return null;
+    const host = new URL(real).hostname;
+    return { url: real, host };
+  } catch (e) {
+    console.log('[4KHDHubOne] greenmotors resolve failed: ' + (e?.message || e));
+    return null;
+  }
+}
+
+// 30-min in-module cache — the decoded URL is stable per 4khdhub post link
+const _gmCache = new Map();
+const GM_CACHE_TTL = 30 * 60 * 1000;
+async function resolveGreenmotorsCached(href) {
+  const hit = _gmCache.get(href);
+  if (hit && Date.now() - hit.ts < GM_CACHE_TTL) return hit.val;
+  const val = await resolveGreenmotors(href);
+  if (_gmCache.size > 400) _gmCache.clear();
+  _gmCache.set(href, { ts: Date.now(), val });
+  return val;
+}
+
+// Extract the download links from one 4khdhub file block.
+// Movie block:  <div id="content-fileNNN"> <div class="file-title">…2160p…mkv</div>
+//               <span class="badge">BluRay 2160p</span> …
+//               <a href="greenmotors">Download HubDrive|HubCloud</a> </div>
+// Series block: <div class="episode-download-item">
+//               <div class="episode-file-title">…S05E01…mkv</div>
+//               <span class="badge-psa">Episode-01</span>
+//               <span class="badge-size">1.65 GB</span>
+//               <a href="greenmotors">Download HubCloud</a> </div>
+// Returns { title, quality, size, greenmotorsHrefs[], legacyHubcloudHrefs[] }
+function parseFileBlock($, el) {
+  const $el = $(el);
+  const blockHtml = $.html(el);
+  const title = ($el.find('.file-title, .episode-file-title').first().text() || '').trim();
+  if (!title) return null;
+
+  const qualityMatch = title.match(/(2160p|1080p|720p|480p)/i);
+  const quality = qualityMatch ? qualityMatch[1] : '';
+  // Size: real sizes look like "1.65 GB" / "520 MB". The naive \d+\s*MB regex
+  // false-matches Tailwind spacing classes ("gap-2 mb-3" → "2 mb"), so the
+  // char BEFORE the number must not be a hyphen/alnum and nothing may follow.
+  const sizeMatch = blockHtml.match(/(?:^|[^a-z0-9-])(\d+(?:\.\d+)?\s*(?:GB|MB))(?![a-z])/i);
+  const size = sizeMatch ? sizeMatch[1].replace(/\s+/g, ' ') : '';
+
+  const greenmotorsHrefs = [];
+  const legacyHubcloudHrefs = [];
+  const seen = new Set();
+  $el.find('a[href]').each((_i, a) => {
+    const href = ($(a).attr('href') || '').replace(/&amp;/g, '&');
+    if (!href || seen.has(href)) return;
+    seen.add(href);
+    if (/greenmotors\.cc\/\?id=/.test(href)) greenmotorsHrefs.push(href);
+    else if (/hubcloud|hubdrive/i.test(href)) legacyHubcloudHrefs.push(href);
+  });
+
+  // Prefer the "Download HubCloud" button (its decode lands on hubcloud.ist,
+  // which resolves anonymously). HubDrive buttons decode to hubdrive.pics,
+  // whose download API is login-gated.
+  greenmotorsHrefs.sort((a, b) => {
+    const aCloud = /hubcloud/i.test($('a[href="' + a + '"]', el).text() || '') ? 0 : 1;
+    const bCloud = /hubcloud/i.test($('a[href="' + b + '"]', el).text() || '') ? 0 : 1;
+    return aCloud - bCloud;
+  });
+
+  return { title, quality, size, greenmotorsHrefs, legacyHubcloudHrefs };
+}
+
+// Extract download entries from a movie post page (2026-09 layout)
+function extractMovieLinks(html) {
+  const $ = cheerio.load(html);
+  const blocks = [];
+
+  // Primary: content-fileNNN blocks (one per quality/edition)
+  $('div[id^="content-file"]').each((_i, el) => {
+    const parsed = parseFileBlock($, el);
+    if (parsed && (parsed.greenmotorsHrefs.length || parsed.legacyHubcloudHrefs.length)) {
+      blocks.push(parsed);
+    }
+  });
+
+  // Fallback: legacy direct-hubcloud anchors (pre-greenmotors layout)
+  if (blocks.length === 0) {
+    $('a[href*="hubcloud"]').each((_i, el) => {
+      const href = ($(el).attr('href') || '').replace(/&amp;/g, '&');
+      if (!href) return;
+      // Walk up for quality badges (legacy behavior)
+      let quality = '';
+      let size = '';
+      let parent = $(el);
+      for (let depth = 0; depth < 8 && !quality; depth++) {
+        parent = parent.parent();
+        if (!parent.length) break;
+        parent.find('.badge').each((_j, badge) => {
+          const t = $(badge).text().trim();
+          if (t.match(/2160p|1080p|720p|480p|4K|HDR|UHD|IMAX|BluRay|WEB|REMUX|HEVC/i) && !quality) quality = t;
+          if (t.match(/[\d.]+\s*(?:GB|MB)/i) && !size) size = t;
+        });
+      }
+      blocks.push({ title: quality || 'Download', quality, size, greenmotorsHrefs: [], legacyHubcloudHrefs: [href] });
+    });
+  }
+
+  console.log('[4KHDHubOne] Found ' + blocks.length + ' file blocks (movie)');
+  return blocks;
+}
+
+// Extract download entries from a series post page, filtered by season/episode
+// 2026-09 layout: .season-content > .season-item.episode-item
+//   .episode-number = "S05" (season), .episode-download-item per file with
+//   .badge-psa = "Episode-01" and .episode-file-title = filename
 function extractEpisodeLinks(html, targetSeason, targetEpisode) {
   const $ = cheerio.load(html);
-  const links = [];
-  const seen = new Set();
-  const seenQualities = new Set();
+  const blocks = [];
 
   $('.season-content').each((_i, seasonEl) => {
     const seasonText = $(seasonEl).find('.episode-number').first().text().trim();
     const seasonNum = seasonText.match(/S(\d+)/)?.[1];
     if (!seasonNum || parseInt(seasonNum) !== targetSeason) return;
 
-    // Find ALL hubcloud/hubdrive links in this season.
-    // Prefer hubcloud.ist (resolves via HubCloud extractor); skip
-    // hubdrive.tips because it now requires sign-in (401).
-    $(seasonEl).find('a[href*="hubcloud"], a[href*="hubdrive"]').each((_k, dl) => {
-      const href = $(dl).attr('href') || '';
-      const text = $(dl).text().trim();
-      if (seen.has(href)) return;
-      seen.add(href);
-      if (href.includes('hubdrive.tips')) return;
-
-      let quality = '';
-      let size = '';
-      let parent = $(dl).parent();
-      for (let depth = 0; depth < 5; depth++) {
-        parent.find('.badge, span').each((_l, badge) => {
-          const badgeText = $(badge).text().trim();
-          if (badgeText.match(/2160p|1080p|720p|480p|4K|HDR/i) && !quality) {
-            quality = badgeText;
-          }
-          if (badgeText.match(/[\d.]+\s*(?:GB|MB)/i) && !size) {
-            size = badgeText;
-          }
-        });
-        const parentText = parent.text().trim();
-        const qMatch = parentText.match(/(2160p|1080p|720p|480p|4K|HDR|UHD|BluRay|HEVC|AVC|WEB)/i);
-        if (qMatch && !quality) quality = qMatch[1];
-        if (quality) break;
-        parent = parent.parent();
+    $(seasonEl).find('.episode-download-item').each((_j, el) => {
+      // Episode filter: badge-psa "Episode-NN" (packs list every episode file)
+      if (targetEpisode) {
+        const psa = ($(el).find('.badge-psa').first().text() || '').trim();
+        const m = psa.match(/Episode[-\s]*0*(\d{1,3})/i);
+        if (m && parseInt(m[1]) !== targetEpisode) return;
       }
-
-      // Deduplicate by quality
-      const qualityKey = quality || 'default';
-      if (seenQualities.has(qualityKey)) return;
-      seenQualities.add(qualityKey);
-
-      links.push({ url: href, quality, size, text, host: text.replace('Download ', '') });
+      const parsed = parseFileBlock($, el);
+      if (parsed && (parsed.greenmotorsHrefs.length || parsed.legacyHubcloudHrefs.length)) {
+        blocks.push(parsed);
+      }
     });
   });
 
-  return links;
-}
+  // Legacy fallback: any hubcloud anchor inside the season block
+  if (blocks.length === 0) {
+    $('.season-content').each((_i, seasonEl) => {
+      const seasonText = $(seasonEl).find('.episode-number').first().text().trim();
+      const seasonNum = seasonText.match(/S(\d+)/)?.[1];
+      if (!seasonNum || parseInt(seasonNum) !== targetSeason) return;
+      $(seasonEl).find('a[href*="hubcloud"]').each((_j, el) => {
+        const href = ($(el).attr('href') || '').replace(/&amp;/g, '&');
+        if (href) blocks.push({ title: 'Download', quality: '', size: '', greenmotorsHrefs: [], legacyHubcloudHrefs: [href] });
+      });
+    });
+  }
 
+  console.log('[4KHDHubOne] Found ' + blocks.length + ' file blocks (S' + String(targetSeason).padStart(2, '0') + 'E' + String(targetEpisode).padStart(2, '0') + ')');
+  return blocks;
+}
 
 // Parse quality to height
 function parseHeight(quality) {
@@ -331,6 +413,56 @@ function parseHeight(quality) {
   if (s.includes('720')) return 720;
   if (s.includes('480')) return 480;
   return undefined;
+}
+
+// Resolve file blocks → concrete file URLs (greenmotors-decoded or legacy)
+// Returns [{ url, quality, size, title }] with hubdrive.pics skipped.
+// PERF: greenmotors decodes are ~0.5-2s each; decoding ALL blocks (14+ for a
+// season episode) took 20s+ and blew the resolver budget. Batches of 8 with
+// early-exit once `limit` unique URLs are in hand keep this at ~1 round.
+async function resolveBlocks(blocks, limit) {
+  const out = [];
+  const seenUrls = new Set();
+  const seenQualities = new Set();
+
+  // Collect resolution jobs: prefer greenmotors, then legacy hrefs
+  const jobs = [];
+  for (const b of blocks) {
+    if (b.greenmotorsHrefs.length) jobs.push({ block: b, href: b.greenmotorsHrefs[0], via: 'greenmotors' });
+    else if (b.legacyHubcloudHrefs.length) jobs.push({ block: b, href: b.legacyHubcloudHrefs[0], via: 'legacy' });
+  }
+  // 4K-first, then highest size — best variants resolve in the first batch
+  const qRank = q => /2160|4k/i.test(q) ? 0 : /1080/i.test(q) ? 1 : /720/i.test(q) ? 2 : 3;
+  jobs.sort((a, b) => {
+    const d = qRank(a.block.quality) - qRank(b.block.quality);
+    if (d !== 0) return d;
+    return (parseFloat(b.block.size) || 0) - (parseFloat(a.block.size) || 0);
+  });
+
+  // Cap parallel greenmotors fetches to keep the resolve inside budget
+  const CAP = 8;
+  for (let i = 0; i < jobs.length && out.length < limit; i += CAP) {
+    const batch = jobs.slice(i, i + CAP);
+    const vals = await Promise.all(batch.map(j =>
+      (j.via === 'greenmotors' ? resolveGreenmotorsCached(j.href) : Promise.resolve({ url: j.href, host: new URL(j.href).hostname }))
+        .catch(() => null)
+    ));
+    for (let k = 0; k < vals.length && out.length < limit; k++) {
+      const val = vals[k];
+      if (!val || !val.url) continue;
+      // hubdrive.pics is login-gated (401 for guests) — the hubcloud.ist twin
+      // of the same quality covers it; skip to avoid dead cards.
+      if (val.host.includes('hubdrive.pics')) continue;
+      if (seenUrls.has(val.url)) continue;
+      // Quality diversity: at most 3 editions per quality tier
+      const qKey = (batch[k].block.quality || 'na').toLowerCase();
+      const qCount = out.filter(o => (o.quality || 'na').toLowerCase() === qKey).length;
+      if (qCount >= 3 && out.length >= 2) continue;
+      seenUrls.add(val.url);
+      out.push({ url: val.url, quality: batch[k].block.quality, size: batch[k].block.size, title: batch[k].block.title });
+    }
+  }
+  return out;
 }
 
 // Main: getStreams
@@ -359,36 +491,25 @@ async function getStreams(tmdbId, type, season, episode) {
     console.log('[4KHDHubOne] Post page: ' + match.url + ' (' + html.length + ' chars)');
   }
 
-  let links;
-  if (isMovie) {
-    links = extractMovieLinks(html);
-  } else {
-    const targetSeason = season || 1;
-    const targetEpisode = episode || 1;
-    links = extractEpisodeLinks(html, targetSeason, targetEpisode);
-  }
+  const targetSeason = season || 1;
+  const targetEpisode = episode || 1;
+  const blocks = isMovie
+    ? extractMovieLinks(html)
+    : extractEpisodeLinks(html, targetSeason, targetEpisode);
 
-  if (!links.length) {
+  if (!blocks.length) {
     console.log('[4KHDHubOne] No download links found');
     return [];
   }
 
-  console.log('[4KHDHubOne] Found ' + links.length + ' download links');
+  const resolved = await resolveBlocks(blocks, 6);
+  console.log('[4KHDHubOne] Resolved ' + resolved.length + ' file URLs');
 
-  // Deduplicate by URL and limit to reasonable number
-  const seen = new Set();
-  const unique = [];
-  for (const l of links) {
-    if (seen.has(l.url)) continue;
-    seen.add(l.url);
-    unique.push(l);
-    if (unique.length >= 6) break; // Limit to 6 links
-  }
+  const epSuffix = isMovie ? '' : ' S' + String(season || 1).padStart(2, '0') + 'E' + String(episode || 1).padStart(2, '0');
 
-  return unique.map(l => ({
-    name: '4KHDHubOne - ' + (l.quality || 'Download') + ' - ' + l.host,
-    title: info.title + (isMovie ? '' : ' S' + String(season || 1).padStart(2, '0') + 'E' + String(episode || 1).padStart(2, '0')) +
-           ' ' + (l.quality || '') + (l.size ? ' [' + l.size + ']' : ''),
+  return resolved.map(l => ({
+    name: '4KHDHubOne - ' + (l.quality || 'Download') + (l.size ? ' - ' + l.size : ''),
+    title: info.title + epSuffix + ' ' + (l.quality || '') + (l.size ? ' [' + l.size + ']' : ''),
     url: l.url,
     quality: l.quality || '',
     size: l.size || '',
@@ -398,4 +519,4 @@ async function getStreams(tmdbId, type, season, episode) {
   }));
 }
 
-module.exports = { getStreams };
+module.exports = { getStreams, resolveGreenmotors, extractMovieLinks, extractEpisodeLinks };

@@ -16,7 +16,7 @@ import { createRequire } from 'module';
 import { CountryCode } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
-import { buildStreamResults } from './nuvioHelpers.js';
+import { buildStreamResults, withRetryOnEmpty } from './nuvioHelpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'uhdmovies.cjs');
@@ -112,7 +112,9 @@ export class UHDMovies extends Source {
     let streams;
     try {
       streams = await Promise.race([
-        mod.getStreams(tmdbId.id, 'movie', null, null),
+        // Task 38: bounded retry-on-empty — transient gateway/Driveseed flakes
+        // returned [] which then poisoned the 60s negative cache.
+        withRetryOnEmpty(() => mod.getStreams(tmdbId.id, 'movie', null, null), { maxTotalMs: 12000, tag: 'uhdmovies' }),
         new Promise(r => setTimeout(() => r(null), 40000)), // DriveSeed resolution can be slow
       ]);
     } catch (e) {

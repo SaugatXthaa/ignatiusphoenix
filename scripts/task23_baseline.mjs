@@ -194,7 +194,8 @@ async function runChecks(child, logFile, bootLines) {
   const srcM = bootLines.match(/Sources: (\d+)/);
   const extM = bootLines.match(/Extractors: (\d+)/);
   // Task 28: 69 → 70 — AniMoTVSlash (animotvslash.org) registered
-  check('boot source count = 70', srcM && srcM[1] === '70', `got ${srcM?.[1]}`);
+  // Task 38: 70 → 71 — CineFreak revived (cinefreak.net, search-api + cinecloud)
+  check('boot source count = 71', srcM && srcM[1] === '71', `got ${srcM?.[1]}`);
   // Task 25: 30 → 31 — VidZee extractor registered (ported file existed but
   // was never wired into createExtractors; vidzee source shipped 0 streams).
   // Task 28: 31 → 32 — MixDrop extractor (verhdlink mixdrop mirrors → direct MP4)
@@ -276,6 +277,21 @@ async function runChecks(child, logFile, bootLines) {
   let vgCount = vg?.count ?? 0;
   if (vgCount < 2) { await new Promise(r => setTimeout(r, 10000)); const vg2 = await getJson(`${base}/debug/source/vegamovies2?type=series&id=tmdb:108978:4:1`, 45000); vgCount = Math.max(vgCount, vg2?.count ?? 0); }
   check('vegamovies2 Reacher S4E1 >= 2 (new source guard)', vgCount >= 2, `count=${vgCount}`);
+  // Task 38 guards: greenmotors-era 4khdhub sources + revived CineFreak.
+  // Each gets one retry to absorb transient upstream windows (negative-cache
+  // class) without failing the suite.
+  const kf = await getJson(`${base}/debug/source/fourkhdhubone?type=movie&id=tmdb:27205`, 45000);
+  let kfCount = kf?.count ?? 0;
+  if (kfCount < 3) { await new Promise(r => setTimeout(r, 8000)); const kf2 = await getJson(`${base}/debug/source/fourkhdhubone?type=movie&id=tmdb:27205`, 45000); kfCount = Math.max(kfCount, kf2?.count ?? 0); }
+  check('fourkhdhubone Inception >= 3 (greenmotors decode guard)', kfCount >= 3, `count=${kfCount}`);
+  const kh = await getJson(`${base}/debug/source/4khdhub?type=movie&id=tmdb:27205`, 45000);
+  let khCount = kh?.count ?? 0;
+  if (khCount < 3) { await new Promise(r => setTimeout(r, 8000)); const kh2 = await getJson(`${base}/debug/source/4khdhub?type=movie&id=tmdb:27205`, 45000); khCount = Math.max(khCount, kh2?.count ?? 0); }
+  check('4khdhub Inception >= 3 (greenmotors decode guard)', khCount >= 3, `count=${khCount}`);
+  const cf = await getJson(`${base}/debug/source/cinefreak?type=movie&id=tmdb:27205`, 60000);
+  let cfCount = cf?.count ?? 0;
+  if (cfCount < 2) { await new Promise(r => setTimeout(r, 8000)); const cf2 = await getJson(`${base}/debug/source/cinefreak?type=movie&id=tmdb:27205`, 60000); cfCount = Math.max(cfCount, cf2?.count ?? 0); }
+  check('cinefreak Inception >= 2 (revival guard)', cfCount >= 2, `count=${cfCount}`);
   // animotvslash standing check (Task 28): anime hardsub/softsub source.
   // One-shot guard with a retry — videas CDN intermittently hangs Range
   // probes from datacenter IPs; a single slow round must not fail the run.

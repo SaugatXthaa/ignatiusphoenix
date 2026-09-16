@@ -18,6 +18,7 @@ import { createRequire } from 'module';
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
+import { withRetryOnEmpty } from './nuvioHelpers.js';
 import { TMDB_PRIMARY } from '../utils/site-secrets.cjs'; // central site-secret registry (env-overridable)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -95,7 +96,10 @@ export class StellarRip extends Source {
     let rawStreams;
     try {
       rawStreams = await Promise.race([
-        mod.getStreams(String(tmdbId.id), stellarType, tmdbId.season || null, tmdbId.episode || null),
+        // Task 38: bounded retry-on-empty — stellar.rip availability flickers
+        // (all servers "unavailable" windows) returned [] and the 60s negative
+        // cache then hid the recovery from users.
+        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), stellarType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 14000, tag: 'stellarrip' }),
         new Promise(r => setTimeout(() => r(null), 25000)),
       ]);
     } catch (e) {

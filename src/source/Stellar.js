@@ -31,7 +31,7 @@ import bytes from 'bytes';
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
-import { buildStreamResults } from './nuvioHelpers.js';
+import { buildStreamResults, withRetryOnEmpty } from './nuvioHelpers.js';
 import { TMDB_PRIMARY } from '../utils/site-secrets.cjs'; // central site-secret registry (env-overridable)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -109,7 +109,9 @@ export class Stellar extends Source {
     let streams;
     try {
       streams = await Promise.race([
-        mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null),
+        // Task 38: bounded retry-on-empty — api.stellar.gdn PoW/resolve
+        // transiently fails (HTTP 429 windows); retry absorbs it.
+        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 14000, tag: 'stellar' }),
         new Promise(r => setTimeout(() => r(null), 25000)),
       ]);
     } catch (e) {

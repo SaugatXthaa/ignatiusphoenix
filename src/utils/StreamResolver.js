@@ -405,6 +405,9 @@ export class StreamResolver {
     // budget (STREAM_CLIENT_BUDGET_MS) for actual execution.
     const PRIORITY_SOURCE_IDS = new Set([
       'cinejoyaio', 'zinkmovies', '4khdhub', 'playimdb',
+      // Task 38: 3-8s resolvers (gateway chains, got-scraping, PoW) that die
+      // in the queue under concurrency — start in wave-1 to fit the budget
+      'uhdmovies', 'bollyflix', 'fourkhdhubone',
       // Stellar sources — PoW + AES-GCM takes 5-10s; must start early
       'stellar', 'stellarrip',
       // VidEasy — speedracelight API takes 15-25s; must start early
