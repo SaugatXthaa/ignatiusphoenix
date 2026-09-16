@@ -68,6 +68,11 @@ async function getTMDBInfo(tmdbId, type) {
 
 // ---------------------------------------------------------------------------
 // Step 1: Fetch embed page → extract __REQUEST_TOKEN__
+// 2026-09-16 site migration (Task 41): the embed page no longer inlines the
+// JWT (`w.__REQUEST_TOKEN__ = session.token` — assigned at runtime from a
+// bootstrap fetch). The session now comes from POST /api/request-token →
+// { token, expiresAt, deploymentVersion } (verified live: 200 + ~6h JWT).
+// Old inline regex kept FIRST as a rollback guard.
 // ---------------------------------------------------------------------------
 async function getRequestToken(tmdbId, type, season, episode) {
   const isMovie = type !== 'tv';
@@ -78,19 +83,40 @@ async function getRequestToken(tmdbId, type, season, episode) {
     headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error(`Embed page HTTP ${res.status}`);
+  // Task 41: capture the session cookies the embed page sets (_stellar_site,
+  // stellar-language) — the 2026-09-16 migration made /api/playback-init
+  // reject requests WITHOUT this cookie (401). All later API calls must
+  // replay it alongside the Referer.
+  const setCookies = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
+  const cookieJar = setCookies.map(c => c.split(';')[0]).filter(Boolean).join('; ');
   const html = await res.text();
   const match = html.match(/__REQUEST_TOKEN__\s*=\s*"([^"]+)"/);
-  if (!match) throw new Error('No __REQUEST_TOKEN__ in embed page');
-  return { token: match[1], embedPath };
+  if (match) return { token: match[1], embedPath, cookieJar };
+
+  // New mechanism: bootstrap the session token from the JSON endpoint
+  const tokRes = await fetch(STELLAR_RIP + '/api/request-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Origin': STELLAR_RIP, 'Referer': STELLAR_RIP + embedPath, 'User-Agent': UA, ...(cookieJar && { Cookie: cookieJar }) },
+    body: '{}',
+    signal: AbortSignal.timeout(10000),
+  });
+  if (tokRes.ok) {
+    const tokData = await tokRes.json().catch(() => null);
+    // merge any cookies the bootstrap sets too
+    const setCookies2 = tokRes.headers.getSetCookie ? tokRes.headers.getSetCookie() : [];
+    const merged = [cookieJar, ...setCookies2.map(c => c.split(';')[0])].filter(Boolean).join('; ');
+    if (tokData && tokData.token) return { token: tokData.token, embedPath, cookieJar: merged };
+  }
+  throw new Error('No __REQUEST_TOKEN__ in embed page and /api/request-token failed');
 }
 
 // ---------------------------------------------------------------------------
 // Steps 2-4: Get stream token via /api/playback-init (PoW)
 // ---------------------------------------------------------------------------
-async function getStreamToken(mediaId, mediaType, tvSlug, requestToken) {
+async function getStreamToken(mediaId, mediaType, tvSlug, requestToken, cookieJar, embedPath) {
   const initRes = await fetch(STELLAR_RIP + '/api/playback-init', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Origin': STELLAR_RIP, 'User-Agent': UA },
+    headers: { 'Content-Type': 'application/json', 'Origin': STELLAR_RIP, 'Referer': STELLAR_RIP + embedPath, 'User-Agent': UA, ...(cookieJar && { Cookie: cookieJar }) },
     body: JSON.stringify({ mediaId, mediaType, tv_slug: tvSlug || '', requestToken }),
     signal: AbortSignal.timeout(10000),
   });
@@ -104,7 +130,7 @@ async function getStreamToken(mediaId, mediaType, tvSlug, requestToken) {
   const nonce = solveBitPoW(challenge, difficulty);
   const solveRes = await fetch(STELLAR_RIP + '/api/playback-init', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Origin': STELLAR_RIP, 'User-Agent': UA },
+    headers: { 'Content-Type': 'application/json', 'Origin': STELLAR_RIP, 'Referer': STELLAR_RIP + embedPath, 'User-Agent': UA, ...(cookieJar && { Cookie: cookieJar }) },
     body: JSON.stringify({ mediaId, mediaType, tv_slug: tvSlug || '', requestToken, pow: { challengeId, nonce: String(nonce) } }),
     signal: AbortSignal.timeout(10000),
   });
@@ -117,10 +143,10 @@ async function getStreamToken(mediaId, mediaType, tvSlug, requestToken) {
 // ---------------------------------------------------------------------------
 // Steps 5-6: Get stream URL for a specific source
 // ---------------------------------------------------------------------------
-async function resolveSource(mediaId, mediaType, tvSlug, requestToken, streamToken, source, embedPath) {
+async function resolveSource(mediaId, mediaType, tvSlug, requestToken, streamToken, source, embedPath, cookieJar) {
   const encRes = await fetch(STELLAR_RIP + '/api/encrypt', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Origin': STELLAR_RIP, 'User-Agent': UA },
+    headers: { 'Content-Type': 'application/json', 'Origin': STELLAR_RIP, 'Referer': STELLAR_RIP + embedPath, 'User-Agent': UA, ...(cookieJar && { Cookie: cookieJar }) },
     body: JSON.stringify({ data: { mediaId, mediaType, tv_slug: tvSlug || '', source }, endpoint: 'stream-encrypted', requestToken }),
     signal: AbortSignal.timeout(10000),
   });
@@ -213,13 +239,13 @@ async function getStreams(tmdbId, type, season, episode) {
   console.log('[Stellar] TMDB: ' + info.title + (info.year ? ' (' + info.year + ')' : ''));
 
   try {
-    // Step 1: Get request token
-    const { token: requestToken, embedPath } = await getRequestToken(tmdbId, type, season, episode);
+    // Step 1: Get request token (+ session cookie jar)
+    const { token: requestToken, embedPath, cookieJar } = await getRequestToken(tmdbId, type, season, episode);
     console.log('[Stellar] Request token acquired');
 
     // Steps 2-4: Get stream token (PoW)
     console.log('[Stellar] Solving PoW (18 bits)...');
-    const streamToken = await getStreamToken(mediaId, mediaType, tvSlug, requestToken);
+    const streamToken = await getStreamToken(mediaId, mediaType, tvSlug, requestToken, cookieJar, embedPath);
     console.log('[Stellar] Stream token acquired');
 
     // Steps 5-6: Try all sources (s2 first for 4K!)
@@ -228,7 +254,7 @@ async function getStreams(tmdbId, type, season, episode) {
     // streams, the "flaky" behaviour). Parallel wall time = slowest single
     // source (~5-8s), comfortably inside budget.
     const settled = await Promise.allSettled(ALL_SOURCES.map(async (source) => {
-      const streamUrl = await resolveSource(mediaId, mediaType, tvSlug, requestToken, streamToken, source, embedPath);
+      const streamUrl = await resolveSource(mediaId, mediaType, tvSlug, requestToken, streamToken, source, embedPath, cookieJar);
       if (!streamUrl) { console.log('[Stellar]   ' + source + ': unavailable'); return null; }
 
       const probe = await probeMasterPlaylist(streamUrl, embedPath);
