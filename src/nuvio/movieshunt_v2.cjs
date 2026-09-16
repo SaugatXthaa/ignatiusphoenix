@@ -70,7 +70,7 @@ async function searchSite(title) {
   // so only this search entry point needs to change. Legacy HTML parse kept as
   // a fallback in case the site reverts.
   try {
-    const raw = await fetchText(ORIGIN + '/lookup.php?q=' + encodeURIComponent(title) + '&page=1', undefined, 10000);
+    const raw = await fetchText(ORIGIN + '/lookup.php?q=' + encodeURIComponent(title) + '&page=1', undefined, 14000);
     const j = JSON.parse(raw);
     const hits = Array.isArray(j && j.hits) ? j.hits : [];
     const results = [];
@@ -472,7 +472,7 @@ async function getStreams(tmdbId, type, season, episode) {
 
   // Fetch movie page
   let movieHtml;
-  try { movieHtml = await fetchText(results[0].url); }
+  try { movieHtml = await fetchText(results[0].url, undefined, 14000); }
   catch (e) { console.log('[MoviesHunt] Movie page fetch failed: ' + e.message); return []; }
 
   // Parse download links — also grabs the post H1 (site's own audio/source text)

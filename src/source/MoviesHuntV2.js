@@ -72,7 +72,7 @@ export class MoviesHuntV2 extends Source {
       streams = await Promise.race([
         // Task 39: bounded retry-on-empty — abhilinks/gdflix transient windows
         // zeroed whole runs and the 60s negative cache then hid the recovery
-        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 24000, tag: 'movieshuntv2' }),
+        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 36000, tag: 'movieshuntv2' }),
         // 32s (vs 28s): under resolver contention the inflated chain completes
         // ~25-30s — the race must let that completion reach the 5-min cache
         // (Task 36 warm-up contract) instead of discarding it; SOURCE_TIMEOUT
