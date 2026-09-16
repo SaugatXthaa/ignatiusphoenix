@@ -260,7 +260,7 @@ async function headOk(url) {
     const res = await gs(url, {
       method: 'HEAD',
       headers: { 'User-Agent': UA },
-      timeout: { request: 6000 },
+      timeout: { request: 4000 },
       throwHttpErrors: false,
       followRedirect: true,
     });
@@ -333,7 +333,9 @@ async function resolveHubcloudDrive(driveUrl) {
       const pdMatch = gxHtml.match(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/);
       if (pdMatch) {
         const candidates = [...new Set([...gxHtml.matchAll(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/gi)].map(m => m[1]))];
-        for (const pdId of candidates) {
+        // Task 39: cap liveness probing — under resolver concurrency each 4s
+        // HEAD inflates 2-3x and the probe tail was eating the whole race
+        for (const pdId of candidates.slice(0, 3)) {
           const pdUrl = 'https://pixeldrain.com/api/file/' + pdId + '?download';
           if (await headOk(pdUrl)) return pdUrl;
         }
@@ -361,7 +363,7 @@ async function resolveHubcloudDrive(driveUrl) {
       // Pixeldrain /u/ buttons — liveness-check every candidate (DMCA decoys
       // are common). Server-verified alive beats a datacenter-blocked r2.dev.
       const svPd = [...new Set([...svHtml.matchAll(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/gi)].map(m => m[1]))];
-      for (const pdId of svPd) {
+      for (const pdId of svPd.slice(0, 3)) {
         const pdUrl = 'https://pixeldrain.com/api/file/' + pdId + '?download';
         if (await headOk(pdUrl)) return pdUrl;
       }
@@ -492,8 +494,12 @@ async function getStreams(tmdbId, type, season, episode) {
   // the caller's race timeout → zero streams shipped even though every link
   // was perfectly resolvable.
   // Streams are pushed into allStreams AS THEY COMPLETE, and the whole pool
-  // is raced against a ~22s internal deadline — the caller's 28s race then
-  // ALWAYS receives whatever resolved instead of timing out to zero.
+  // is raced against a ~30s internal deadline — Task 39: under full-resolver
+  // contention (Render 0.1-CPU) the chain inflates 2-3x (isolated 7.4s →
+  // ~25s contended), and the old 22s race expired BEFORE anything completed,
+  // so the background continuation cached 0 instead of its results. 30s lets
+  // the late-but-real completion reach the 5-min cache (next request gets it
+  // at ~0ms per the Task 36 warm-up contract); the client budget is untouched.
   const linksToProcess = links.slice(0, 14);
   const resolveOneLink = async (link) => {
     const push = (s) => { if (s) allStreams.push(s); };
@@ -563,7 +569,7 @@ async function getStreams(tmdbId, type, season, episode) {
 
   await Promise.race([
     mapPool(linksToProcess, 6, resolveOneLink),
-    new Promise(r => setTimeout(r, 22000)),
+    new Promise(r => setTimeout(r, 30000)),
   ]);
 
   // Dedupe identical final URLs (season-pack pages list the same file behind
