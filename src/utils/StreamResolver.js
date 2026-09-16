@@ -5,6 +5,7 @@ import { Format } from '../types.js';
 import { getClosestResolution } from './resolution.js';
 import { flagFromCountryCode, languageFromCountryCode } from './language.js';
 import { SubtitleFetcher } from './SubtitleFetcher.js';
+import streamGate from './streamGate.cjs';
 
 // Extract a release name from a stream's meta + URL for OpenSubtitles
 // release-name matching. Returns "" if no recognizable release name found.
@@ -490,7 +491,20 @@ export class StreamResolver {
               })
           )
         );
-        urlResults.push(...sourceUrlResults.flat());
+        const flatResults = sourceUrlResults.flat();
+        urlResults.push(...flatResults);
+        // Task 42: fire-and-forget liveness probes for gated hosts
+        // (pixeldrain files that are zips/decoys, vimeos.* 403-HTML fronts,
+        // peakstorm/vidbolt dead-tree playlists, nexabloom/nhdapi html pages).
+        // Probes run while OTHER sources are still resolving, so verdicts are
+        // usually cached by the time the card-build loop consults them.
+        // gateHostOf unwraps /proxy|/range-proxy cards to their INNER host.
+        for (const r of flatResults) {
+          if (r?.url) {
+            const effHost = streamGate.gateHostOf(r.url.href);
+            if (effHost && streamGate.isGatedHost(effHost)) streamGate.kick(r.url.href);
+          }
+        }
       } catch (error) {
         status = error?.message?.includes('timed out') ? 'timeout' : 'error';
         sourceErrorCount++;
@@ -713,6 +727,16 @@ export class StreamResolver {
       // deleted from PixelDrain and returns 404. This is a known-dead file.
       // Other pixeldrain files may still work — only filter this specific ID.
       if (filterHost.includes('pixeldrain') && urlResult.url.pathname.includes('negn6f')) {
+        continue;
+      }
+      // Task 42: drop cards whose liveness probe came back definitively dead
+      // (pixeldrain zips/decoy files, vimeos.* 403-HTML fronts, dead-tree
+      // playlists, html-page "streams"). 'unknown' (probe pending/inconclusive)
+      // ships as before — never block on probes. Gate on the EFFECTIVE host
+      // (inner upstream for /proxy-wrapped cards).
+      const effGateHost = streamGate.gateHostOf(urlResult.url.href);
+      if (effGateHost && streamGate.isGatedHost(effGateHost) && streamGate.verdict(urlResult.url.href) === 'dead') {
+        this.logger.info(`StreamResolver: dropping gated-dead card ${effGateHost}${urlResult.url.pathname.slice(0, 40)}`);
         continue;
       }
 

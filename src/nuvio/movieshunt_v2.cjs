@@ -22,6 +22,10 @@ const PROVIDER_NAME = 'MoviesHunt';
 const ORIGIN = 'https://movieshunt.casa';
 const TMDB_API_KEY = '8476a7ab80ad76f0936744df0430e67c';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+// Task 42: pixeldrain hosts ANY file type — a status-only HEAD ships 7GB
+// season-pack ZIPs as "streams" (sweep-caught: Breaking.Bad.S05...zip).
+// pdVideoOk demands video evidence (ct / Content-Disposition filename).
+const { pdVideoOk } = require('../utils/streamGate.cjs');
 
 // got-scraping helper for Cloudflare bypass (Chrome TLS fingerprint)
 let _gotScraping = null;
@@ -335,9 +339,10 @@ async function resolveHubcloudDrive(driveUrl) {
         const candidates = [...new Set([...gxHtml.matchAll(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/gi)].map(m => m[1]))];
         // Task 39: cap liveness probing — under resolver concurrency each 4s
         // HEAD inflates 2-3x and the probe tail was eating the whole race
+        // Task 42: content-aware — a candidate only wins if it is a VIDEO file
         for (const pdId of candidates.slice(0, 3)) {
           const pdUrl = 'https://pixeldrain.com/api/file/' + pdId + '?download';
-          if (await headOk(pdUrl)) return pdUrl;
+          if (await pdVideoOk(pdUrl)) return pdUrl;
         }
       }
     }
@@ -354,18 +359,19 @@ async function resolveHubcloudDrive(driveUrl) {
       // Find video-downloads URL
       const vdMatch = svHtml.match(/https:\/\/video-downloads\.googleusercontent\.com\/[^\s"'<>]+/);
       if (vdMatch) return vdMatch[0];
-      // Find pixeldrain API download URL
+      // Find pixeldrain API download URL — Task 42: only ship VERIFIED videos
       const pdMatch = svHtml.match(/https:\/\/pixeldrain\.[a-z]+\/api\/file\/[A-Za-z0-9]+\?download/);
-      if (pdMatch) return pdMatch[0];
+      if (pdMatch && await pdVideoOk(pdMatch[0])) return pdMatch[0];
       // Find R2 Cloudflare direct MKV URL (bucket form — never IP-blocked)
       const r2Match = svHtml.match(/https:\/\/[a-z0-9]+\.r2\.cloudflarestorage\.com\/[^\s"'<>]+\.mkv[^\s"'<>]*/);
       if (r2Match) return r2Match[0];
-      // Pixeldrain /u/ buttons — liveness-check every candidate (DMCA decoys
-      // are common). Server-verified alive beats a datacenter-blocked r2.dev.
+      // Pixeldrain /u/ buttons — content-verify every candidate (DMCA decoys
+      // are common AND some "files" are zip packs, not videos). Server-verified
+      // alive-beats-a-dead-mirror, but only when the file is real video.
       const svPd = [...new Set([...svHtml.matchAll(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/gi)].map(m => m[1]))];
       for (const pdId of svPd.slice(0, 3)) {
         const pdUrl = 'https://pixeldrain.com/api/file/' + pdId + '?download';
-        if (await headOk(pdUrl)) return pdUrl;
+        if (await pdVideoOk(pdUrl)) return pdUrl;
       }
       // pub-*.r2.dev form LAST: direct + Range-native, but Cloudflare blocks
       // datacenter ASNs by default (server-side 403 ≠ dead for real users),

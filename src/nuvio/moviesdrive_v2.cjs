@@ -673,12 +673,18 @@ async function headOk(url) {
 // status flips rarely, so cache the probe verdict per ID for 30 minutes:
 // the first chain pays one probe after its primary card is already resolved,
 // every request inside the TTL ships the extra card with zero added latency.
+// Task 42: the verdict is now CONTENT-AWARE via streamGate.pdVideoOk — the
+// status-only headOk passed 7GB season-pack ZIPs (sweep-caught on Breaking
+// Bad S1E1). pdVideoOk demands video evidence (ct / Content-Disposition);
+// network-inconclusive results stay 'unknown' → treated as not-verified
+// (the extra mirror card is skipped, the primary card is untouched).
 const _pdAliveCache = new Map(); // pdId -> { alive, at }
 const PD_ALIVE_TTL_MS = 30 * 60 * 1000;
+const { pdVideoOk } = require('../utils/streamGate.cjs');
 async function pdAliveCached(pdId) {
   const hit = _pdAliveCache.get(pdId);
   if (hit && Date.now() - hit.at < PD_ALIVE_TTL_MS) return hit.alive;
-  const alive = await headOk(`https://pixeldrain.dev/api/file/${pdId}?download`);
+  const alive = await pdVideoOk(`https://pixeldrain.dev/api/file/${pdId}?download`);
   if (_pdAliveCache.size > 256) _pdAliveCache.clear();
   _pdAliveCache.set(pdId, { alive, at: Date.now() });
   return alive;
