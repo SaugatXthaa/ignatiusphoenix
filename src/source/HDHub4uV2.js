@@ -23,7 +23,7 @@ import bytes from 'bytes';
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
-import { buildStreamResults, parseSize } from './nuvioHelpers.js';
+import { buildStreamResults, parseSize, withRetryOnEmpty } from './nuvioHelpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'hdhub4u_v2.cjs');
@@ -72,7 +72,9 @@ export class HDHub4uV2 extends Source {
     let streams;
     try {
       streams = await Promise.race([
-        mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null),
+        // Task 39: bounded retry-on-empty — sitemap/greenmotors transient
+        // windows zeroed whole runs and the 60s negative cache hid the recovery
+        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 20000, tag: 'hdhub4uv2' }),
         new Promise(r => setTimeout(() => r(null), 30000)),
       ]);
     } catch (e) {

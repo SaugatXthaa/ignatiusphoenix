@@ -21,7 +21,7 @@ import bytes from 'bytes';
 import { CountryCode } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
-import { buildStreamResults, parseSize } from './nuvioHelpers.js';
+import { buildStreamResults, parseSize, withRetryOnEmpty } from './nuvioHelpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'movieshunt_v2.cjs');
@@ -70,7 +70,9 @@ export class MoviesHuntV2 extends Source {
     let streams;
     try {
       streams = await Promise.race([
-        mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null),
+        // Task 39: bounded retry-on-empty — abhilinks/gdflix transient windows
+        // zeroed whole runs and the 60s negative cache then hid the recovery
+        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 18000, tag: 'movieshuntv2' }),
         new Promise(r => setTimeout(() => r(null), 28000)),
       ]);
     } catch (e) {
