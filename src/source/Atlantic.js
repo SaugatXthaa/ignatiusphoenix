@@ -111,9 +111,18 @@ export class Atlantic extends Source {
     if (!mod || typeof mod.getStreams !== 'function') return [];
 
     // Both servers + subs run in parallel inside the scraper (~2-5s measured
-    // uncontended, 10-20s under Render resolve storms with fetchRetry). One
-    // empty retry absorbs transient upstream windows; race cap 25s keeps the
-    // whole source under the resolver's 35s cutoff including the TMDB phase.
+    // uncontended, 6-30s under Render resolve storms with fetchRetry). One
+    // empty retry absorbs transient upstream windows.
+    //
+    // NO internal race here (cineby's 30s pattern deliberately not copied):
+    // under contention the race fires null and DISCARDS the eventual scraper
+    // result — the per-source cache then never fills and every re-open re-runs
+    // full-cold (production evidence: /debug/stream triggers + /debug/source
+    // re-running the whole chain each time). Without the race, the resolver's
+    // own 35s SOURCE_TIMEOUT gives the cold-request partial (Task 36 budget
+    // contract) while the underlying handle promise keeps running to completion
+    // and its result lands in Source.handle's 15min cache — the next open of
+    // the title is served warm, exactly the architecture's intent.
     const EMPTY_RETRY_MAX = 1;
     const EMPTY_RETRY_DELAY_MS = 2000;
 
@@ -126,17 +135,12 @@ export class Atlantic extends Source {
 
     let streams;
     try {
-      streams = await Promise.race([
-        (async () => {
-          let out = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null, preloaded);
-          for (let attempt = 0; Array.isArray(out) && out.length === 0 && attempt < EMPTY_RETRY_MAX; attempt++) {
-            await new Promise(r => setTimeout(r, EMPTY_RETRY_DELAY_MS));
-            out = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null, preloaded);
-          }
-          return out;
-        })(),
-        new Promise(r => setTimeout(() => r(null), 25000)),
-      ]);
+      let out = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null, preloaded);
+      for (let attempt = 0; Array.isArray(out) && out.length === 0 && attempt < EMPTY_RETRY_MAX; attempt++) {
+        await new Promise(r => setTimeout(r, EMPTY_RETRY_DELAY_MS));
+        out = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null, preloaded);
+      }
+      streams = out;
     } catch (e) {
       console.error(`[atlantic] getStreams error: ${e?.message || e}`);
       return [];
