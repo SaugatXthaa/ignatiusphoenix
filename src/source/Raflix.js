@@ -49,15 +49,31 @@ async function getGot() {
 async function gotJson(url, timeoutMs = 12000) {
   const got = await getGot();
   if (!got) return null;
-  const res = await got(url, {
-    headers: { 'User-Agent': UA, 'Accept': 'application/json' },
-    timeout: { request: timeoutMs },
-    throwHttpErrors: false,
-    followRedirect: true,
-    http2: true,
-  });
-  if (res.statusCode !== 200) return null;
-  try { return JSON.parse(res.body); } catch { return null; }
+  // Task 51: h2 GOAWAY class — got-scraping defaults to HTTP/2, and raflix's
+  // upstream closes h2 sessions aggressively ("New streams cannot be created
+  // after receiving a GOAWAY" zeroed the whole source). One fast retry on the
+  // GOAWAY class (index.js forceHls precedent) + h1 as the second attempt.
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await got(url, {
+        headers: { 'User-Agent': UA, 'Accept': 'application/json' },
+        timeout: { request: timeoutMs },
+        throwHttpErrors: false,
+        followRedirect: true,
+        http2: attempt === 0,
+      });
+      if (res.statusCode !== 200) return null;
+      try { return JSON.parse(res.body); } catch { return null; }
+    } catch (e) {
+      lastErr = e;
+      const msg = e?.message || String(e);
+      if (!/GOAWAY|HTTP\/2|stream/i.test(msg)) throw e;
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+  if (lastErr) throw lastErr;
+  return null;
 }
 
 // Detect anime via TMDB genres + original language

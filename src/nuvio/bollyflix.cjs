@@ -436,12 +436,30 @@ async function resolveFastdl(linkUrl) {
   try {
     var gs = await getGotScraping();
     if (!gs) return null;
-    var res = await gs(linkUrl, {
-      headers: Object.assign({}, DEFAULT_HEADERS, { Referer: domainCache.url + "/" }),
-      timeout: { request: 20000 },
-      throwHttpErrors: false,
-      followRedirect: true
-    });
+    // Task 51: one fast retry on the h2 GOAWAY class — got-scraping defaults
+    // to HTTP/2 and the gdflix upstream closes h2 sessions under load
+    // ("New streams cannot be created after receiving a GOAWAY" dropped
+    // fastdl cards). Second attempt rides h1.
+    var res;
+    try {
+      res = await gs(linkUrl, {
+        headers: Object.assign({}, DEFAULT_HEADERS, { Referer: domainCache.url + "/" }),
+        timeout: { request: 20000 },
+        throwHttpErrors: false,
+        followRedirect: true
+      });
+    } catch (e1) {
+      var msg1 = (e1 && e1.message) || String(e1);
+      if (!/GOAWAY|HTTP\/2/i.test(msg1)) throw e1;
+      await new Promise(function (r) { setTimeout(r, 400); });
+      res = await gs(linkUrl, {
+        headers: Object.assign({}, DEFAULT_HEADERS, { Referer: domainCache.url + "/" }),
+        timeout: { request: 20000 },
+        throwHttpErrors: false,
+        followRedirect: true,
+        http2: false
+      });
+    }
     if (res.statusCode >= 400) return null;
     var html = res.body || "";
     var finalUrl = res.url || linkUrl;

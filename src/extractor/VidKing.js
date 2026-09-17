@@ -173,18 +173,37 @@ export class VidKing extends Extractor {
   // (vidsrcsbs zero-card regression). Clone per caller and stamp the caller's
   // own identity: URLs, titles, quality and provider metadata are
   // caller-independent for the same tmdbId — only sourceId/sourceLabel differ.
+  //
+  // Task 51: ALSO rebrand the DISPLAY title. Production screenshot evidence:
+  // a "Phoenix · 4K · CineWave · Yoru" card carried the title "Mutiny" —
+  // Movix (which sources `name` from its own site API's tmdb_details, not our
+  // TMDB lookup) was the first caller for tmdb 315635 and its wrong name baked
+  // into the shared cache; every later caller re-used it. Callers that pass
+  // their own preloaded name (from our TMDB utilities) now restore it on
+  // rebrand — the quality/season suffixes from the shared result are kept.
   _rebrandForCaller(streams, meta) {
     if (!Array.isArray(streams) || streams.length === 0) return [];
     const callerSourceId = meta?.sourceId || 'vidking';
     const callerSourceLabel = meta?.sourceLabel || 'VidKing';
-    return streams.map(s => ({
-      ...s,
-      meta: {
-        ...(s.meta || {}),
-        sourceId: callerSourceId,
-        sourceLabel: callerSourceLabel,
-      },
-    }));
+    const callerName = meta?.vidking?.name || null;
+    return streams.map(s => {
+      let title = s.meta?.title;
+      if (callerName && typeof title === 'string') {
+        // streamTitle format: "<name>[ — SxxEyy] — <quality>" — replace only
+        // the leading name segment, keep the caller-independent rest.
+        const rest = title.includes(' — ') ? title.split(' — ').slice(1).join(' — ') : '';
+        title = rest ? `${callerName} — ${rest}` : callerName;
+      }
+      return {
+        ...s,
+        meta: {
+          ...(s.meta || {}),
+          ...(title && { title }),
+          sourceId: callerSourceId,
+          sourceLabel: callerSourceLabel,
+        },
+      };
+    });
   }
 
   async _extractUncached(ctx, url, meta, preloaded, type, tmdbId, season, episode) {

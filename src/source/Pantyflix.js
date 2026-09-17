@@ -164,17 +164,16 @@ export class Pantyflix extends Source {
       apiUrl.searchParams.set('episode', String(tmdbId.episode || 1));
     }
 
-    const res = await gotScraping.get(apiUrl.href, {
-      headers: apiHeaders(),
-      timeout: { request: 15000 },
-      throwHttpErrors: false,
-      http2: true,
-    });
-    if (res.statusCode !== 200) return [];
-
+    // Task 51: the API GET now rides the addon Fetcher (https.request, h1,
+    // family:4 — the Task 49-proven transport). The previous in-process
+    // got-scraping h2 call failed INSTANTLY on Render (0 cards @342ms,
+    // production /debug/source evidence) — the h2-session/GOAWAY class.
     let data;
-    try { data = JSON.parse(res.body); } catch { return []; }
-    if (!data.ok || !Array.isArray(data.downloads)) return [];
+    try {
+      const text = await this.fetcher.text(ctx, apiUrl, { timeout: 15000, headers: { Accept: 'application/json', Referer: `${BASE}/` } });
+      data = JSON.parse(text);
+    } catch { return []; }
+    if (!data || !data.ok || !Array.isArray(data.downloads)) return [];
 
     // Step 2: Resolve all download URLs in parallel (bounded concurrency)
     const results = [];

@@ -399,7 +399,10 @@ async function resolveLink(link) {
       if (direct) return { url: direct, mime: 'video/x-matroska' };
       return null;
     }
-    if (/hubcloud\.|hblinks\.co/i.test(real)) return { url: real, mime: 'video/x-matroska' };
+    // Task 51: hblinks rotated .co → .lol (TLD-agnostic). The HBLinks
+    // extractor matches /hblinks/ on the host so any TLD resolves at play
+    // time; NuvioExtractor's download-page gate is also TLD-agnostic now.
+    if (/hubcloud\.|hblinks\.[a-z]{2,}/i.test(real)) return { url: real, mime: 'video/x-matroska' };
     if (/video-downloads\.googleusercontent\.com/i.test(real)) return { url: real, mime: 'video/mp4' };
     return null;
   }

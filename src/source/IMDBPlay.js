@@ -43,7 +43,19 @@ async function gotGet(url, headers = {}, timeoutMs = 12000, responseType) {
     http2: true,
   };
   if (responseType === 'buffer') opts.responseType = 'buffer';
-  return got(url, opts);
+  // Task 51: one fast retry on the h2 GOAWAY class (upstream closes h2
+  // sessions under load — "New streams cannot be created after receiving a
+  // GOAWAY"); the retry rides the same timeout budget via got's own request
+  // timeout, only the GOAWAY/HTTP2 class is retried.
+  try {
+    return await got(url, opts);
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (!/GOAWAY|HTTP\/2/i.test(msg)) throw e;
+    await new Promise(r => setTimeout(r, 400));
+    opts.http2 = false; // h1 second attempt — immune to the h2 session class
+    return got(url, opts);
+  }
 }
 
 async function gotJson(url, headers = {}, timeoutMs = 12000) {

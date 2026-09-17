@@ -58,12 +58,18 @@ function fetchBufCurl(url, { headers = {}, timeout = 30000, method = 'GET', body
         // production didn't → 0 streams). Fall back to a child Node https GET
         // (no cookie-jar support — cookie flows degrade, plain GET/POST work).
         if (err.code === 'ENOENT' || /ENOENT|not found/i.test(err.message || '')) {
-          try {
-            const fb = fetchBufViaNodeChild(url, finalHeaders, timeout, method, body);
-            return resolve(fb);
-          } catch (e2) {
-            return reject(new Error(`curl+node failed: ${(e2.message || '').slice(0, 80)}`));
-          }
+          // Task 51: got-scraping attempt first (Chrome TLS passes the CF
+          // gates that plain-Node TLS fails on Render), node child last.
+          return fetchBufViaGotScraping(url, finalHeaders, timeout, method, body)
+            .then(resolve)
+            .catch(() => {
+              try {
+                const fb = fetchBufViaNodeChild(url, finalHeaders, timeout, method, body);
+                return resolve(fb);
+              } catch (e2) {
+                return reject(new Error(`curl+got+node failed: ${(e2.message || '').slice(0, 80)}`));
+              }
+            });
         }
         return reject(new Error(`curl failed: ${(err.message || '').slice(0, 80)}`));
       }
@@ -77,6 +83,28 @@ function fetchBufCurl(url, { headers = {}, timeout = 30000, method = 'GET', body
 
 // Node-child https fallback (see fetchBufCurl ENOENT branch): same
 // {status, body:string} shape as the curl path, minus cookie-jar support.
+
+// Task 51: in-process got-scraping fallback — runs BEFORE the node child.
+// Production evidence (2026-09): w3.magiclinks.lol Cloudflare-challenges
+// Render's plain-Node TLS (403 "Just a moment") while curl (sandbox) and
+// got-scraping's Chrome-JA3 pass. Render's node:20-slim has no curl (ENOENT),
+// so every quality page died → "no streams" on every title. got-scraping is
+// the codebase's standard CF-bypass transport; the plain-node child stays as
+// the last resort.
+let _gsMod = null;
+async function fetchBufViaGotScraping(url, finalHeaders, timeout, method = 'GET', body = null) {
+  if (!_gsMod) _gsMod = await import('got-scraping');
+  const res = await _gsMod.gotScraping(url, {
+    method,
+    body: body || undefined,
+    headers: finalHeaders,
+    timeout: { request: timeout },
+    throwHttpErrors: false,
+    followRedirect: true,
+  });
+  return { status: res.statusCode, body: Buffer.from(res.body || '', 'utf8') };
+}
+
 function fetchBufViaNodeChild(url, finalHeaders, timeout, method = 'GET', body = null) {
   const script = `
     const https = require('https'); const http = require('http');

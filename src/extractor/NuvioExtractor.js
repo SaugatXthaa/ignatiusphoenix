@@ -39,7 +39,9 @@ const EMBED_PAGE_HOST_PATTERN = /(^|\.)(vidsrc-embed\.ru|vidking\.net|vidzee\.wt
 // page and threw "[mpv] unrecognized file format" / 403s. Returning [] lets
 // the registry fall through to the HBLinks extractor (supports /hblinks/),
 // which parses the page's hubcloud/hubcdn/hubdrive links into real files.
-const DOWNLOAD_PAGE_HOST_PATTERN = /(^|\.)hblinks\.co$/i;
+// Task 51: TLD-agnostic — the host rotated hblinks.co → hblinks.lol (same
+// page shape, same funnel); hardcoding the TLD re-created the poison class.
+const DOWNLOAD_PAGE_HOST_PATTERN = /(^|\.)hblinks\.[a-z]{2,}$/i;
 
 // Nuvio source IDs handled by this extractor
 const NUVIO_SOURCE_IDS = new Set([
@@ -108,6 +110,13 @@ const NUVIO_SOURCE_IDS = new Set([
   //   - movieshuntv2: hubcloud R2 + pixeldrain + GDrive (no Referer)
   //   - moviesdrivev2: GDrive googleusercontent (no Referer, /range-proxy)
   'hindmovie', 'hdhub4uv2', 'movieshuntv2', 'moviesdrivev2',
+  // vixsrc — Task 51 revival: playlist API URL ships DIRECT with
+  // Referer/Origin: vixsrc.to (meta.nuvioDirectWithHeaders) — vixsrc.to
+  // CF-blocks datacenter IPs so /proxy can never work; the player's
+  // residential IP with proxyHeaders is the only viable path (peraspera
+  // precedent). Without joining this set the playlist URL matched NO
+  // extractor and was silently dropped.
+  'vixsrc',
   // persianstremio — Persian dual-audio direct MP4/MKV (needs Referer:
   // persianstremio.vercel.app for cinamadownload.top / aslmd.sbs URLs)
   'persianstremio',
