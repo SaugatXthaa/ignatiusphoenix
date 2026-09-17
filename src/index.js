@@ -1156,7 +1156,7 @@ app.get('/debug/subs', async (req, res) => {
     const episode = m && m[3] ? Number(m[3]) : undefined;
     const t0 = Date.now();
     const subs = await Promise.race([
-      fetchUnifiedSubs({ tmdbId, type, season, episode, hostUrl: new URL(`https://${req.headers.host}`) }),
+      fetchUnifiedSubs({ tmdbId, type, season, episode, hostUrl: new URL(`https://${req.headers.host}`), fetcher, ctx: { hostUrl: new URL(`https://${req.headers.host}`) } }),
       new Promise(r => setTimeout(() => r(null), 20000)),
     ]);
     const dt = Date.now() - t0;

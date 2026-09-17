@@ -386,6 +386,11 @@ export class StreamResolver {
       season: typeof id === 'object' ? id.season : undefined,
       episode: typeof id === 'object' ? id.episode : undefined,
       hostUrl: ctx.hostUrl,
+      // Task 49 production finding: route upstream calls through the addon's
+      // Fetcher (family:4, node-level timeout) — bare undici fetch hangs on
+      // Render storm windows past AbortSignal deadlines (DNS lookup class).
+      fetcher: this.fetcher,
+      ctx,
     });
     unifiedSubsP
       .then(v => { subsState.settled = true; subsState.value = Array.isArray(v) ? v : []; })

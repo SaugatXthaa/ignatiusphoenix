@@ -44,6 +44,16 @@ const SUBS_TIMEOUT_MS = 6000;
 const MAX_SUBS = 48;
 const MAX_GRANITE_SUBS = 32;
 
+// Task 49 production finding: bare undici fetch() (this module's original
+// transport) HANGS on Render during/after resolve storms — DNS lookups stall
+// past the AbortSignal deadline (undici does not cancel in-flight lookups on
+// abort; the instance's IPv6/AAAA path makes it worse). The addon's own
+// Fetcher (https.request, family:4 forced, node-level timeout, got-scraping
+// CF fallback) is battle-tested on exactly this environment — every source
+// uses it. When the caller provides a Fetcher instance + ctx we route all
+// upstream calls through it; bare fetch remains as the no-fetcher fallback
+// (local tooling).
+
 const CACHE_TTL = 6 * 60 * 60 * 1000;   // 6h — subtitle sets are stable
 const NEG_CACHE_TTL = 5 * 60 * 1000;    // 5min — don't hammer a flaky upstream
 
@@ -72,32 +82,47 @@ function langCodeOf(name) {
   return '';
 }
 
-// Task 48 fix2 pattern: single fast retry on NETWORK-level errors only (the
-// Render DNS-resolver/socket hiccup class — all stages failing simultaneously
-// under 0.1-CPU storms, same hosts answering 200 seconds later). Real HTTP
-// answers (404/403/429/5xx) return without retry — callers keep semantics.
-async function fetchRetry(url, opts = {}, attempts = 2, tag = '') {
-  let lastErr;
-  for (let i = 0; i < attempts; i++) {
-    if (i > 0) await new Promise(r => setTimeout(r, 400));
+// Unified transport: Fetcher (production) or bare fetch with one fast retry
+// (fallback). Returns { ok, status, data } — callers keep their semantics.
+async function transportGet(url, { headers, timeoutMs, tag, fetcher, ctx }) {
+  if (fetcher && ctx) {
     try {
-      return await fetch(url, opts);
+      const r = await fetcher.fetchWithTimeout(ctx, new URL(url), {
+        timeout: timeoutMs,
+        headers,
+      });
+      return { ok: r.status >= 200 && r.status < 300, status: r.status, data: r.data };
     } catch (e) {
-      lastErr = e;
-      console.log(`[UnifiedSubs] fetch fail${tag ? ` (${tag})` : ''} attempt ${i + 1}/${attempts}: ${e?.message || e} (${url.slice(0, 70)})`);
+      console.log(`[UnifiedSubs] fetcher fail${tag ? ` (${tag})` : ''}: ${e?.message || e} (${url.slice(0, 70)})`);
+      return { ok: false, status: 0, data: '' };
     }
   }
-  throw lastErr;
+  // Fallback: bare fetch, one fast retry on NETWORK-level errors only.
+  let lastErr;
+  for (let i = 0; i < 2; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, 400));
+    try {
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+      const data = await res.text();
+      return { ok: res.ok, status: res.status, data };
+    } catch (e) {
+      lastErr = e;
+      console.log(`[UnifiedSubs] fetch fail${tag ? ` (${tag})` : ''} attempt ${i + 1}/2: ${e?.message || e} (${url.slice(0, 70)})`);
+    }
+  }
+  void lastErr;
+  return { ok: false, status: 0, data: '' };
 }
 
-async function fetchGraniteSubs(tmdbId, type, season, episode) {
+async function fetchGraniteSubs(tmdbId, type, season, episode, fetcher, ctx) {
   const path = type === 'tv'
     ? `${GRANITE_API}/tv/${tmdbId}/${season || 1}/${episode || 1}`
     : `${GRANITE_API}/movie/${tmdbId}`;
   try {
-    const res = await fetchRetry(path, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(SUBS_TIMEOUT_MS) }, 2, 'granite');
-    if (!res.ok) return [];
-    const arr = await res.json();
+    const r = await transportGet(path, { headers: { 'User-Agent': UA }, timeoutMs: SUBS_TIMEOUT_MS, tag: 'granite', fetcher, ctx });
+    if (!r.ok) return [];
+    let arr;
+    try { arr = JSON.parse(r.data); } catch { return []; }
     if (!Array.isArray(arr)) return [];
     const out = [];
     for (const item of arr) {
@@ -124,7 +149,7 @@ async function fetchGraniteSubs(tmdbId, type, season, episode) {
 // player can fetch them (hostUrl passed in from the resolver's ctx).
 // Both queries (tmdbId + imdbId) fire in PARALLEL with a 5s cap.
 // Preference: tmdbId result, then imdbId result (site order).
-async function fetchNatsukiSubs(tmdbId, imdbId, type, season, episode, hostUrl) {
+async function fetchNatsukiSubs(tmdbId, imdbId, type, season, episode, hostUrl, fetcher, ctx) {
   if (!hostUrl) return []; // cannot proxy-wrap → raw URLs would 403 in players
   const buildQuery = (params) => {
     const q = new URLSearchParams();
@@ -139,9 +164,10 @@ async function fetchNatsukiSubs(tmdbId, imdbId, type, season, episode, hostUrl) 
 
   const attempt = async (q) => {
     try {
-      const res = await fetchRetry(`${NATSUKI_API}?${q.toString()}`, { headers: HEADERS, signal: AbortSignal.timeout(5000) }, 2, 'natsuki');
-      if (!res.ok) return [];
-      const j = await res.json();
+      const r = await transportGet(`${NATSUKI_API}?${q.toString()}`, { headers: HEADERS, timeoutMs: 5000, tag: 'natsuki', fetcher, ctx });
+      if (!r.ok) return [];
+      let j;
+      try { j = JSON.parse(r.data); } catch { return []; }
       const subs = Array.isArray(j?.subtitles) ? j.subtitles : [];
       const out = [];
       const seenLangs = new Set();
@@ -168,7 +194,7 @@ async function fetchNatsukiSubs(tmdbId, imdbId, type, season, episode, hostUrl) 
       // (stable, direct VTT) still covers the common languages.
       if (out.length > 0) {
         const sampleUrl = subs.find(s => s && typeof s.url === 'string' && s.url)?.url;
-        const ok = sampleUrl ? await probeSubFile(sampleUrl) : false;
+        const ok = sampleUrl ? await probeSubFile(sampleUrl, fetcher, ctx) : false;
         if (!ok) return [];
       }
       return out;
@@ -181,10 +207,10 @@ async function fetchNatsukiSubs(tmdbId, imdbId, type, season, episode, hostUrl) 
 
 // Status-only probe of a subtitle file (3s cap) — 200/206 is enough, the
 // bytes are text by construction.
-async function probeSubFile(url) {
+async function probeSubFile(url, fetcher, ctx) {
   try {
-    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(3000) });
-    return res.ok;
+    const r = await transportGet(url, { headers: HEADERS, timeoutMs: 3000, tag: 'subprobe', fetcher, ctx });
+    return r.ok;
   } catch { return false; }
 }
 
@@ -217,7 +243,7 @@ function mergeSubs(granite, natsuki) {
  * @param {string|URL} [p.hostUrl]  addon origin for /proxy-wrapped natsuki URLs
  * @returns {Promise<Array<{id,url,lang}>>}
  */
-async function fetchUnifiedSubs({ tmdbId, type, season, episode, hostUrl }) {
+async function fetchUnifiedSubs({ tmdbId, type, season, episode, hostUrl, fetcher, ctx }) {
   const tv = (type === 'tv' || type === 'series');
   const s = tv ? (season || 1) : 0;
   const e = tv ? (episode || 1) : 0;
@@ -235,8 +261,8 @@ async function fetchUnifiedSubs({ tmdbId, type, season, episode, hostUrl }) {
 
   const p = (async () => {
     const [granite, natsuki] = await Promise.all([
-      fetchGraniteSubs(tmdbId, tv ? 'tv' : 'movie', s, e),
-      fetchNatsukiSubs(tmdbId, null, tv ? 'tv' : 'movie', s, e, hostUrl),
+      fetchGraniteSubs(tmdbId, tv ? 'tv' : 'movie', s, e, fetcher, ctx),
+      fetchNatsukiSubs(tmdbId, null, tv ? 'tv' : 'movie', s, e, hostUrl, fetcher, ctx),
     ]);
     const merged = mergeSubs(granite, natsuki);
     subsCache.set(key, { ts: Date.now(), value: merged });
