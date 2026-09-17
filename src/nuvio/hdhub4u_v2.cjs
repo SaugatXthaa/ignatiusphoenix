@@ -206,7 +206,9 @@ function parseAudio(postTitle) {
 // Returns [{ url, type, label, h1 }]
 // ---------------------------------------------------------------------------
 const LINK_PATTERNS = [
-  { type: 'greenmotors', re: /href="(https:\/\/greenmotors\.cc\/\?id=[A-Za-z0-9+/=]+)"/g },
+  // Task 50: TLD-agnostic — funnel domain rotates (greenmotors.cc → .club
+  // observed 2026-09; same script, same decode chain on every TLD).
+  { type: 'greenmotors', re: /href="(https:\/\/greenmotors\.[a-z]{2,}\/\?id=[A-Za-z0-9+/=]+)"/gi },
   { type: 'hdstream4u', re: /href="(https:\/\/hdstream4u\.com\/file\/([A-Za-z0-9]+))"/g },
   { type: 'hubcloud', re: /href="(https:\/\/hubcloud\.[a-z]+\/(?:drive|video)\/([a-z0-9_]+))"/g },
   { type: 'hubcdn', re: /href="(https:\/\/hubcdn\.[a-z]+\/file\/([A-Za-z0-9]+))"/g },

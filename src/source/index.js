@@ -109,11 +109,9 @@ import { VideasyTo } from './VideasyTo.js';
 // kmmovies.pics — movies/TV with direct playable MKV (up to 4K) via R2 + Pixeldrain
 import { KMMovies } from './KMMovies.js';
 // ─── Orphan sources (complete but never registered — batch add) ───
-// All verified as complete with unique source IDs. Some use Nuvio scrapers
-// (dahmermovies, dahmermovies4k), others use got-scraping or this.fetcher directly.
+// All verified as complete with unique source IDs. Some use Nuvio scrapers,
+// others use got-scraping or this.fetcher directly.
 import { CineHDPlus } from './CineHDPlus.js';
-import { DahmerMovies } from './DahmerMovies.js';
-import { DahmerMovies4k } from './DahmerMovies4k.js';
 import { Vidzee } from './Vidzee.js';
 import { VixSrc } from './VixSrc.js';
 import { AllWish } from './AllWish.js';
@@ -255,10 +253,7 @@ export const createSources = (fetcher) => {
     // ─── Orphan sources (registered in batch — all additive) ───
     // cinehdplus — ES/MX series via cinehdplus.com
     new CineHDPlus(fetcher),
-    // dahmermovies — movies via p.111477.xyz bulk API
-    new DahmerMovies(fetcher),
-    // dahmermovies4k — 4K movies via dahmermovies-4k
-    new DahmerMovies4k(fetcher),
+    // dahmermovies + dahmermovies4k REMOVED (Task 50, user request)
     // vidzee — 8 servers, multi-language embeds
     new Vidzee(fetcher),
     // vixsrc — VixSrc embed (requires MediaFlowProxy)

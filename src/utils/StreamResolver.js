@@ -505,7 +505,7 @@ export class StreamResolver {
       'moviesdrivev2', // 3-4 (8-hop chain)
       'uhdmovies', 'stellar', 'vegamovies2',   // uhdmovies: 6.7s+ multi-hop (4K lands warm via cache)
       'hindmoviez', 'cinebyrocks', 'nowhdtime', 'zxcstream',
-      'imdbplay', 'framextv', 'dahmermovies', 'dahmermovies4k',
+      'imdbplay', 'framextv',
       'vixsrc', 'kmmovies', 'vidzee', 'pantyflix', 'peckle',
       'netlio', 'rivestream', 'cinehdplus',
     ]);

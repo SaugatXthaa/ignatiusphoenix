@@ -15,7 +15,6 @@ import { createRequire } from 'module';
 const { fetchUnifiedSubs } = createRequire(import.meta.url)('./utils/siteSubtitles.cjs');
 import { reanimeSegmentKey } from './utils/site-secrets.cjs';
 import { startWarmup } from './utils/warmup.js';
-import { startPrewarm } from './utils/prewarm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -91,15 +90,8 @@ app.get('/stream/:type/:id.json', async (req, res) => {
 
   try {
     const startTime = Date.now();
-    // Idle-gauge for the Task 45 prewarm loop: it only fires prewarm resolves
-    // while no live user resolve is in flight (see utils/prewarm.js).
-    globalThis.__phoenixLiveResolves = (globalThis.__phoenixLiveResolves || 0) + 1;
     let streams;
-    try {
-      ({ streams } = await streamResolver.resolve(ctx, sources, type, parsedId));
-    } finally {
-      globalThis.__phoenixLiveResolves--;
-    }
+    ({ streams } = await streamResolver.resolve(ctx, sources, type, parsedId));
     const duration = Date.now() - startTime;
     logger.log(`[${ADDON_NAME}] ${type} ${id} → ${streams.length} streams in ${duration}ms`);
 
@@ -1130,7 +1122,7 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
-    version: 'task49-25223f8+subsdiag',
+    version: 'task50-noprewarm-no-dahmer',
     startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,
@@ -1206,13 +1198,8 @@ app.get('/debug/stream', async (req, res) => {
 
   const t0 = Date.now();
   try {
-    globalThis.__phoenixLiveResolves = (globalThis.__phoenixLiveResolves || 0) + 1;
     let streams;
-    try {
-      ({ streams } = await streamResolver.resolve(ctx, sources, type, parsedId));
-    } finally {
-      globalThis.__phoenixLiveResolves--;
-    }
+    ({ streams } = await streamResolver.resolve(ctx, sources, type, parsedId));
     const totalMs = Date.now() - t0;
 
     // Get per-source timing data (stashed by _resolveInternal)
@@ -1479,12 +1466,11 @@ app.listen(PORT, HOST, () => {
   logger.log(`[${ADDON_NAME}] Sources: ${sources.length} (${sources.map(s => s.id).join(', ')})`);
   logger.log(`[${ADDON_NAME}] Extractors: ${extractors.length} (${extractors.map(e => e.id).join(', ')})`);
   // Boot-time warmup — background only, never blocks or alters request handling.
+  // (DNS/TLS + got-scraping preload only — NO stream resolves. The Task 45
+  // idle-time prewarm loop was REMOVED (user request): on the 0.1-CPU free
+  // tier its trending-title resolves competed with live user requests and
+  // degraded the whole instance — Task 48 fix2 documented the storm class.)
   startWarmup({ sources, fetcher, logger });
-  // Task 45 idle-time prewarm: resolves current TMDB trending titles through
-  // our own /stream while the instance is idle so users' FIRST open of a
-  // trending title finds warm per-source caches (full source set instantly).
-  globalThis.__phoenixLiveResolves = 0;
-  startPrewarm({ port: PORT, logger });
 });
 
 process.on('SIGTERM', () => process.exit(0));

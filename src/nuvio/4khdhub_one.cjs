@@ -12,6 +12,8 @@
 //      REAL file URL — fully server-side resolvable, no browser needed:
 //          token = atob(atob(rot13(atob(token))))  → JSON {l, w, o}
 //          realUrl = atob(json.o)                  → hubcloud.ist/drive/<id> etc.
+//      Task 50 (2026-09): the funnel domain ROTATES — live pages now carry
+//      greenmotors.club (and may rotate again). Detection is TLD-agnostic:
 //   6. hubcloud.ist URLs ship raw — the ESM HubExtractor → HubCloud extractor
 //      pipeline resolves them downstream (workers.dev / pixeldrain direct CDN).
 //      hubdrive.pics results are SKIPPED: its download API is login-gated
@@ -243,13 +245,15 @@ async function findBestMatch(results, tmdbTitle, tmdbYear, isMovie) {
 // ===========================================================================
 // GREENMOTORS RESOLUTION (2026-09)
 // ===========================================================================
-// greenmotors.cc/?id=<X> returns a 1.4KB page whose only job is to stash a
+// greenmotors.<tld>/?id=<X> returns a 1.4KB page whose only job is to stash a
 // token in localStorage and redirect through an ad mediator. The token is
 // EMBEDDED IN THE RESPONSE HTML:
 //     s('o', '<token>', 180*1000);
 // Decode chain (reversed from the mediator's deobfuscated pr()):
 //     atob → atob → rot13 → atob → JSON {"l": <landing>, "w": <secs>, "o": <b64>}
 //     realUrl = atob(json.o)
+// Verified 2026-09: greenmotors.club pages decode identically to the
+// original greenmotors.cc (same script, same chain — only the domain changed).
 // Verified 2026-09: lands on hubcloud.ist/drive/<id> (resolvable) or
 // hubdrive.pics/file/<id> (login-gated → skip).
 
@@ -331,7 +335,11 @@ function parseFileBlock($, el) {
     const href = ($(a).attr('href') || '').replace(/&amp;/g, '&');
     if (!href || seen.has(href)) return;
     seen.add(href);
-    if (/greenmotors\.cc\/\?id=/.test(href)) greenmotorsHrefs.push(href);
+    // Task 50: TLD-agnostic — the funnel moved greenmotors.cc → greenmotors.club
+    // mid-flight (that migration WAS the "0 streams until 4-5 refreshes" bug:
+    // edge caches served both variants, so only requests hitting a stale .cc
+    // page yielded links). Accept any greenmotors.<tld>.
+    if (/greenmotors\.[a-z]{2,}\/?\?id=/i.test(href)) greenmotorsHrefs.push(href);
     else if (/hubcloud|hubdrive/i.test(href)) legacyHubcloudHrefs.push(href);
   });
 

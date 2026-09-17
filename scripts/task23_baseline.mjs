@@ -196,7 +196,8 @@ async function runChecks(child, logFile, bootLines) {
   // Task 28: 69 → 70 — AniMoTVSlash (animotvslash.org) registered
   // Task 38: 70 → 71 — CineFreak revived (cinefreak.net, search-api + cinecloud)
   // Task 48: 71 → 72 — Atlantic (atlantic.st RE: Aphrodite gate + Artemis)
-  check('boot source count = 72', srcM && srcM[1] === '72', `got ${srcM?.[1]}`);
+  // Task 50: 72 → 70 — dahmermovies + dahmermovies4k removed (user request)
+  check('boot source count = 70', srcM && srcM[1] === '70', `got ${srcM?.[1]}`);
   // Task 25: 30 → 31 — VidZee extractor registered (ported file existed but
   // was never wired into createExtractors; vidzee source shipped 0 streams).
   // Task 28: 31 → 32 — MixDrop extractor (verhdlink mixdrop mirrors → direct MP4)
@@ -207,6 +208,9 @@ async function runChecks(child, logFile, bootLines) {
   const srcLine = bootLines.match(/Sources: \d+ \(([^)]*)\)/)?.[1] || '';
   const ids = srcLine.split(',').map(s => s.trim());
   check('no movieblast/anidb/flystream in registry', !ids.includes('movieblast') && !ids.includes('anidb') && !ids.includes('flystream'));
+  // Task 50: dahmermovies + dahmermovies4k removed (user request) — must not
+  // appear in the registry NOR leak into any catalog stream title/url.
+  check('no dahmermovies/dahmermovies4k in registry', !ids.includes('dahmermovies') && !ids.includes('dahmermovies4k'));
 
   // crash-class errors in boot log (upstream fetch noise during warmup excluded)
   const crashy = bootLines.split('\n').filter(l => /Cannot find module|SyntaxError|ReferenceError|TypeError|failed to load scraper/i.test(l));
@@ -242,7 +246,8 @@ async function runChecks(child, logFile, bootLines) {
   check('Your Name merged (anime movie) count >= 70', yn.n >= 70, `count=${yn.n} (obs 120)`);
 
   // leakage in catalogs: stream titles/urls must not reference removed sources
-  const leakRe = /movieblast|moviesblast|flystream|\banidb\b/i;
+  // Task 50: dahmer (covers both removed ids) + 111477.xyz (their CDN host)
+  const leakRe = /movieblast|moviesblast|flystream|\banidb\b|dahmer|111477\.xyz/i;
   const leaked = [...(mv.json?.streams || []), ...(sr.json?.streams || []), ...(fr.json?.streams || []), ...(yn.json?.streams || [])]
     .filter(s => leakRe.test(s.title || '') || leakRe.test(s.url || ''));
   check('no removed-source leakage in catalogs', leaked.length === 0, `${leaked.length} hits`);

@@ -112,11 +112,10 @@ const NUVIO_SOURCE_IDS = new Set([
   // persianstremio.vercel.app for cinamadownload.top / aslmd.sbs URLs)
   'persianstremio',
   // Orphan Nuvio sources (registered in batch) — all use buildStreamResults
-  //   - dahmermovies: p.111477.xyz bulk API (direct, no Referer)
-  //   - dahmermovies4k: 4K variant of dahmermovies
   //   - videasyto: speedracelight API (direct playable, no Referer)
   //   - kmmovies: kmmovies.pics → R2 + Pixeldrain (direct playable MKV, no Referer)
-  'dahmermovies', 'dahmermovies4k', 'videasyto', 'kmmovies',
+  //   (dahmermovies + dahmermovies4k removed Task 50 — user request)
+  'videasyto', 'kmmovies',
   // Task 25 ground-truth audit: both sources scrape fine but their results
   // matched NO extractor → silently dropped at StreamResolver's extraction
   // stage (0 cards in every /stream response despite healthy scrapes).
