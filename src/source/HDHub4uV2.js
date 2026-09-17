@@ -71,14 +71,15 @@ export class HDHub4uV2 extends Source {
     const mediaType = tmdbId.season ? 'tv' : 'movie';
     let streams;
     try {
-      streams = await Promise.race([
-        // Task 39: bounded retry-on-empty — sitemap/greenmotors transient
-        // windows zeroed whole runs and the 60s negative cache hid the recovery
-        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 22000, tag: 'hdhub4uv2' }),
-        // 33s: let the contention-inflated completion reach the 5-min cache
-        // (Task 36 warm-up contract); SOURCE_TIMEOUT is 35s.
-        new Promise(r => setTimeout(() => r(null), 33000)),
-      ]);
+      // Task 39: bounded retry-on-empty — sitemap/greenmotors transient
+      // windows zeroed whole runs and the 60s negative cache hid the recovery
+      // Task 49: NO internal race (Task 48 fix6 pattern) — the old 33s race
+      // fired null under contention and DISCARDED the eventual scraper
+      // result, so the 15min cache never filled and every refresh re-ran
+      // full-cold ("stuck on loading, nothing plays"). The resolver's 35s
+      // SOURCE_TIMEOUT + client budget bound delivery; the uncapped promise
+      // completes in background and caches for the next open.
+      streams = await withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 22000, tag: 'hdhub4uv2' });
     } catch (e) {
       console.error(`[hdhub4u-v2] error: ${e?.message || e}`);
       return [];

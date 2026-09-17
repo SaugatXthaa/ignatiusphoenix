@@ -30,10 +30,24 @@ async function fetchText(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeout || 15000);
   try {
-    const r = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*', ...options.headers },
-    });
+    // Task 49: one fast retry on NETWORK-level errors (the Render DNS/socket
+    // hiccup class — Task 48 fix2; a single "fetch failed" used to zero the
+    // whole multi-hop chain with no retry). HTTP-status errors keep caller
+    // semantics (404 = no match, 403 = gated). Both attempts share the one
+    // AbortController budget so the total stays bounded.
+    let r;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) await new Promise(res => setTimeout(res, 400));
+      try {
+        r = await fetch(url, {
+          signal: controller.signal,
+          headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*', ...options.headers },
+        });
+        break;
+      } catch (e) {
+        if (attempt === 1) throw e;
+      }
+    }
     if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + url);
     return await r.text();
   } finally { clearTimeout(timer); }
@@ -42,7 +56,19 @@ async function fetchText(url, options = {}) {
 async function getTMDBInfo(tmdbId, mediaType) {
   const type = mediaType === 'tv' ? 'tv' : 'movie';
   try {
-    const r = await fetch('https://api.themoviedb.org/3/' + type + '/' + tmdbId + '?api_key=' + TMDB_API_KEY);
+    // Task 49: this fetch previously had NO timeout — an unbounded TMDB call
+    // stalls the whole chain (and a silent failure empties the title used for
+    // matching). 8s cap + one fast retry keeps matching alive through hiccups.
+    let r;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) await new Promise(res => setTimeout(res, 400));
+      try {
+        r = await fetch('https://api.themoviedb.org/3/' + type + '/' + tmdbId + '?api_key=' + TMDB_API_KEY, { signal: AbortSignal.timeout(8000) });
+        break;
+      } catch (e) {
+        if (attempt === 1) throw e;
+      }
+    }
     const d = await r.json();
     return {
       title: type === 'tv' ? d.name : d.title,

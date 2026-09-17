@@ -111,12 +111,12 @@ export class UHDMovies extends Source {
 
     let streams;
     try {
-      streams = await Promise.race([
-        // Task 38: bounded retry-on-empty — transient gateway/Driveseed flakes
-        // returned [] which then poisoned the 60s negative cache.
-        withRetryOnEmpty(() => mod.getStreams(tmdbId.id, 'movie', null, null), { maxTotalMs: 12000, tag: 'uhdmovies' }),
-        new Promise(r => setTimeout(() => r(null), 40000)), // DriveSeed resolution can be slow
-      ]);
+      // Task 38: bounded retry-on-empty — transient gateway/Driveseed flakes
+      // returned [] which then poisoned the 60s negative cache.
+      // Task 49: NO internal race (Task 48 fix6 pattern) — the old 40s race
+      // discarded the eventual DriveSeed-resolved result under contention,
+      // keeping the 15min cache empty and forcing full-cold re-runs.
+      streams = await withRetryOnEmpty(() => mod.getStreams(tmdbId.id, 'movie', null, null), { maxTotalMs: 12000, tag: 'uhdmovies' });
     } catch (e) {
       console.error(`[uhdmovies] getStreams error: ${e?.message || e}`);
       return [];

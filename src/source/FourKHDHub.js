@@ -81,10 +81,14 @@ export class FourKHDHub extends Source {
     const mediaType = tmdbId.season ? 'tv' : 'movie';
     let streams;
     try {
-      streams = await Promise.race([
-        mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode),
-        new Promise(r => setTimeout(() => r(null), 28000)),
-      ]);
+      // Task 49: NO internal race here. A race that fires null DISCARDS the
+      // eventual scraper result, so the 15min per-source cache never filled
+      // and every re-open re-ran the full multi-hop chain cold — the
+      // user-visible "no 4khdhub until 4-5 refreshes". The resolver's 35s
+      // SOURCE_TIMEOUT bounds delivery (Task 36 partial contract); the
+      // un-capped handle promise completes in background and caches —
+      // Task 48 fix6 pattern (atlantic), production-proven.
+      streams = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode);
     } catch (e) {
       console.error(`[4khdhub] getStreams error: ${e?.message || e}`);
       return [];

@@ -53,9 +53,22 @@ async function fetchText(url, referer, timeout) {
       if (res.statusCode >= 200 && res.statusCode < 400) return typeof res.body === 'string' ? res.body : res.body.toString();
     } catch (e) { /* fall through */ }
   }
-  const res = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(timeout || 15000) });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.text();
+  // Task 49: one fast retry on NETWORK-level errors for the native fallback
+  // (Render DNS/socket hiccup class — Task 48 fix2). HTTP-status errors keep
+  // caller semantics (thrown without retry).
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 400));
+    try {
+      const res = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(timeout || 15000) });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.text();
+    } catch (e) {
+      lastErr = e;
+      if (/^HTTP /.test(String(e?.message || ''))) throw e; // real answer — no retry
+    }
+  }
+  throw lastErr;
 }
 
 async function getTMDBInfo(tmdbId, type) {

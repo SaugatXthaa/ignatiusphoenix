@@ -72,7 +72,12 @@ const HEADERS = {
   'Referer': `${ATLANTIC_ORIGIN}/`,
 };
 
-const MASTER_TIMEOUT_MS = 9000;
+// Task 49: 9s → 12s. Live evidence: stellar answered 200 in 10.5s during a
+// slow-but-alive window — the old 9s cap aborted a REAL answer and zeroed the
+// whole card set (the Task 49 baseline's atlantic guard failed on exactly
+// this). Worst case 2×12s + 400ms backoff runs in parallel stages, still
+// inside the resolver's 35s SOURCE_TIMEOUT (wrapper race removed in fix6).
+const MASTER_TIMEOUT_MS = 12000;
 const SUBS_TIMEOUT_MS = 6000;
 
 // Task 48 production evidence: Cloudflare 429-blocks RENDER's datacenter IP

@@ -6,6 +6,13 @@ import { getClosestResolution } from './resolution.js';
 import { flagFromCountryCode, languageFromCountryCode } from './language.js';
 import { SubtitleFetcher } from './SubtitleFetcher.js';
 import streamGate from './streamGate.cjs';
+import { createRequire } from 'module';
+
+// Task 49: unified subtitle providers — the atlantic.st site stack (granite
+// VTT + natsuki SRT), shared across ALL sources so movies, series, kdramas
+// and animes carry the same subtitle set on every card (user requirement).
+const require_ = createRequire(import.meta.url);
+const { fetchUnifiedSubs, mergeSubtitleTracks } = require_('./siteSubtitles.cjs');
 
 // Extract a release name from a stream's meta + URL for OpenSubtitles
 // release-name matching. Returns "" if no recognizable release name found.
@@ -366,6 +373,23 @@ export class StreamResolver {
 
   async _resolveInternal(ctx, sources, type, id) {
     const resolveT0 = Date.now();
+
+    // Task 49: fire the unified subtitle fetch (granite + natsuki) IN PARALLEL
+    // with the source resolves — zero added latency. By the time sources
+    // settle (or the budget expires) the set is usually already resolved and
+    // cached (6h in-module cache), so EVERY response path — full, partial,
+    // cold, warm — attaches the same subtitle providers to every card.
+    const subsState = { settled: false, value: [] };
+    const unifiedSubsP = fetchUnifiedSubs({
+      tmdbId: typeof id === 'object' ? id.id : id,
+      type,
+      season: typeof id === 'object' ? id.season : undefined,
+      episode: typeof id === 'object' ? id.episode : undefined,
+      hostUrl: ctx.hostUrl,
+    });
+    unifiedSubsP
+      .then(v => { subsState.settled = true; subsState.value = Array.isArray(v) ? v : []; })
+      .catch(() => { subsState.settled = true; subsState.value = []; });
 
     const streams = [];
     const urlResults = [];
@@ -787,6 +811,22 @@ export class StreamResolver {
     });
 
     // Build streams
+    // Task 49: resolve the universal subtitle set without endangering budgets.
+    //   - already settled (typical: fetched in parallel during the resolve) →
+    //     use immediately, zero wait.
+    //   - full path (all sources settled early) → wait up to 3s more (bounded;
+    //     the OpenSubtitles pass above already spent time, and warm re-opens
+    //     hit the 6h cache).
+    //   - partial path (budget expired) → 0 wait — ship whatever is ready so
+    //     the client-budget contract (Task 36) stays intact.
+    if (!subsState.settled && allSettled) {
+      await Promise.race([
+        unifiedSubsP.catch(() => []),
+        new Promise(resolve => setTimeout(resolve, 3000)),
+      ]);
+    }
+    const universalSubs = subsState.value;
+
     const seen = new Set();
     for (const urlResult of urlResults) {
       if (urlResult.error) continue;
@@ -834,23 +874,46 @@ export class StreamResolver {
       let finalUrl = urlResult.url;
       let finalMeta = urlResult.meta;
       const isAlreadyProxied = finalUrl.href.includes('/proxy?') || finalUrl.href.includes('/range-proxy?');
+
+      // Task 49: workers.dev file hosts (hubcloud final links, 4khdhub /
+      // 4khdhub.one / hdhub4u family) now IP-GATE datacenter IPs — live-
+      // measured 403 "Access Denied" (plain-text worker deny, not a CF block
+      // page) from BOTH /proxy (server-side fetch) AND direct server-side
+      // fetch, same day. Shipping via /proxy forces OUR blocked egress IP →
+      // guaranteed-dead cards → "stuck on loading screen, nothing plays".
+      // Fix (Task 48 fix5 semantics, peraspera precedent): ship DIRECT with
+      // requestHeaders so the PLAYER's residential IP makes the request —
+      // exactly what the real site's browser does. In-codebase precedent:
+      // hubcloud PixelServer cards already ship direct+requestHeaders
+      // (HubCloud.js) and play. Must run BEFORE hasProxyHeaders is computed
+      // so the proxyHeaders behaviorHints branch below engages.
+      if (!isAlreadyProxied && !urlResult.requestHeaders && /(^|\.)workers\.dev$/i.test(finalUrl.hostname)) {
+        urlResult.requestHeaders = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          'Referer': 'https://hubcloud.cx/',
+        };
+        this.logger.info(`StreamResolver: workers.dev card shipped direct+proxyHeaders (datacenter IP-gate class): ${finalUrl.hostname}`);
+      }
+
       const hasProxyHeaders = !!urlResult.requestHeaders;
       // Route URLs through /proxy ONLY if they are known to fail with direct access.
       // Proxying everything causes "network connection was lost" on Render when
       // downloading large files — Render kills long-running proxy connections.
       // Only proxy CDNs that return "Connection reset by peer" to Stremio's player.
+      // Task 49: workers.dev REMOVED from this list — those hosts are now
+      // handled by the direct+proxyHeaders branch above.
       //
       // IMPORTANT: hakunaymatata.com is NOT in this list because VidLink uses
       // bcdn.hakunaymatata.com for direct MP4 streams that play fine without
       // proxy. MovieBox URLs (which DO need proxy) have requestHeaders set and
       // are handled by the hasProxyHeaders block below.
-      const needsProxy = /valentine|fukggl|fileserver|animeheaven|pixel\.hubcloud|gpdl\.hubcloud|workers\.dev|img1\.|ngcorp\.dad|valhallastream/.test(finalUrl.hostname);
+      const needsProxy = /valentine|fukggl|fileserver|animeheaven|pixel\.hubcloud|gpdl\.hubcloud|img1\.|ngcorp\.dad|valhallastream/.test(finalUrl.hostname);
 
       if (!isAlreadyProxied && !hasProxyHeaders && needsProxy) {
         const proxyUrl = new URL('/proxy', ctx.hostUrl);
         proxyUrl.searchParams.set('url', finalUrl.href);
         // Add Referer for HubCloud CDN (pixel.hubcloud.cx → workers.dev redirect chain)
-        if (/pixel\.hubcloud|workers\.dev/.test(finalUrl.hostname)) {
+        if (/pixel\.hubcloud/.test(finalUrl.hostname)) {
           proxyUrl.searchParams.set('referer', 'https://hubcloud.cx/');
         }
         finalUrl = proxyUrl;
@@ -881,14 +944,16 @@ export class StreamResolver {
           }),
           ...(urlResult.meta?.bytes && { videoSize: urlResult.meta.bytes }),
         },
-        // Subtitles pass-through — sources that return subtitle tracks
-        // (e.g. NikaStream, AniSuge) store them in meta.subtitles as
-        // Stremio-format objects: { id, url, lang }. Stremio reads this
-        // array directly from the stream object and shows subtitle tracks
-        // in the player UI.
-        ...(Array.isArray(urlResult.meta?.subtitles) && urlResult.meta.subtitles.length > 0 && {
-          subtitles: urlResult.meta.subtitles,
-        }),
+        // Subtitles pass-through — Task 49: EVERY card from EVERY source gets
+        // the same subtitle providers. Source-provided tracks (NikaStream,
+        // AniSuge, atlantic) and the OpenSubtitles release-matched tracks
+        // (meta.subtitles, attached above on the full path) keep priority;
+        // the universal granite+natsuki set (fetched in parallel at resolve
+        // start) fills in the rest — deduped by base language, capped at 48.
+        ...(() => {
+          const merged = mergeSubtitleTracks(urlResult.meta?.subtitles, universalSubs);
+          return merged.length > 0 ? { subtitles: merged } : {};
+        })(),
       };
       streams.push(stream);
     }

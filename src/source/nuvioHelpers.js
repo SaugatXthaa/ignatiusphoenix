@@ -412,10 +412,25 @@ export async function withRetryOnEmpty(fn, { attempts = 2, maxTotalMs = 12000, b
   let last = [];
   for (let i = 0; i < attempts; i++) {
     if (i > 0 && Date.now() - t0 >= maxTotalMs) break;
-    const r = await fn();
-    if (!Array.isArray(r)) return r; // timeout sentinel or unexpected shape
-    if (r.length > 0) return r;
-    last = r;
+    // Task 49: network-level THROWS ("fetch failed", DNS/socket hiccups — the
+    // Render 0.1-CPU storm class documented in Task 48 fix2) used to escape
+    // this helper uncaught, zeroing the whole run with NO retry. Production
+    // evidence: [4khdhub] getStreams error: fetch failed → 0 streams until the
+    // user refreshed 4-5 times. A throw now behaves exactly like an empty
+    // result so the existing retry/backoff logic applies.
+    let r;
+    let threw = false;
+    try {
+      r = await fn();
+    } catch (e) {
+      threw = true;
+      console.log(`[${tag}] attempt ${i + 1}/${attempts} threw: ${e?.message || e}`);
+    }
+    if (!threw) {
+      if (!Array.isArray(r)) return r; // timeout sentinel or unexpected shape
+      if (r.length > 0) return r;
+      last = r;
+    }
     if (i < attempts - 1 && Date.now() - t0 < maxTotalMs / 2) {
       console.log(`[${tag}] empty resolve (attempt ${i + 1}/${attempts}), retrying`);
       await new Promise(rr => setTimeout(rr, backoffMs));

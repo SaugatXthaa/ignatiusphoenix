@@ -92,10 +92,10 @@ export class FourKHDHubOne extends Source {
     const mediaType = tmdbId.season ? 'tv' : 'movie';
     let streams;
     try {
-      streams = await Promise.race([
-        mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode),
-        new Promise(r => setTimeout(() => r(null), 28000)),
-      ]);
+      // Task 49: NO internal race — same fix as FourKHDHub (Task 48 fix6
+      // pattern): a fired race discards the eventual result and keeps the
+      // 15min cache empty, forcing full-cold re-runs on every refresh.
+      streams = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode);
     } catch (e) {
       console.error(`[4khdhubone] getStreams error: ${e?.message || e}`);
       return [];

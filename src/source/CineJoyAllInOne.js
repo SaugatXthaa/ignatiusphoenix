@@ -119,10 +119,12 @@ export class CineJoyAllInOne extends Source {
     const mediaType = tmdbId.season ? 'tv' : 'movie';
     let streams;
     try {
-      streams = await Promise.race([
-        mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null),
-        new Promise(r => setTimeout(() => r(null), 25000)),
-      ]);
+      // Task 49: NO internal race (Task 48 fix6 pattern) — the old 25s race
+      // fired null on cold starts (bundle parse + handshake can exceed 25s
+      // under Render contention) and DISCARDED the eventual result, keeping
+      // the 15min cache empty. Scraper internals are bounded (8s/12s/20s
+      // stage timeouts), so the uncapped await settles on its own.
+      streams = await mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null);
     } catch (e) {
       console.error(`[cinejoy-aio] getStreams error: ${e?.message || e}`);
       return [];

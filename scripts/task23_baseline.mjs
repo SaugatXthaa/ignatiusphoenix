@@ -305,8 +305,27 @@ async function runChecks(child, logFile, bootLines) {
   // (Aphrodite is curated and currently stub-degraded upstream).
   const at = await getJson(`${base}/debug/source/atlantic?type=movie&id=tmdb:27205`, 60000);
   let atCount = at?.count ?? 0;
-  if (atCount < 1) { await new Promise(r => setTimeout(r, 8000)); const at2 = await getJson(`${base}/debug/source/atlantic?type=movie&id=tmdb:27205`, 60000); atCount = Math.max(atCount, at2?.count ?? 0); }
-  check('atlantic Inception >= 1 (Task 48 RE guard)', atCount >= 1, `count=${atCount}`);
+  // Task 49: retry gap 8s → 20s. Part D runs right after the merged-catalog
+  // checks — background continuations from 4 cold catalog resolves are still
+  // churning the event loop, and atlantic (longest chain: resolve → master →
+  // validate + 3 sub fetches) is the most contention-exposed source. Measured
+  // today: 0 inside the churn window, healthy 1.7s standalone seconds later.
+  if (atCount < 1) { await new Promise(r => setTimeout(r, 20000)); const at2 = await getJson(`${base}/debug/source/atlantic?type=movie&id=tmdb:27205`, 60000); atCount = Math.max(atCount, at2?.count ?? 0); }
+  // Task 49: zone-weather SKIP — stellar.maybeoneday.ch Cloudflare-throttles
+  // an egress IP that bursts the zone (documented in Task 48: triggers at
+  // ~30+ req/hr, black-hole timeouts, self-heals in ~25-30min). A throttle
+  // window fails artemis/aphrodite regardless of code correctness. Distinguish
+  // weather from regression: only SKIP when a DIRECT upstream probe from this
+  // same machine ALSO black-holes; a real code failure still FAILs.
+  let atZoneDown = false;
+  if (atCount < 1) {
+    try {
+      await fetch('https://stellar.maybeoneday.ch/resolve?tmdbId=27205&type=movie', { signal: AbortSignal.timeout(10000), headers: { Origin: 'https://atlantic.st', Referer: 'https://atlantic.st/' } });
+    } catch { atZoneDown = true; }
+  }
+  if (atCount >= 1) check('atlantic Inception >= 1 (Task 48 RE guard)', true, `count=${atCount}`);
+  else if (atZoneDown) console.log(`  [SKIP] atlantic guard — stellar.maybeoneday.ch black-holing this egress IP (Task 48 documented zone throttle, self-heals ~25-30min) count=${atCount}`);
+  else check('atlantic Inception >= 1 (Task 48 RE guard)', atCount >= 1, `count=${atCount}`);
   // animotvslash standing check (Task 28): anime hardsub/softsub source.
   // One-shot guard with a retry — videas CDN intermittently hangs Range
   // probes from datacenter IPs; a single slow round must not fail the run.
