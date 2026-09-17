@@ -117,13 +117,20 @@ export class Source {
     // minute even though the scraper was now warm and could return streams
     // in 1-2s. With 15s, the user only needs to wait 15s for a retry.
     //
-    // Non-empty results still get the full this.ttl (5-12min).
+    // Non-empty results: 15min (Task 45, was 5min). Production evidence: the
+    // user-visible "sources" window was limited to re-opens landing within
+    // 5min of the first view — beyond that the per-source caches had expired
+    // and the re-open went full-cold again (9-10 sources on Render 0.1 CPU),
+    // even though stream definitions are stable far longer (direct file URLs,
+    // ≥1h-signed tokens; tokened embeds re-resolve fresh per request anyway).
+    // 15min triples the warm re-open window at ~negligible memory cost
+    // (stream definitions are KB-scale; the >40-entry sweep still bounds the
+    // map, and prewarm-relevant titles stay valid between 10min rotations).
     const isEmpty = !Array.isArray(results) || results.length === 0;
     // Short TTL for empty results (15s) — retry quickly after transient failures.
-    // Short TTL for non-empty results (5min) — prevents cache from holding
-    // large stream arrays for too long on Render's 512MB free tier.
-    // Was 12h — that's way too long and causes OOM when many movies are cached.
-    const effectiveTtl = isEmpty ? 15_000 : 5 * 60 * 1000;
+    // Non-empty results (15min) — warm re-opens well beyond the old 5min window.
+    // Was 12h once — way too long, causes OOM on Render's 512MB free tier.
+    const effectiveTtl = isEmpty ? 15_000 : 15 * 60 * 1000;
     sourceResultCache.set(cacheKey, { data: results, ts: Date.now(), ttl: effectiveTtl });
     return results;
   }

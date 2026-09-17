@@ -12,6 +12,7 @@ import { StreamResolver } from './utils/StreamResolver.js';
 import { ImdbId, TmdbId } from './utils/id.js';
 import { reanimeSegmentKey } from './utils/site-secrets.cjs';
 import { startWarmup } from './utils/warmup.js';
+import { startPrewarm } from './utils/prewarm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -87,7 +88,15 @@ app.get('/stream/:type/:id.json', async (req, res) => {
 
   try {
     const startTime = Date.now();
-    const { streams } = await streamResolver.resolve(ctx, sources, type, parsedId);
+    // Idle-gauge for the Task 45 prewarm loop: it only fires prewarm resolves
+    // while no live user resolve is in flight (see utils/prewarm.js).
+    globalThis.__phoenixLiveResolves = (globalThis.__phoenixLiveResolves || 0) + 1;
+    let streams;
+    try {
+      ({ streams } = await streamResolver.resolve(ctx, sources, type, parsedId));
+    } finally {
+      globalThis.__phoenixLiveResolves--;
+    }
     const duration = Date.now() - startTime;
     logger.log(`[${ADDON_NAME}] ${type} ${id} → ${streams.length} streams in ${duration}ms`);
 
@@ -1157,7 +1166,13 @@ app.get('/debug/stream', async (req, res) => {
 
   const t0 = Date.now();
   try {
-    const { streams } = await streamResolver.resolve(ctx, sources, type, parsedId);
+    globalThis.__phoenixLiveResolves = (globalThis.__phoenixLiveResolves || 0) + 1;
+    let streams;
+    try {
+      ({ streams } = await streamResolver.resolve(ctx, sources, type, parsedId));
+    } finally {
+      globalThis.__phoenixLiveResolves--;
+    }
     const totalMs = Date.now() - t0;
 
     // Get per-source timing data (stashed by _resolveInternal)
@@ -1425,6 +1440,11 @@ app.listen(PORT, HOST, () => {
   logger.log(`[${ADDON_NAME}] Extractors: ${extractors.length} (${extractors.map(e => e.id).join(', ')})`);
   // Boot-time warmup — background only, never blocks or alters request handling.
   startWarmup({ sources, fetcher, logger });
+  // Task 45 idle-time prewarm: resolves current TMDB trending titles through
+  // our own /stream while the instance is idle so users' FIRST open of a
+  // trending title finds warm per-source caches (full source set instantly).
+  globalThis.__phoenixLiveResolves = 0;
+  startPrewarm({ port: PORT, logger });
 });
 
 process.on('SIGTERM', () => process.exit(0));
