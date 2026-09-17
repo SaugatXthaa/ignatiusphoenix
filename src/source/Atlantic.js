@@ -87,31 +87,33 @@ export class Atlantic extends Source {
       imdbId = (await getImdbId(this.fetcher, ctx, tmdbId)).id || '';
     } catch { /* best effort — natsuki matches by tmdbId without it */ }
 
-    // original_language → honest audio label (ja anime / ko K-drama / en)
-    let originalLang = '';
-    try {
-      const type = tmdbId.season ? 'tv' : 'movie';
-      const url = `https://api.themoviedb.org/3/${type}/${tmdbId.id}?api_key=${process.env.TMDB_API_KEY || TMDB_PRIMARY}`;
-      const { gotScraping } = await import('got-scraping');
-      const r = await gotScraping.get(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
-        timeout: { request: 8000 }, throwHttpErrors: false, http2: false,
-      });
-      if (r.statusCode === 200) {
-        originalLang = JSON.parse(r.body).original_language || '';
-      }
-    } catch { /* best effort */ }
-    const langCC = LANG_TO_CC[originalLang];
-    const countryCodes = langCC ? [CountryCode.multi, langCC] : [CountryCode.multi];
+    // original_language → honest audio label — fetched in PARALLEL with the
+    // scraper (it only feeds buildStreamResults' countryCodes, so the serial
+    // path pays zero for it; production evidence: 4 serial TMDB-phase calls
+    // under Render resolve storms ate 15-18s before the scraper even started,
+    // then the 20s race expired with 0 cards).
+    const mediaType0 = tmdbId.season ? 'tv' : 'movie';
+    const origLangP = (async () => {
+      try {
+        const url = `https://api.themoviedb.org/3/${mediaType0}/${tmdbId.id}?api_key=${process.env.TMDB_API_KEY || TMDB_PRIMARY}`;
+        const { gotScraping } = await import('got-scraping');
+        const r = await gotScraping.get(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+          timeout: { request: 8000 }, throwHttpErrors: false, http2: false,
+        });
+        return r.statusCode === 200 ? (JSON.parse(r.body).original_language || '') : '';
+      } catch { return ''; }
+    })().catch(() => '');
 
-    const mediaType = tmdbId.season ? 'tv' : 'movie';
-    console.log(`[Atlantic] Request: tmdb=${tmdbId.id} type=${mediaType}${tmdbId.season ? ` S${tmdbId.season}E${tmdbId.episode || 1}` : ''} imdb=${imdbId || '-'} origLang=${originalLang || '-'}`);
+    const mediaType = mediaType0;
+    console.log(`[Atlantic] Request: tmdb=${tmdbId.id} type=${mediaType}${tmdbId.season ? ` S${tmdbId.season}E${tmdbId.episode || 1}` : ''} imdb=${imdbId || '-'} (origLang pending)`);
     const mod = getScraperModule();
     if (!mod || typeof mod.getStreams !== 'function') return [];
 
-    // Both servers + subs run in parallel inside the scraper (~2-5s measured).
-    // One empty retry absorbs transient upstream windows (artemis 5xx class)
-    // without endangering the resolver's 35s per-source cutoff; race cap 20s.
+    // Both servers + subs run in parallel inside the scraper (~2-5s measured
+    // uncontended, 10-20s under Render resolve storms with fetchRetry). One
+    // empty retry absorbs transient upstream windows; race cap 25s keeps the
+    // whole source under the resolver's 35s cutoff including the TMDB phase.
     const EMPTY_RETRY_MAX = 1;
     const EMPTY_RETRY_DELAY_MS = 2000;
 
@@ -133,14 +135,17 @@ export class Atlantic extends Source {
           }
           return out;
         })(),
-        new Promise(r => setTimeout(() => r(null), 20000)),
+        new Promise(r => setTimeout(() => r(null), 25000)),
       ]);
     } catch (e) {
       console.error(`[atlantic] getStreams error: ${e?.message || e}`);
       return [];
     }
     if (!Array.isArray(streams)) return [];
-    console.log(`[Atlantic] provider returned ${streams.length} streams`);
+    const originalLang = await Promise.race([origLangP, new Promise(r => setTimeout(() => r(''), 9000))]);
+    console.log(`[Atlantic] provider returned ${streams.length} streams (origLang=${originalLang || '-'})`);
+    const langCC = LANG_TO_CC[originalLang];
+    const countryCodes = langCC ? [CountryCode.multi, langCC] : [CountryCode.multi];
 
     return buildStreamResults({
       streams,
