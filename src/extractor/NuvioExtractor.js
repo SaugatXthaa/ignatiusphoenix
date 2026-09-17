@@ -213,6 +213,26 @@ export class NuvioExtractor extends Extractor {
       }];
     }
 
+    // Task 48: atlantic's peraspera.nbsycfzrpa4.workers.dev 429-blocks
+    // DATACENTER IPs (Cloudflare) — server-side /proxy fetch fails for
+    // everyone (502/429, both undici and got-scraping), but the PLAYER's
+    // residential IP with Origin/Referer passes (exactly the request the real
+    // site's browser makes — sandbox-verified 200). Ship the URL DIRECT with
+    // requestHeaders → Stremio proxyHeaders on the final card. Opt-in via
+    // meta.nuvioDirectWithHeaders (only the atlantic source sets it).
+    if (meta?.nuvioDirectWithHeaders === true) {
+      const requestHeaders = {};
+      if (referer) requestHeaders['Referer'] = referer;
+      if (origin) requestHeaders['Origin'] = origin;
+      if (userAgent) requestHeaders['User-Agent'] = userAgent;
+      return [{
+        url,
+        format: videoFile ? Format.mp4 : Format.hls,
+        meta: { ...meta },
+        requestHeaders,
+      }];
+    }
+
     // Routing strategy (same as HiAnime/AnimeKai pattern):
     //   - HLS + Referer → /proxy (proxy rewrites m3u8 URLs + sends Referer)
     //   - Ambiguous URL + Referer → /proxy with forceHls=1

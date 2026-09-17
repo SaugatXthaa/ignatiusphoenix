@@ -75,6 +75,20 @@ const HEADERS = {
 const MASTER_TIMEOUT_MS = 9000;
 const SUBS_TIMEOUT_MS = 6000;
 
+// Task 48 production evidence: Cloudflare 429-blocks RENDER's datacenter IP
+// on peraspera.nbsycfzrpa4.workers.dev (both plain undici AND got-scraping
+// server-side; the /proxy path returns 502/429 while a residential IP gets
+// 200 with the same headers — sandbox-verified). This is the documented
+// workers.dev datacenter-gate class (Task 41/44: 4khdhub file hosts). Cards
+// on this host are therefore shipped DIRECT with requestHeaders (Stremio
+// proxyHeaders) so the PLAYER's residential IP fetches them — exactly the
+// request the real site's browser makes. Server-side validation of these
+// URLs is ADVISORY ONLY (429 from our IP ≠ dead for users).
+const DATACENTER_GATE_HOST_RE = /(^|\.)workers\.dev$/i;
+function isDatacenterGated(url) {
+  try { return DATACENTER_GATE_HOST_RE.test(new URL(url).hostname); } catch { return false; }
+}
+
 // Production evidence (Render 0.1 CPU, Task 48 deploy day): under resolve
 // storms (prewarm loop + 20 concurrent sources) all four upstream stages can
 // fail SIMULTANEOUSLY (~3.3s) — the DNS-resolver/socket hiccup class, since
@@ -564,7 +578,7 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
     // each child playlist, ship only validated ones.
     const streams = [];
     const seen = new Set();
-    const push = (url, quality, title, subtitles) => {
+    const push = (url, quality, title, subtitles, ipGated = false) => {
       if (!url || !/^https?:\/\//.test(url) || seen.has(url)) return;
       seen.add(url);
       streams.push({
@@ -573,6 +587,11 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
         title,
         name: 'Atlantic',
         headers: HEADERS,
+        // peraspera (workers.dev) is Cloudflare-429-gated against datacenter
+        // IPs — the wrapper maps this flag to meta.nuvioDirectWithHeaders so
+        // NuvioExtractor ships the card DIRECT with requestHeaders instead of
+        // routing through /proxy (which cannot fetch from this IP).
+        ...(ipGated && { ipGated: true }),
         subtitles: subtitles || [],
       });
     };
@@ -585,23 +604,38 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
         const audioNote = audioTracks.length > 1
           ? `, ${audioTracks.length} audio tracks (player audio menu)`
           : (audioTracks.length === 1 ? ', 1 audio track' : '');
+        const ipGated = isDatacenterGated(artemisMaster.url);
         if (separateAudio || !isMuxedVariants(artemisMaster.parsed)) {
           // Master card — players pick quality (and audio) natively. Children
           // are video-only renditions here; bare variant URLs would be silent.
-          const topChildOk = variants[0].uri ? await validatePlaylistChild(variants[0].uri) : false;
-          console.log(`[Atlantic] artemis top-child validation: ${topChildOk ? 'ok' : 'FAIL'} +${Date.now() - t0}ms`);
+          let topChildOk = false;
+          if (ipGated) {
+            // ADVISORY: our IP is 429-gated by Cloudflare — failure here says
+            // nothing about the player's residential IP (Task 41/44 class).
+            topChildOk = variants[0].uri ? await validatePlaylistChild(variants[0].uri) : false;
+            console.log(`[Atlantic] artemis top-child validation (advisory, ip-gated): ${topChildOk ? 'ok' : 'skip-fail'} +${Date.now() - t0}ms`);
+            topChildOk = true; // ship — residential IPs decide
+          } else {
+            topChildOk = variants[0].uri ? await validatePlaylistChild(variants[0].uri) : false;
+            console.log(`[Atlantic] artemis top-child validation: ${topChildOk ? 'ok' : 'FAIL'} +${Date.now() - t0}ms`);
+          }
           if (topChildOk) {
-            push(artemisMaster.url, qualityLabel(maxH), `${artemisMaster.server} — Auto (up to ${qualityLabel(maxH)})${audioNote}`, subs);
+            push(artemisMaster.url, qualityLabel(maxH), `${artemisMaster.server} — Auto (up to ${qualityLabel(maxH)})${audioNote}`, subs, ipGated);
           }
         } else {
-          // Muxed children — per-variant cards, each validated
+          // Muxed children — per-variant cards. peraspera is ip-gated: ship
+          // without gating on validation verdicts (advisory only).
           const perH = new Map();
           for (const v of variants) { if (!perH.has(v.h) || perH.get(v.h).bw < v.bw) perH.set(v.h, v); }
           const top = [...perH.values()].sort((a, b) => b.h - a.h).slice(0, 4);
-          const verdicts = await Promise.all(top.map(v => validatePlaylistChild(v.uri)));
-          top.forEach((v, i) => {
-            if (verdicts[i]) push(v.uri, qualityLabel(v.h), `${artemisMaster.server} — ${qualityLabel(v.h)}`, subs);
-          });
+          if (ipGated) {
+            top.forEach((v) => push(v.uri, qualityLabel(v.h), `${artemisMaster.server} — ${qualityLabel(v.h)}`, subs, true));
+          } else {
+            const verdicts = await Promise.all(top.map(v => validatePlaylistChild(v.uri)));
+            top.forEach((v, i) => {
+              if (verdicts[i]) push(v.uri, qualityLabel(v.h), `${artemisMaster.server} — ${qualityLabel(v.h)}`, subs, false);
+            });
+          }
         }
       }
     }

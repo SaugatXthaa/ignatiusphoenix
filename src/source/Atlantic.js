@@ -147,7 +147,7 @@ export class Atlantic extends Source {
     const langCC = LANG_TO_CC[originalLang];
     const countryCodes = langCC ? [CountryCode.multi, langCC] : [CountryCode.multi];
 
-    return buildStreamResults({
+    const results = buildStreamResults({
       streams,
       title,
       sourceId: this.id,
@@ -155,5 +155,19 @@ export class Atlantic extends Source {
       countryCodes,
       ctx,
     });
+
+    // ipGated mapping (Task 48): peraspera workers.dev 429-blocks our
+    // datacenter IP — /proxy cannot fetch it, but the PLAYER's residential IP
+    // with Origin/Referer passes (exactly what the real site's browser sends).
+    // NuvioDirectWithHeaders ships those cards DIRECT with requestHeaders
+    // (Stremio proxyHeaders) instead of routing through /proxy.
+    const rawByHref = new Map(streams.map(s => [s.url, s]));
+    for (const r of results) {
+      const raw = r?.url ? rawByHref.get(r.url.href) : null;
+      if (raw?.ipGated && r.meta) {
+        r.meta.nuvioDirectWithHeaders = true;
+      }
+    }
+    return results;
   }
 }
