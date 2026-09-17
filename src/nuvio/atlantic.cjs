@@ -75,6 +75,29 @@ const HEADERS = {
 const MASTER_TIMEOUT_MS = 9000;
 const SUBS_TIMEOUT_MS = 6000;
 
+// Production evidence (Render 0.1 CPU, Task 48 deploy day): under resolve
+// storms (prewarm loop + 20 concurrent sources) all four upstream stages can
+// fail SIMULTANEOUSLY (~3.3s) — the DNS-resolver/socket hiccup class, since
+// the same hosts answer 200 via /debug/rawfetch and /proxy from the same
+// instance seconds later. A single fast retry per call absorbs it without
+// endangering the 20s wrapper race (worst case 2×9s + 400ms backoff, still
+// under budget because stages run in parallel).
+async function fetchRetry(url, opts = {}, attempts = 2) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, 400));
+    try {
+      const res = await fetch(url, opts);
+      // 404/403/429/5xx are REAL answers (not-found / gated / rate-limited) —
+      // return them; the caller decides. Only network-level errors retry.
+      return res;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
 // Subtitle caps — Stremio renders one selector per stream; the site exposes
 // 90-230 files per title (per-release duplicates). Keep every granite language
 // once (VTT, direct), then fill remaining slots with natsuki languages the
@@ -130,7 +153,7 @@ async function gateBootstrap() {
   const ts = Math.floor(Date.now() / 1000);
   const nonce = crypto.randomBytes(8).toString('hex');
   const sig = crypto.createHmac('sha256', gateMasterKey).update(`${GATE_LABEL}|${ts}|${nonce}`).digest('hex');
-  const res = await fetch(`${CDN}/content/index`, {
+  const res = await fetchRetry(`${CDN}/content/index`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...HEADERS },
     body: JSON.stringify({ c: GATE_LABEL, ts, n: nonce, s: sig }),
@@ -186,7 +209,7 @@ async function gateGet(path) {
     }
     let res;
     try {
-      res = await fetch(`${CDN}${path}`, {
+      res = await fetchRetry(`${CDN}${path}`, {
         headers: { ...gateSignHeaders(sess, path), ...HEADERS },
         signal: AbortSignal.timeout(MASTER_TIMEOUT_MS),
       });
@@ -222,7 +245,7 @@ async function resolveArtemis(tmdbId, type, season, episode) {
     q.set('episode', String(episode || 1));
   }
   try {
-    const res = await fetch(`${ARTEMIS}?${q.toString()}`, {
+    const res = await fetchRetry(`${ARTEMIS}?${q.toString()}`, {
       headers: HEADERS,
       signal: AbortSignal.timeout(MASTER_TIMEOUT_MS),
     });
@@ -299,7 +322,7 @@ function isMuxedVariants(parsed) {
 // A child/variant playlist must be an m3u8 with at least one playable line.
 async function validatePlaylistChild(url) {
   try {
-    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(MASTER_TIMEOUT_MS) });
+    const res = await fetchRetry(url, { headers: HEADERS, signal: AbortSignal.timeout(MASTER_TIMEOUT_MS) });
     if (!res.ok) return false;
     const body = await res.text();
     if (!body.startsWith('#EXTM3U')) return false;
@@ -313,7 +336,7 @@ async function probeSegmentMagic(url) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), MASTER_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { headers: { ...HEADERS, Range: 'bytes=0-4095' }, signal: ac.signal });
+    const res = await fetchRetry(url, { headers: { ...HEADERS, Range: 'bytes=0-4095' }, signal: ac.signal });
     if (!res.ok && res.status !== 206) return false;
     const reader = res.body.getReader();
     const { value } = await reader.read();
@@ -341,7 +364,7 @@ async function fetchGraniteSubs(tmdbId, type, season, episode) {
     ? `${GRANITE_API}/tv/${tmdbId}/${season || 1}/${episode || 1}`
     : `${GRANITE_API}/movie/${tmdbId}`;
   try {
-    const res = await fetch(path, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(SUBS_TIMEOUT_MS) });
+    const res = await fetchRetry(path, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(SUBS_TIMEOUT_MS) });
     if (!res.ok) return [];
     const arr = await res.json();
     if (!Array.isArray(arr)) return [];
@@ -389,7 +412,7 @@ async function fetchNatsukiSubs(tmdbId, imdbId, type, season, episode, hostUrl) 
 
   const attempt = async (q) => {
     try {
-      const res = await fetch(`${NATSUKI_API}?${q.toString()}`, { headers: HEADERS, signal: AbortSignal.timeout(5000) });
+      const res = await fetchRetry(`${NATSUKI_API}?${q.toString()}`, { headers: HEADERS, signal: AbortSignal.timeout(5000) });
       if (!res.ok) return [];
       const j = await res.json();
       const subs = Array.isArray(j?.subtitles) ? j.subtitles : [];
@@ -457,7 +480,7 @@ async function getTmdbMeta(tmdbId, mediaType) {
   const type = mediaType === 'tv' ? 'tv' : 'movie';
   const key = process.env.TMDB_API_KEY || '439c478a771f35c05022f9feabcca01c';
   try {
-    const res = await fetch(`https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${key}&append_to_response=external_ids`, {
+    const res = await fetchRetry(`https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${key}&append_to_response=external_ids`, {
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
@@ -505,7 +528,7 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
     const artemisMasterP = artemisP.then(async (a) => {
       if (!a) return null;
       try {
-        const res = await fetch(a.url, { headers: HEADERS, signal: AbortSignal.timeout(MASTER_TIMEOUT_MS) });
+        const res = await fetchRetry(a.url, { headers: HEADERS, signal: AbortSignal.timeout(MASTER_TIMEOUT_MS) });
         if (!res.ok) return null;
         const body = await res.text();
         if (!body.startsWith('#EXTM3U')) return null;
@@ -515,7 +538,7 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
     const aphroditeMasterP = aphroditeP.then(async (a) => {
       if (!a) return null;
       try {
-        const res = await fetch(a.url, { headers: HEADERS, signal: AbortSignal.timeout(MASTER_TIMEOUT_MS) });
+        const res = await fetchRetry(a.url, { headers: HEADERS, signal: AbortSignal.timeout(MASTER_TIMEOUT_MS) });
         if (!res.ok) return null;
         const body = await res.text();
         if (!body.startsWith('#EXTM3U')) return null;
