@@ -82,7 +82,7 @@ const SUBS_TIMEOUT_MS = 6000;
 // instance seconds later. A single fast retry per call absorbs it without
 // endangering the 20s wrapper race (worst case 2×9s + 400ms backoff, still
 // under budget because stages run in parallel).
-async function fetchRetry(url, opts = {}, attempts = 2) {
+async function fetchRetry(url, opts = {}, attempts = 2, tag = '') {
   let lastErr;
   for (let i = 0; i < attempts; i++) {
     if (i > 0) await new Promise(r => setTimeout(r, 400));
@@ -93,6 +93,7 @@ async function fetchRetry(url, opts = {}, attempts = 2) {
       return res;
     } catch (e) {
       lastErr = e;
+      console.log(`[Atlantic] fetch fail${tag ? ` (${tag})` : ''} attempt ${i + 1}/${attempts}: ${e?.message || e} (${url.slice(0, 70)})`);
     }
   }
   throw lastErr;
@@ -158,7 +159,7 @@ async function gateBootstrap() {
     headers: { 'Content-Type': 'application/json', ...HEADERS },
     body: JSON.stringify({ c: GATE_LABEL, ts, n: nonce, s: sig }),
     signal: AbortSignal.timeout(8000),
-  });
+  }, 2, 'gate-bootstrap');
   if (!res.ok) throw new Error(`gate bootstrap HTTP ${res.status}`);
   const j = await res.json();
   if (!j || !j.d) throw new Error('gate bootstrap missing payload');
@@ -248,7 +249,7 @@ async function resolveArtemis(tmdbId, type, season, episode) {
     const res = await fetchRetry(`${ARTEMIS}?${q.toString()}`, {
       headers: HEADERS,
       signal: AbortSignal.timeout(MASTER_TIMEOUT_MS),
-    });
+    }, 2, 'artemis');
     if (!res.ok) return null;
     const j = await res.json();
     if (!j || j.found !== true || typeof j.url !== 'string' || !/^https?:\/\//.test(j.url)) return null;
