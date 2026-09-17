@@ -450,6 +450,11 @@ export class StreamResolver {
       // cinefreak 6 @3.3-4.6s (2160p after the 4K-first resolve fix)
       'bollyflix',     // 6 @3.9s cold incl 2160p
       'cinefreak',     // 6 @3.3-4.6s cold incl 2160p
+      // Task 47: cinejoyaio FIXED (api.shegu.st→api.wing.st + rotated-wasm
+      // refresh + payload contract) — now ~2s cold with Lisbon 2160p (4K) on
+      // movies AND series ( Breaking Bad S1E1 verified), 3/3 cards probe
+      // alive. 4K-capable + fast → wave-0 per the up-to-4K priority.
+      'cinejoyaio',    // 3 @2.0s cold incl 2160p (Lisbon)
       'primeshows',    // 6 @4.0s
       'meinecloud',    // 4 @3.8s
       'raflix',        // 7 @2.1s production isolated
@@ -474,7 +479,8 @@ export class StreamResolver {
       // never land within the 15s budget (measured) or known-dead upstreams;
       // run last so their slots don't starve the race — results still cache
       'stellarrip',     // PoW 22.8s + upstream content drought
-      'cinejoyaio',     // Noise/crypto CPU-heavy, 0 yield
+      // cinejoyaio REMOVED Task 47: fixed upstream migration (api.wing.st),
+      // measured ~2s cold with 2160p — promoted to wave-0 (WAVE1_SOURCE_ORDER)
       'desiflix',       // 23.5s aggregation chain
       'videasyto',      // Playwright headless 30-60s
       'verhdlink', 'movix', 'persianstremio',

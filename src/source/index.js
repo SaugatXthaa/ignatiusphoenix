@@ -231,7 +231,7 @@ export const createSources = (fetcher) => {
     new FourKHDHubOne(fetcher),
     // framextv.tech — movies/TV/anime (sub+dub) via FrameX API (up to 4K HLS)
     new FrameX(fetcher),
-    // cinejoy.to — movies/TV/anime via Noise protocol (7 servers, up to 4K)
+    // cinejoy.pk (was cinejoy.to) — movies/TV/anime via Noise protocol, up to 4K
     new CineJoyAllInOne(fetcher),
     // nikastream.blog — anime sub+dub HLS via Anivexa API (multi-language subtitles)
     new NikaStream(fetcher),

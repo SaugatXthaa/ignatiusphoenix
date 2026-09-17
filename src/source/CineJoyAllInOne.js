@@ -1,5 +1,5 @@
 // src/source/CineJoyAllInOne.js
-// cinejoy.to — movies, TV series, anime (sub+dub) with HLS streams up to 4K
+// cinejoy.pk (was cinejoy.to) — movies, TV series, anime (sub+dub) with HLS streams up to 4K
 //
 // Uses the all-in-one cinejoy scraper (src/nuvio/cinejoy_all_in_one.cjs) which
 // implements the lumen-gate-v2 Noise protocol with embedded crush.wasm.
@@ -8,9 +8,11 @@
 //   Joy, Sakura (anime), Canaias (multi-quality MP4)
 //
 // Stream URLs from movieboxnoob.cc and shegu.st require:
-//   Referer: https://cinejoy.to/
-//   Origin: https://cinejoy.to
+//   Referer: https://cinejoy.pk/
+//   Origin: https://cinejoy.pk
 // These are passed via meta.nuvioReferer so NuvioExtractor routes through /proxy.
+// (2026-09-17: site migrated cinejoy.to → cinejoy.pk; backend api.shegu.st →
+//  api.wing.st — both now handled inside cinejoy_all_in_one.cjs)
 //
 // The scraper wraps URLs with pengu.uk proxy — we unwrap them and route
 // through our own /proxy endpoint instead.
@@ -50,7 +52,7 @@ function getScraperModule() {
 
 // Unwrap pengu.uk proxy URL to get the original URL + headers
 function unwrapPenguProxy(url) {
-  if (!url || !url.includes('pengu.uk/')) return { url, referer: 'https://cinejoy.to/' };
+  if (!url || !url.includes('pengu.uk/')) return { url, referer: 'https://cinejoy.pk/' };
   try {
     // pengu.uk/hls/cinejoy/resource/{base64url}/media.m3u8
     const match = url.match(/\/resource\/([^/]+)/);
@@ -59,11 +61,11 @@ function unwrapPenguProxy(url) {
       const data = JSON.parse(decoded);
       return {
         url: data.url || url,
-        referer: data.headers?.Referer || 'https://cinejoy.to/',
+        referer: data.headers?.Referer || 'https://cinejoy.pk/',
       };
     }
   } catch {}
-  return { url, referer: 'https://cinejoy.to/' };
+  return { url, referer: 'https://cinejoy.pk/' };
 }
 
 // Parse quality string to height
@@ -82,7 +84,7 @@ export class CineJoyAllInOne extends Source {
     this.label = 'CineJoy';
     this.contentTypes = ['movie', 'series'];
     this.countryCodes = [CountryCode.multi, CountryCode.en, CountryCode.ja];
-    this.baseUrl = 'https://cinejoy.to';
+    this.baseUrl = 'https://cinejoy.pk';
     this.fetcher = fetcher;
     this.ttl = 10 * 60 * 1000; // 10min
   }
