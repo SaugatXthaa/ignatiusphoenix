@@ -76,6 +76,12 @@ const NUVIO_SOURCE_IDS = new Set([
   // up to 4K). Per-CDN Referer (player.videasy.to / yesmovies.ag / …) MUST be
   // routed through /proxy or the CDNs return 403.
   'streamxtv',
+  // atlantic — atlantic.st (Task 48 RE): peraspera.nbsycfzrpa4.workers.dev +
+  // totallyacdn.org m3u8-proxy payloads are Origin/Referer-gated (200 text/html
+  // decoys without Origin: atlantic.st) → nuvioReferer/nuvioOrigin/nuvioForceHls
+  // route through /proxy with whole-tree auth. Without joining this set every
+  // card matched NO extractor and was silently dropped (Task 25 failure class).
+  'atlantic',
   // cinebyrocks — movies/TV/anime via VidRock API (multi-CDN direct m3u8/mp4)
   'cinebyrocks',
   // stellar — movies/TV/anime via PoW + AES-GCM (HLS gated behind

@@ -290,6 +290,10 @@ export function buildStreamResults({ streams, title, sourceId, sourceLabel, coun
     const hls = isHlsUrl(url);
     const videoFile = isVideoFileUrl(url);
     const filename = extractFilename(url);
+    // Task 48: atlantic's CDN endpoints (/m3u8-proxy, /cdn-m3u8) are technical
+    // proxy-route names, not filenames — they would surface as display clutter
+    // ("— m3u8-proxy") in the card title. Treat them as empty.
+    const displayFilename = /^(m3u8-proxy|cdn-m3u8)$/i.test(filename) ? '' : cleanFilenameForDisplay(filename);
 
     // Build a rich title for enrichMeta parsing — include raw filename which
     // often contains quality/codec/sourceType/audio info (e.g.
@@ -297,7 +301,6 @@ export function buildStreamResults({ streams, title, sourceId, sourceLabel, coun
     // For DISPLAY, use the cleaned filename (without hash strings, technical
     // playlist indices, etc.) to avoid clutter in the stream title.
     const streamTitle = s.title || s.quality || '';
-    const displayFilename = cleanFilenameForDisplay(filename);
     const titleParts = [title];
     if (streamTitle) titleParts.push(streamTitle);
     if (displayFilename && displayFilename !== streamTitle) titleParts.push(displayFilename);

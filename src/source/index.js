@@ -11,6 +11,9 @@ import { CineJoyAllInOne } from './CineJoyAllInOne.js';
 import { NikaStream } from './NikaStream.js';
 // cineby.rocks — movies/TV/anime via VidRock API (8 servers, up to 4K)
 import { CinebyRocks } from './CinebyRocks.js';
+// atlantic.st — movies/TV/anime via Aphrodite (signed CDN) + Artemis (Orbit 4K
+//   / Nova anime) with granite+natsuki subtitles (Task 48 reverse engineering)
+import { Atlantic } from './Atlantic.js';
 // stellar.rip — movies/TV/anime via 19-server PoW API (direct HLS, up to 4K)
 import { StellarRip } from './StellarRip.js';
 // stellar.gdn — movies/TV/anime via PoW + AES-GCM API (direct HLS, up to 4K)
@@ -266,5 +269,9 @@ export const createSources = (fetcher) => {
     new VideasyTo(fetcher),
     // kmmovies.pics — movies/TV with direct playable MKV (up to 4K) via R2 + Pixeldrain
     new KMMovies(fetcher),
+    // atlantic.st — movies/TV/anime via Aphrodite (4K, signed) + Artemis
+    // (Orbit 4K multi-audio / Nova muxed), granite+natsuki subtitles, all
+    // cards live-validated before shipping (Task 48)
+    new Atlantic(fetcher),
   ].filter(source => !disabledSources.includes(source.id));
 };

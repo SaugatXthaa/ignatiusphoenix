@@ -195,7 +195,8 @@ async function runChecks(child, logFile, bootLines) {
   const extM = bootLines.match(/Extractors: (\d+)/);
   // Task 28: 69 → 70 — AniMoTVSlash (animotvslash.org) registered
   // Task 38: 70 → 71 — CineFreak revived (cinefreak.net, search-api + cinecloud)
-  check('boot source count = 71', srcM && srcM[1] === '71', `got ${srcM?.[1]}`);
+  // Task 48: 71 → 72 — Atlantic (atlantic.st RE: Aphrodite gate + Artemis)
+  check('boot source count = 72', srcM && srcM[1] === '72', `got ${srcM?.[1]}`);
   // Task 25: 30 → 31 — VidZee extractor registered (ported file existed but
   // was never wired into createExtractors; vidzee source shipped 0 streams).
   // Task 28: 31 → 32 — MixDrop extractor (verhdlink mixdrop mirrors → direct MP4)
@@ -299,6 +300,13 @@ async function runChecks(child, logFile, bootLines) {
   let cbCount = cb?.count ?? 0;
   if (cbCount < 2) { await new Promise(r => setTimeout(r, 8000)); const cb2 = await getJson(`${base}/debug/source/cineby?type=movie&id=tmdb:27205`, 60000); cbCount = Math.max(cbCount, cb2?.count ?? 0); }
   check('cineby Inception >= 2 (Task 40 rewrite guard)', cbCount >= 2, `count=${cbCount}`);
+  // atlantic guard (Task 48): atlantic.st RE — Orbit 2160p master validated
+  // live before shipping. Threshold 1: Orbit master is the steady deliverer
+  // (Aphrodite is curated and currently stub-degraded upstream).
+  const at = await getJson(`${base}/debug/source/atlantic?type=movie&id=tmdb:27205`, 60000);
+  let atCount = at?.count ?? 0;
+  if (atCount < 1) { await new Promise(r => setTimeout(r, 8000)); const at2 = await getJson(`${base}/debug/source/atlantic?type=movie&id=tmdb:27205`, 60000); atCount = Math.max(atCount, at2?.count ?? 0); }
+  check('atlantic Inception >= 1 (Task 48 RE guard)', atCount >= 1, `count=${atCount}`);
   // animotvslash standing check (Task 28): anime hardsub/softsub source.
   // One-shot guard with a retry — videas CDN intermittently hangs Range
   // probes from datacenter IPs; a single slow round must not fail the run.

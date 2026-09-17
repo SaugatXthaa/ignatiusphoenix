@@ -455,6 +455,11 @@ export class StreamResolver {
       // movies AND series ( Breaking Bad S1E1 verified), 3/3 cards probe
       // alive. 4K-capable + fast → wave-0 per the up-to-4K priority.
       'cinejoyaio',    // 3 @2.0s cold incl 2160p (Lisbon)
+      // Task 48: atlantic.st — Aphrodite (signed 4K) + Artemis (Orbit 2160p
+      // multi-audio / Nova muxed) + granite/natsuki subs, cards live-validated.
+      // Measured 2.5-3.2s cold (Inception/Dune2 2160p, Frieren S1E1 1080p).
+      // 4K-capable + fast → wave-0 4K group.
+      'atlantic',      // 1-4 @2.5-3.2s cold incl 2160p (Orbit/Aphrodite)
       'primeshows',    // 6 @4.0s
       'meinecloud',    // 4 @3.8s
       'raflix',        // 7 @2.1s production isolated
