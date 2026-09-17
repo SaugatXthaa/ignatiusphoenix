@@ -10,6 +10,9 @@ import { createSources } from './source/index.js';
 import { createExtractors, ExtractorRegistry } from './extractor/index.js';
 import { StreamResolver } from './utils/StreamResolver.js';
 import { ImdbId, TmdbId } from './utils/id.js';
+import { createRequire } from 'module';
+// Task 49: shared subtitle module — used by the /debug/subs diagnostic.
+const { fetchUnifiedSubs } = createRequire(import.meta.url)('./utils/siteSubtitles.cjs');
 import { reanimeSegmentKey } from './utils/site-secrets.cjs';
 import { startWarmup } from './utils/warmup.js';
 import { startPrewarm } from './utils/prewarm.js';
@@ -1127,6 +1130,8 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
+    version: 'task49-25223f8+subsdiag',
+    startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,
     HTTP_PROXY: !!process.env.HTTP_PROXY,
@@ -1134,6 +1139,41 @@ app.get('/debug/env', (req, res) => {
     FLARESOLVERR_ENDPOINT: !!process.env.FLARESOLVERR_ENDPOINT,
     NODE_ENV: process.env.NODE_ENV || 'development',
   });
+});
+
+// Task 49: universal-subtitle diagnostic — runs the SHARED subtitle module
+// exactly as the resolver does and returns what it produces for a title.
+// Isolates scraper failure (granite/natsuki unreachable from this instance)
+// from integration failure (resolver not attaching). Additive; diagnostic only.
+// Usage: /debug/subs?type=series&id=tmdb:1396:1:1
+app.get('/debug/subs', async (req, res) => {
+  try {
+    const rawId = req.query.id || 'tmdb:1396';
+    const type = req.query.type || 'series';
+    const m = rawId.match(/(\d+)(?::(\d+))?(?::(\d+))?/);
+    const tmdbId = m ? Number(m[1]) : 1396;
+    const season = m && m[2] ? Number(m[2]) : undefined;
+    const episode = m && m[3] ? Number(m[3]) : undefined;
+    const t0 = Date.now();
+    const subs = await Promise.race([
+      fetchUnifiedSubs({ tmdbId, type, season, episode, hostUrl: new URL(`https://${req.headers.host}`) }),
+      new Promise(r => setTimeout(() => r(null), 20000)),
+    ]);
+    const dt = Date.now() - t0;
+    res.json({
+      tmdbId, type, season, episode,
+      durationMs: dt,
+      timedOut: subs === null,
+      count: Array.isArray(subs) ? subs.length : 0,
+      byProvider: {
+        granite: Array.isArray(subs) ? subs.filter(s => String(s.id).startsWith('gr-')).length : 0,
+        natsuki: Array.isArray(subs) ? subs.filter(s => String(s.id).startsWith('nk-')).length : 0,
+      },
+      sample: Array.isArray(subs) ? subs.slice(0, 6).map(s => ({ lang: s.lang, url: String(s.url).slice(0, 90) })) : [],
+    });
+  } catch (e) {
+    res.json({ error: e?.message || String(e) });
+  }
 });
 
 // Runs a full /stream resolution and returns per-source timing data.
