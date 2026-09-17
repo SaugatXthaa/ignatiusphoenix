@@ -117,9 +117,21 @@ export class CineFreak extends Source {
 
     const results = [];
     const seenUrls = new Set();
+    // Task 46: 4K-first resolve order. Posts list up to 7+ quality variants
+    // (480p → 4K-2160p) but only the first 6 links were resolved — the 4K link
+    // sits at position #11-13 in DOM order (after every Watch-Online twin), so
+    // it NEVER got processed and cinefreak shipped max 1080p. Sort by height
+    // desc (file size desc as tiebreak: HQ 1080p 8.7GB before HD 1080p 3.4GB)
+    // before the slice so the highest qualities always claim the 6 resolve
+    // slots; lower qualities drop first when the post has 7+ variants.
     // Parallel resolve — sequential cost 2s/link (cold cinecloud generate
     // polls) pushed 6 links past the client budget; parallel wall = slowest.
-    const resolved = await Promise.all(dlLinks.slice(0, 6).map(async dl => {
+    const dlLinksSorted = [...dlLinks].sort((a, b) => {
+      const h = (b.height || 0) - (a.height || 0);
+      if (h !== 0) return h;
+      return (b.bytes || 0) - (a.bytes || 0);
+    });
+    const resolved = await Promise.all(dlLinksSorted.slice(0, 6).map(async dl => {
       try { return { dl, streamUrl: await this.resolveStreamUrl(dl.cinecloudId) }; }
       catch { return { dl, streamUrl: null }; }
     }));

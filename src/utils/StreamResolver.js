@@ -444,6 +444,12 @@ export class StreamResolver {
       'hdhub4uv2',     // 6 @4.1s production isolated (user-reported source)
       'acermovies',    // 3 @2.1s local fresh
       'hindmovie',     // 1 @4.4s
+      // Task 46: 4K-capable cold landers (both ship 2160p; movies + series)
+      // get wave-0 start priority per user requirement "prioritize up-to-4K
+      // sources" — measured fresh: bollyflix 6 @3.9s (2160p Direct),
+      // cinefreak 6 @3.3-4.6s (2160p after the 4K-first resolve fix)
+      'bollyflix',     // 6 @3.9s cold incl 2160p
+      'cinefreak',     // 6 @3.3-4.6s cold incl 2160p
       'primeshows',    // 6 @4.0s
       'meinecloud',    // 4 @3.8s
       'raflix',        // 7 @2.1s production isolated
@@ -458,11 +464,11 @@ export class StreamResolver {
       'movieshuntv2',  // 5 @10.1s
       'streamxtv',     // 4-5
       'moviesdrivev2', // 3-4 (8-hop chain)
-      'uhdmovies', 'bollyflix', 'stellar', 'vegamovies2',
+      'uhdmovies', 'stellar', 'vegamovies2',   // uhdmovies: 6.7s+ multi-hop (4K lands warm via cache)
       'hindmoviez', 'cinebyrocks', 'nowhdtime', 'zxcstream',
       'imdbplay', 'framextv', 'dahmermovies', 'dahmermovies4k',
       'vixsrc', 'kmmovies', 'vidzee', 'pantyflix', 'peckle',
-      'netlio', 'rivestream', 'cinefreak', 'cinehdplus',
+      'netlio', 'rivestream', 'cinehdplus',
     ]);
     const BACKGROUND_ONLY_SOURCE_IDS = new Set([
       // never land within the 15s budget (measured) or known-dead upstreams;
@@ -748,15 +754,25 @@ export class StreamResolver {
     }
     } // end if (allSettled && settled-early) — late-settled/partial responses skip the 9s subtitle lookup
 
-    // Sort: errors first, then by height desc, then bytes desc, then priority
+    // Sort (user requirement, Task 46): streams that support up-to-4K ALWAYS
+    // come first, then progressively lower qualities — for movies AND series
+    // (this comparator is type-agnostic). height desc (2160 → 1080 → 720 →
+    // 480 → unknown) → file size desc (HQ variants first within a tier) →
+    // source priority. Numeric coercion defends against any source that sets
+    // meta.height/meta.bytes as a string (NaN would silently break the tier
+    // ordering). Errors still sort to the front of the array (they are
+    // skipped by the build loop) and external-URL cards (zxcstream player
+    // page, sanctioned exception) stay at the very end.
+    const heightOf = (r) => Number(r.meta?.height) || 0;
+    const bytesOf = (r) => Number(r.meta?.bytes) || 0;
     urlResults.sort((a, b) => {
       if (a.error || b.error) return a.error ? -1 : 1;
       if (a.isExternal || b.isExternal) return a.isExternal ? 1 : -1;
-      const h = (b.meta?.height ?? 0) - (a.meta?.height ?? 0);
+      const h = heightOf(b) - heightOf(a);
       if (h !== 0) return h;
-      const bs = (b.meta?.bytes ?? 0) - (a.meta?.bytes ?? 0);
+      const bs = bytesOf(b) - bytesOf(a);
       if (bs !== 0) return bs;
-      return (b.meta?.priority ?? 0) - (a.meta?.priority ?? 0);
+      return (Number(b.meta?.priority) || 0) - (Number(a.meta?.priority) || 0);
     });
 
     // Build streams
