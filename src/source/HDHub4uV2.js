@@ -79,6 +79,10 @@ export class HDHub4uV2 extends Source {
       // full-cold ("stuck on loading, nothing plays"). The resolver's 35s
       // SOURCE_TIMEOUT + client budget bound delivery; the uncapped promise
       // completes in background and caches for the next open.
+      // Task 57: inject the addon Fetcher as the primary transport (merged-
+      // resolve DNS-stall fix — hdhub4uv2 timed out 39.4s in a merged run
+      // while isolated landed 6 @0.3s; same class as 4khdhub/atlantic).
+      if (typeof mod.setTransport === 'function') mod.setTransport(this.fetcher);
       streams = await withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 22000, tag: 'hdhub4uv2' });
     } catch (e) {
       console.error(`[hdhub4u-v2] error: ${e?.message || e}`);

@@ -1159,7 +1159,7 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
-    version: 'task57-hlslol-migration-4kfetcher-zxcproto',
+    version: 'task57-hdhub4u-fetcher-transport',
     startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,

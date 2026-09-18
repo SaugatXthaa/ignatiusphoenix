@@ -43,9 +43,45 @@ async function loadGotScraping() {
   return _gotScraping;
 }
 
+// Task 57 (2026-09-19): Fetcher transport injection. Production evidence
+// (/debug/stream Inception): hdhub4uv2 TIMEOUT at 39.4s in a merged resolve
+// while isolated /debug/source lands 6 cards @0.3s — the same Task 55
+// DNS-stall class that hit 4khdhub/atlantic: under 15-source contention,
+// got-scraping/undici DNS lookups stall past AbortSignal deadlines (the
+// instance's IPv6/AAAA path makes it worse). The addon Fetcher (https.request,
+// family:4 forced, node-level timeout) is immune. The wrapper calls
+// setTransport(this.fetcher) once per resolve; fetchText/getTMDBInfo/headOk
+// route through it FIRST, got-scraping and bare fetch stay as fallbacks.
+// ctx is not used by the Fetcher internals — a neutral object suffices.
+let _fetcher = null;
+function setTransport(fetcher) { _fetcher = fetcher || null; }
+const NEUTRAL_CTX = { config: {} };
+
+async function fetchViaFetcher(url, { method = 'GET', timeout = 15000, headers }) {
+  if (!_fetcher) return null;
+  try {
+    if (method === 'HEAD') {
+      const h = await _fetcher.head(NEUTRAL_CTX, new URL(url), { timeout, headers });
+      return { kind: 'head', ct: (h && (h['content-type'] || h['Content-Type'])) || '' };
+    }
+    const data = await _fetcher.text(NEUTRAL_CTX, new URL(url), { timeout, headers });
+    return { kind: 'text', text: data };
+  } catch (e) {
+    const status = e?.statusCode || e?.status || 0;
+    if (status >= 400) return { kind: 'error', status };
+    return null; // network-level → caller fallback path
+  }
+}
+
 async function fetchText(url, referer, timeout) {
   const headers = { 'User-Agent': UA, 'Accept': 'text/html,application/json,*/*' };
   if (referer) headers['Referer'] = referer;
+  // Task 57: Fetcher first (family:4 — merged-resolve DNS-stall fix)
+  const fRes = await fetchViaFetcher(url, { timeout: timeout || 15000, headers });
+  if (fRes) {
+    if (fRes.kind === 'text') return fRes.text;
+    if (fRes.kind === 'error') throw new Error('HTTP ' + fRes.status);
+  }
   const gs = await loadGotScraping();
   if (gs) {
     try {
@@ -73,6 +109,12 @@ async function fetchText(url, referer, timeout) {
 
 async function getTMDBInfo(tmdbId, type) {
   const url = 'https://api.themoviedb.org/3/' + (type === 'tv' ? 'tv' : 'movie') + '/' + tmdbId + '?api_key=' + TMDB_API_KEY;
+  // Task 57: Fetcher first (merged-resolve DNS-stall fix)
+  const fRes = await fetchViaFetcher(url, { timeout: 10000, headers: { 'User-Agent': UA } });
+  if (fRes && fRes.kind === 'text') {
+    const j = JSON.parse(fRes.text);
+    return { title: j.name || j.title || 'Unknown', year: (j.first_air_date || j.release_date || '').slice(0, 4), type, tmdbId: String(tmdbId) };
+  }
   const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error('TMDB HTTP ' + res.status);
   const j = await res.json();
@@ -307,6 +349,13 @@ async function resolveGreenmotorsCached(href) {
 // nothing). Same guard as movieshunt_v2: only emit when provably reachable.
 async function headOk(url) {
   try {
+    // Task 57: Fetcher HEAD first (DNS-stall fix, same class as fetchText)
+    const fRes = await fetchViaFetcher(url, { method: 'HEAD', timeout: 4000, headers: { 'User-Agent': UA } });
+    if (fRes && fRes.kind === 'head') {
+      const ct = String(fRes.ct || '').toLowerCase();
+      return !ct.startsWith('image/');
+    }
+    if (fRes && fRes.kind === 'error') return false;
     const res = await fetch(url, {
       method: 'HEAD',
       headers: { 'User-Agent': UA },
@@ -576,7 +625,7 @@ async function getStreams(tmdbId, type, season, episode) {
 }
 
 module.exports = {
-  getStreams, getTMDBInfo, searchSite, parsePostLinks,
+  setTransport, getStreams, getTMDBInfo, searchSite, parsePostLinks,
   parseQuality, parseSize, parseCodec, parseSourceType, parseAudio,
   resolveGreenmotors, resolveHubcloudDrive, resolveHubcdn, resolveHdstream4u, resolveGdflix,
 };
