@@ -429,7 +429,13 @@ export class StreamResolver {
       const n = parseInt(v, 10);
       return Number.isFinite(n) && n > 0 ? n : null;
     };
-    const sourceTimeoutMs = (sourceId) => {
+    // Task 53 production evidence: the 12s ceiling applied to SERIES cuts
+    // 4khdhub/hdhub4u episode chains — their season pages are ~900KB cheerio
+    // parses (2.3s local → 13-25s under Render contention), so on series the
+    // sources timed out at 12.6s with 0 shipped. The original repo's numbers
+    // are therefore applied to MOVIES only; series keep the historical 35s.
+    const sourceTimeoutMs = (sourceId, requestType) => {
+      if (requestType !== 'movie') return SOURCE_TIMEOUT_MS;
       const envKey = 'HTTP_STREAMING_TIMEOUT_MS_' + String(sourceId).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toUpperCase();
       return parseTimeoutOverride(process.env[envKey])
           ?? parseTimeoutOverride(process.env.HTTP_STREAMING_TIMEOUT_MS)
@@ -496,6 +502,15 @@ export class StreamResolver {
       'vidking',       // 4 @~2s
       'vidsrcsbs',     // 3 @~2s
       'vegamovies',    // 4 @~2s
+      // Task 53: user-reported missing sources — promoted from wave-2 to the
+      // FRONT of the medium group (right after the 0-3s embed/API sources so
+      // their slots free immediately). Isolated fresh: moviesdrivev2 4 @6.5s,
+      // uhdmovies 1 @6.7s, movieshuntv2 5 @10.1s — starting at ~2-4s lands
+      // them ~9-14s, INSIDE the 15s budget, for movies AND series (series
+      // slots are held 9-15s by slow chains, so late positions never started).
+      'moviesdrivev2', // 4 @6.5s fresh (8-hop chain) — original MoviesDrive 25s
+      'uhdmovies',     // 6.7s+ multi-hop — original UHDMOVIES 12s
+      'movieshuntv2',  // 5 @10.1s (abhilinks→hubcloud/gdflix chains)
       // proven cold landers in production 15s races (must not regress)
       '4khdhub',       // 6 @3.1s local fresh
       'fourkhdhubone', // 6
@@ -524,15 +539,6 @@ export class StreamResolver {
       'meinecloud',    // 4 @3.8s
       'raflix',        // 7 @2.1s production isolated
       'videasy',       // 6 (proven cold lander, slower fresh)
-      // Task 53: user-reported missing sources — promoted from wave-2.
-      // Isolated fresh measurements: moviesdrivev2 4 @6.5s, uhdmovies 1 @6.7s,
-      // movieshuntv2 5 @10.1s. Starting them AFTER the light/medium sources
-      // churned (slots free at ~3-5s) puts their settle time at ~10-15s —
-      // INSIDE the 15s client budget — instead of background-only + next
-      // refresh. Per-source timeouts (12s/25s, original repo) cap their slots.
-      'moviesdrivev2', // 4 @6.5s fresh (8-hop chain) — original MoviesDrive 25s
-      'uhdmovies',     // 6.7s+ multi-hop — original UHDMOVIES 12s
-      'movieshuntv2',  // 5 @10.1s (abhilinks→hubcloud/gdflix chains)
       // heavy multi-server aggregators — last in wave, warm via cache
       'necro',         // 5
       'watchseries',   // 11
@@ -601,7 +607,7 @@ export class StreamResolver {
       let status = 'ok';
       let resultCount = 0;
       try {
-        const sourceResults = await withTimeout(source.handle(ctx, type, id), sourceTimeoutMs(source.id), source.id);
+        const sourceResults = await withTimeout(source.handle(ctx, type, id), sourceTimeoutMs(source.id, type), source.id);
         resultCount = sourceResults.length;
         this.logger.info(`Source ${source.id} returned ${sourceResults.length} results`);
         const sourceUrlResults = await Promise.all(
