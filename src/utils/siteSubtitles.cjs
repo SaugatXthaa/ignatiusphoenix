@@ -180,8 +180,14 @@ async function fetchNatsukiSubs(tmdbId, imdbId, type, season, episode, hostUrl, 
         if (!code || seenLangs.has(code)) continue;
         seenLangs.add(code);
         const display = (s.language && String(s.language).trim()) || code;
+        // Task 57: the natsuki API still returns file URLs on the DEAD
+        // natsuki.maybeoneday.ch domain (connection refused site-wide) while
+        // the same files are served on the migrated host natsuki.hls.lol
+        // (verified live: /s/467444.srt → 200 on hls.lol, refused on
+        // maybeoneday). Rewrite the host so the proxy-wrapped tracks resolve.
+        const fileUrl = String(s.url).replace(/^https?:\/\/natsuki\.maybeoneday\.ch/i, 'https://natsuki.hls.lol');
         const proxy = new URL('/proxy', hostUrl);
-        proxy.searchParams.set('url', s.url);
+        proxy.searchParams.set('url', fileUrl);
         proxy.searchParams.set('referer', `${ATLANTIC_ORIGIN}/`);
         proxy.searchParams.set('origin', ATLANTIC_ORIGIN);
         out.push({
@@ -196,8 +202,13 @@ async function fetchNatsukiSubs(tmdbId, imdbId, type, season, episode, hostUrl, 
       // whole natsuki set rather than ship dead subtitle tracks; granite
       // (stable, direct VTT) still covers the common languages.
       if (out.length > 0) {
+        // Task 57: same host rewrite as the tracks above — validate the file
+        // on the LIVE host, not the dead returned domain.
         const sampleUrl = subs.find(s => s && typeof s.url === 'string' && s.url)?.url;
-        const ok = sampleUrl ? await probeSubFile(sampleUrl, fetcher, ctx) : false;
+        const sampleUrlFixed = sampleUrl
+          ? String(sampleUrl).replace(/^https?:\/\/natsuki\.maybeoneday\.ch/i, 'https://natsuki.hls.lol')
+          : '';
+        const ok = sampleUrlFixed ? await probeSubFile(sampleUrlFixed, fetcher, ctx) : false;
         if (!ok) return [];
       }
       return out;
