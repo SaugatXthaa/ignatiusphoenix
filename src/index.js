@@ -1218,7 +1218,7 @@ app.get('/debug/stream', async (req, res) => {
       // STREAM_CLIENT_BUDGET_MS with sources still resolving in background
       // (their results cache for the next request).
       partial: streamResolver._lastResolveWasPartial === true,
-      clientBudgetMs: parseInt(process.env.STREAM_CLIENT_BUDGET_MS, 10) || 15000,
+      clientBudgetMs: parseInt(process.env.STREAM_CLIENT_BUDGET_MS, 10) || 13000,
       // Per-source timing (slowest first)
       sources: sortedTimings.map(t => ({
         id: t.id,

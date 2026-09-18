@@ -668,7 +668,14 @@ export class StreamResolver {
     // for the same id returns a much fuller set well within the budget.
     // Set STREAM_CLIENT_BUDGET_MS=40000 (or higher) to restore the old
     // wait-for-everything semantics (used by task23_baseline.mjs count guards).
-    const CLIENT_BUDGET_MS = Math.max(5000, parseInt(process.env.STREAM_CLIENT_BUDGET_MS, 10) || 15000);
+    // Task 53: default 15000 → 13000. On the 0.1-CPU instance the budget
+    // timer overshoots under load (sync page parses block the event loop at
+    // exactly the wrong moment): measured responses were budget+2 to +8s.
+    // 13s keeps worst-case responses ≤~18s — inside Stremio's ~20s patience —
+    // while the promoted user-reported sources (moviesdrivev2 6.5s, uhdmovies
+    // 6.7s, movieshuntv2 10.1s isolated fresh) still land in-window; anything
+    // slower completes in background and caches for the next refresh.
+    const CLIENT_BUDGET_MS = Math.max(5000, parseInt(process.env.STREAM_CLIENT_BUDGET_MS, 10) || 13000);
 
     // Track how many sources have fully settled (scrape + extractor stage).
     let settledCount = 0;
