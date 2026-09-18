@@ -85,7 +85,7 @@ const MAX_CONCURRENT = 6;       // probe chains in flight (fire-and-forget CPU g
 //   NOTE: video-downloads.googleusercontent.com is deliberately NOT gated —
 //   its signed links are ONE-TIME/short-lived; a probe would consume the token
 //   and break real playback (Task 54: fresh link 200 video/mkv direct).
-const GATED_HOST_RE = /(^|\.)pixeldrain\.(com|dev)$|(^|\.)vimeos\.(zip|net)$|(^|\.)peakstorm\.top$|(^|\.)animeapps\.top$|(^|\.)vidbolt\.xyz$|(^|\.)nexabloom\.top$|(^|\.)nhdapi\.com$|(^|\.)urbansolardiyprojectshub\.site$|(^|\.)anicore\.tv$|(^|\.)lh3\.googleusercontent\.com$|(^|\.)salsa\d*jam\.com$/i;
+const GATED_HOST_RE = /(^|\.)pixeldrain\.(com|dev)$|(^|\.)vimeos\.(zip|net)$|(^|\.)peakstorm\.top$|(^|\.)animeapps\.top$|(^|\.)vidbolt\.xyz$|(^|\.)nexabloom\.top$|(^|\.)nhdapi\.com$|(^|\.)urbansolardiyprojectshub\.site$|(^|\.)anicore\.tv$|(^|\.)lh3\.googleusercontent\.com$/i;
 const VIDEO_EXT_RE = /\.(mkv|mp4|webm|avi|ts|m2ts|mov|flv|wmv|mpg|mpeg|m4v)(?:[?#]|$)/i;
 const ARCHIVE_EXT_RE = /\.(zip|rar|7z|tar|gz|001)(?:[?#]|$)/i;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';

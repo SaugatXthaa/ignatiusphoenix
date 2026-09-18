@@ -302,6 +302,22 @@ async function resolveGreenmotorsCached(href) {
 // Legacy resolvers (kept from the pre-greenmotors era — some posts/qualities
 // still carry direct hubcloud/hubcdn/gdflix anchors)
 // ---------------------------------------------------------------------------
+// Task 54: lh3.googleusercontent.com/pw/ links are Google-hotlink-blocked from
+// many IPs (403 image/png identity pixel — shipped as "streams" they play
+// nothing). Same guard as movieshunt_v2: only emit when provably reachable.
+async function headOk(url) {
+  try {
+    const res = await fetch(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': UA },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(4000),
+    });
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    return res.ok && !ct.startsWith('image/');
+  } catch { return false; }
+}
+
 async function resolveHubcloudDrive(driveUrl) {
   try {
     const html = await fetchText(driveUrl, 'https://hubcloud.cx/');
@@ -311,7 +327,10 @@ async function resolveHubcloudDrive(driveUrl) {
     const gdMatch = gxHtml.match(/https:\/\/lh3\.googleusercontent\.com\/[^\s"'<>]+/);
     if (gdMatch) {
       let url = gdMatch[0].split('#')[0].split('=m')[0];
-      return url + '=d';
+      const lh3Url = url + '=d';
+      // Task 54: only emit when provably a real file, else fall through to
+      // pixeldrain (the identity-pixel thumbnail class never plays).
+      if (await headOk(lh3Url)) return lh3Url;
     }
     const pdMatch = gxHtml.match(/https:\/\/pixeldrain\.[a-z]+\/u\/([A-Za-z0-9]+)/);
     if (pdMatch) return 'https://pixeldrain.com/api/file/' + pdMatch[1] + '?download';
@@ -338,7 +357,10 @@ async function resolveHubcdn(hubcdnUrl) {
         const gdMatch = decoded.match(/link=(https:\/\/video-downloads\.googleusercontent\.com\/[^&\s]+)/);
         if (gdMatch) return gdMatch[1];
         const lh3Match = decoded.match(/(https:\/\/lh3\.googleusercontent\.com\/[^\s&]+)/);
-        if (lh3Match) return lh3Match[1].split('=m')[0] + '=d';
+        if (lh3Match) {
+          const lh3Url = lh3Match[1].split('=m')[0] + '=d';
+          if (await headOk(lh3Url)) return lh3Url;
+        }
       } catch (e) {}
     }
     const atobMatch = html.match(/atob\(["']([A-Za-z0-9+/=]+)["']\)/);

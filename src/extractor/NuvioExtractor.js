@@ -221,6 +221,29 @@ export class NuvioExtractor extends Extractor {
       }];
     }
 
+    // Task 54 fix4 — DATACENTER-EGRESS-BLOCKED referer hosts. Verified LIVE on
+    // i-cdn-*.salsa436jam.com (cineby hdmovie family): the host serves plain
+    // fetch 200 #EXTM3U (with the vidking referer) to residential/sandbox IPs
+    // but 404s EVERYTHING from our Render datacenter egress — got-scraping AND
+    // plain undici alike, so no /proxy fetcher strategy can ever work (the
+    // fix3 fingerprint fallback cannot rescue an IP block). The playlist's
+    // embedded IP signature is NOT enforced (a Render-signed URL fetched 200
+    // from a different IP), so the PLAYER's residential IP + the vidking
+    // referer via Stremio behaviorHints.proxyHeaders is the viable path —
+    // same peraspera class as atlantic (nuvioDirectWithHeaders) / vixsrc.
+    const DATACENTER_DIRECT_RE = /(^|\.)salsa\d*jam\.com$/i;
+    if (DATACENTER_DIRECT_RE.test(url.hostname) && referer) {
+      const requestHeaders = { Referer: referer };
+      if (origin) requestHeaders['Origin'] = origin;
+      if (userAgent) requestHeaders['User-Agent'] = userAgent;
+      return [{
+        url,
+        format: videoFile ? Format.mp4 : Format.hls,
+        meta: { ...meta },
+        requestHeaders,
+      }];
+    }
+
     // Task 48: atlantic's peraspera.nbsycfzrpa4.workers.dev 429-blocks
     // DATACENTER IPs (Cloudflare) — server-side /proxy fetch fails for
     // everyone (502/429, both undici and got-scraping), but the PLAYER's
