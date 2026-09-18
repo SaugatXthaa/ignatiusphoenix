@@ -266,7 +266,15 @@ app.get('/proxy', async (req, res) => {
     // For Cloudflare-protected CDNs (Netlio: aurorionacademy.site,
     // professionalidentity.cyou, etc.), use HeaderGenerator to generate
     // browser-like headers that pass CF's JS challenge.
-    const isNetlioCdn = /aurorionacademy|professionalidentity|netrocdn|savannahridgedesignlab|creativewritingtips|harborlanecreativeworks|pinecliffdesigncollective/.test(targetUrl.hostname);
+    // Task 57: the CDN host ROTATES (mortgagerefinance.cfd observed live —
+    // Squid Game S1E1 challenge-page shipped to players = mpv error). Match
+    // the Netlio extractor's own identification instead of playing
+    // whack-a-mole with hostnames: known hosts OR the distinctive path
+    // markers (cf-master, /v4/, /hls3/ — verbatim from
+    // src/extractor/Netlio.js isNetlioCdnUrl). HeaderGenerator browser
+    // headers are harmless for non-CF hosts on the same paths.
+    const isNetlioCdn = /aurorionacademy|professionalidentity|netrocdn|savannahridgedesignlab|creativewritingtips|harborlanecreativeworks|pinecliffdesigncollective|mortgagerefinance/.test(targetUrl.hostname) ||
+                        /cf-master|\/v4\/|\/hls3\//.test(targetUrl.pathname.toLowerCase());
     if (isNetlioCdn) {
       const hg = new HeaderGenerator({ browsers: ['chrome'], devices: ['desktop'], operatingSystems: ['windows'], locales: ['en-US', 'en'] });
       const browserHeaders = hg.getHeaders({ httpVersion: '2' });
@@ -1159,7 +1167,7 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
-    version: 'task57-hdhub4u-fetcher-transport',
+    version: 'task57-pd-captcha-netlio-rotation',
     startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,

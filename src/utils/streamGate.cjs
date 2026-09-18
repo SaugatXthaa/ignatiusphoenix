@@ -180,7 +180,22 @@ async function probePixeldrain(url) {
     }
   }
   if (res.status === 404 || res.status === 410) return 'dead';
-  if (res.status === 403) return 'unknown'; // datacenter-gated → residential may pass
+  // Task 57: pixeldrain 403 has TWO distinct meanings. (a) The documented
+  // datacenter-gate (residential passes — 'unknown'); (b) the FILE-level
+  // bandwidth captcha: `{"value":"file_rate_limited_captcha_required"}` —
+  // pixeldrain rate-limits hotlink downloads once a free-tier file's rolling
+  // bandwidth runs out (verified live: GoT S01E01 6.4GB file, 77GB used in 3
+  // days → 403 captcha JSON from EVERY IP, player included). Case (b) is DEAD
+  // for users — mpv cannot solve a captcha. Read the 403 body and decide.
+  if (res.status === 403) {
+    try {
+      const bodyRes = await fetchWithTimeout(url, { headers: { 'user-agent': UA, 'range': 'bytes=0-2047' } });
+      const body = await bodyRes.text();
+      try { await bodyRes.body.cancel(); } catch (_) { /* already consumed or errored */ }
+      if (body.includes('file_rate_limited') || body.includes('captcha_required')) return 'dead';
+    } catch { /* body fetch failed — inconclusive */ }
+    return 'unknown'; // plain 403 without the captcha body → IP-gate class
+  }
   if (res.status < 200 || res.status >= 400) return 'unknown';
 
   const ct = (res.headers.get('content-type') || '').toLowerCase();
