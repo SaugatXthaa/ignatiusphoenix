@@ -44,12 +44,15 @@ async function fetchText(url, referer, timeout) {
   const gs = await loadGotScraping();
   if (gs) {
     try {
-      const res = await gs({ url, headers, timeout: { request: timeout || 10000 }, retry: { limit: 0 } });
+      // Task 53b: 10s/retry-0 → 15s/retry-1 — ALIGNED TO THE TRUE ORIGINAL
+      // REPO (SaugatXthaa/PhoeniX fetchText). The tightened values zeroed
+      // slow-but-alive fetches under Render contention.
+      const res = await gs({ url, headers, timeout: { request: timeout || 15000 }, retry: { limit: 1 } });
       if (res.statusCode >= 200 && res.statusCode < 400) return typeof res.body === 'string' ? res.body : res.body.toString();
     } catch (e) { /* fall through */ }
   }
   // Fallback: plain fetch
-  const res = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(timeout || 10000) });
+  const res = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(timeout || 15000) });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.text();
 }

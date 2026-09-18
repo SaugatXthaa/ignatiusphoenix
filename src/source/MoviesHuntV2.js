@@ -69,16 +69,17 @@ export class MoviesHuntV2 extends Source {
     const mediaType = tmdbId.season ? 'tv' : 'movie';
     let streams;
     try {
-      streams = await Promise.race([
-        // Task 39: bounded retry-on-empty — abhilinks/gdflix transient windows
-        // zeroed whole runs and the 60s negative cache then hid the recovery
-        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 36000, tag: 'movieshuntv2' }),
-        // 32s (vs 28s): under resolver contention the inflated chain completes
-        // ~25-30s — the race must let that completion reach the 5-min cache
-        // (Task 36 warm-up contract) instead of discarding it; SOURCE_TIMEOUT
-        // is 35s so the promise still resolves inside the source budget.
-        new Promise(r => setTimeout(() => r(null), 32000)),
-      ]);
+      // Task 53b: outer 32s race REMOVED. A fired race resolves null and the
+      // wrapper discards the eventual scraper result — isolated GoT S1E1 run
+      // measured the season-filtered 4-link chain at 32.5s (mega-pack page +
+      // hubcloud/gdflix resolves), so EVERY request lost the chain at the
+      // finish line and the per-source cache stayed empty (user-visible:
+      // "movies hunt not showing"). The resolver's 45s ceiling (Task 53b
+      // timeout alignment to the true original repo) now bounds the slot; the
+      // un-capped promise completes in background and caches via
+      // Source.handle — Task 49 / 48-fix6 pattern (4khdhub, uhdmovies;
+      // production-proven).
+      streams = await withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 36000, tag: 'movieshuntv2' });
     } catch (e) {
       console.error(`[movieshunt-v2] error: ${e?.message || e}`);
       return [];

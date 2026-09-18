@@ -405,41 +405,39 @@ export class StreamResolver {
     const sourceTimings = [];
 
     const SOURCE_TIMEOUT_MS = 35_000;
-    // Task 53: PER-SOURCE TIMEOUTS — ported from the original repo
-    // (sootio-stremio-addon lib/stream-provider/config/timeouts.js). The
-    // original gives HTTP providers per-provider minimums: 12s for the DDL
-    // blogs (4KHDHub / HDHub4u / CineDoze / UHDMovies / XDMovies) and 25s for
-    // MoviesDrive (default 4s there maps to nothing here — our ported scrapers
-    // have longer measured chains, so unlisted sources keep the historical
-    // 35s). Env overrides mirror the original contract:
+    // Task 53b: TIMEOUTS ALIGNED TO THE TRUE ORIGINAL REPO —
+    // github.com/SaugatXthaa/PhoeniX (user-confirmed original). The real
+    // original has NO per-provider table: every source races the same flat
+    // SOURCE_TIMEOUT_MS (35s), movies and series alike. The earlier Task 53
+    // per-provider caps (12s DDL blogs / 25s MoviesDrive) were ported from a
+    // sootio MIRROR, which is a different codebase — those tighter ceilings
+    // cut movie chains short under Render contention (12.6s zero with the
+    // scraper healthy) and are removed.
+    // "Little more timeout" allowance (user contract): the original's own
+    // comments document long chains — MoviesDrive 8-hop chains, UHDMovies
+    // "DriveSeed resolution can be slow" (40s internal race), 4khdhub
+    // ~900KB season pages, MoviesHunt season mega-packs. These measured-slow
+    // sources get 45s. Env overrides (kept from Task 53):
     //   HTTP_STREAMING_TIMEOUT_MS_<SOURCE_ID>  (per source, wins)
     //   HTTP_STREAMING_TIMEOUT_MS              (global)
-    // A tighter ceiling only frees the concurrency slot sooner — the aborted
-    // await keeps running in background (node never cancels promises) and its
-    // results still cache via Source.handle for the next request (Task 36).
-    const ORIGINAL_PROVIDER_TIMEOUTS = {
-      '4khdhub': 12_000,        // original: 4KHDHUB → max(base, 12000)
-      'fourkhdhubone': 12_000,  // 4KHDHub mirror domain
-      'hdhub4uv2': 12_000,      // original: HDHUB4U → max(base, 12000)
-      'uhdmovies': 12_000,      // original: UHDMOVIES → max(base, 12000)
-      'moviesdrivev2': 25_000,  // original: MOVIESDRIVE → max(base, 25000)
+    const EXTRA_TIMEOUT_MS = {
+      '4khdhub': 45_000,
+      'fourkhdhubone': 45_000,
+      'hdhub4uv2': 45_000,
+      'uhdmovies': 45_000,
+      'moviesdrivev2': 45_000,
+      'movieshuntv2': 45_000,
     };
     const parseTimeoutOverride = (v) => {
       if (v == null || v === '') return null;
       const n = parseInt(v, 10);
       return Number.isFinite(n) && n > 0 ? n : null;
     };
-    // Task 53 production evidence: the 12s ceiling applied to SERIES cuts
-    // 4khdhub/hdhub4u episode chains — their season pages are ~900KB cheerio
-    // parses (2.3s local → 13-25s under Render contention), so on series the
-    // sources timed out at 12.6s with 0 shipped. The original repo's numbers
-    // are therefore applied to MOVIES only; series keep the historical 35s.
-    const sourceTimeoutMs = (sourceId, requestType) => {
-      if (requestType !== 'movie') return SOURCE_TIMEOUT_MS;
+    const sourceTimeoutMs = (sourceId) => {
       const envKey = 'HTTP_STREAMING_TIMEOUT_MS_' + String(sourceId).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toUpperCase();
       return parseTimeoutOverride(process.env[envKey])
           ?? parseTimeoutOverride(process.env.HTTP_STREAMING_TIMEOUT_MS)
-          ?? ORIGINAL_PROVIDER_TIMEOUTS[sourceId]
+          ?? EXTRA_TIMEOUT_MS[sourceId]
           ?? SOURCE_TIMEOUT_MS;
     };
     // Limit concurrency to prevent CPU starvation on Render's free tier.

@@ -126,13 +126,24 @@ async function searchSite(title, year) {
     for (const list of settled) results.push(...list);
   }
 
-  // Score: title-word overlap + year match (slug signal)
+  // Score: title-word overlap + year match (slug signal).
+  // Task 53b: WORD-BOUNDARY matching, not substring — the substring match
+  // let "darkgame-2024" score 1 for "Game of Thrones" ("dark**game**") and
+  // ship DarkGame (2024) movie links labeled as GoT S1E1 (verified: hblinks
+  // archives/112256 title = "DarkGame (2024)"). Word-boundary regex keeps
+  // real-title slugs scoring while compound-word fakes score 0.
+  const wordRe = (w) => new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)');
   for (const r of results) {
     const slugLower = r.slug.toLowerCase();
-    let score = 0;
-    for (const w of titleWords) if (slugLower.includes(w)) score++;
+    let score = 0, hits = 0;
+    for (const w of titleWords) if (wordRe(w).test(slugLower)) { score++; hits++; }
     if (yearStr && slugLower.includes(yearStr)) score += 2;
     r.score = score;
+    // Task 53b: expose word-hit count + required minimum so getStreams can
+    // refuse candidates that don't contain the requested title's words
+    // (misattribution guard — see getStreams).
+    r.hits = hits;
+    r.minWords = Math.min(2, titleWords.length);
   }
   results.sort((a, b) => b.score - a.score);
   return results;
@@ -461,9 +472,21 @@ async function getStreams(tmdbId, type, season, episode) {
   // Movie requests: skip season/series posts (slug guard, mirrors vegamovies'
   // seriesLike logic — a "Season 1 all episodes" post is never the movie)
   const SERIES_LIKE = /(season-\d|s\d{1,2}e\d{1,3}|-all-episodes|full-series|complete-series)/i;
-  let posts = results;
-  if (!isTV) posts = results.filter(r => !SERIES_LIKE.test(r.slug));
-  if (posts.length === 0) posts = results; // defensive: never narrower than before
+  // Task 53b: minimum title match — the slug must contain at least
+  // min(2, wordCount) of the requested title's words (word-boundary). A movie
+  // post sharing ONE token (darkgame vs "game of thrones") used to sail
+  // through when the real post sat outside the sitemap scan window and ship
+  // WRONG-CONTENT links under the requested title.
+  const minWords = results[0] ? (results[0].minWords || 1) : 1;
+  let posts = results.filter(r => (r.hits || 0) >= minWords);
+  if (posts.length === 0) { console.log('[HDHub4u] no title-matched posts (min ' + minWords + ' words), refusing misattribution'); return []; }
+  if (!isTV) posts = posts.filter(r => !SERIES_LIKE.test(r.slug));
+  else {
+    // TV requests: prefer series posts; if none carry a series signal, keep
+    // title-matched candidates (never movie-only fallbacks like before)
+    const seriesPosts = posts.filter(r => SERIES_LIKE.test(r.slug));
+    if (seriesPosts.length > 0) posts = seriesPosts;
+  }
   posts = posts.slice(0, 3);
 
   const allStreams = [];
@@ -473,7 +496,12 @@ async function getStreams(tmdbId, type, season, episode) {
   // sequentially — 3 posts × (fetch + parse + serial resolve) blew the budget)
   await Promise.all(posts.map(async (post) => {
     try {
-      const html = await fetchText(post.url, ORIGIN + '/', 12000);
+      // Task 53b: post fetch 12s → 15s — ALIGNED TO THE TRUE ORIGINAL REPO
+      // (SaugatXthaa/PhoeniX calls fetchText(post.url, referer) with the 15s
+      // default + got retry:1). Production: the post page flapped >12s / 503
+      // and every movie run died at the fetch ("post failed ... aborted due
+      // to timeout") while the scraper itself was healthy.
+      const html = await fetchText(post.url, ORIGIN + '/', 15000);
       const { links, h1 } = parsePostLinks(html);
       if (links.length === 0) { console.log('[HDHub4u] 0 links on ' + post.slug); return; }
       console.log('[HDHub4u] ' + links.length + ' links on ' + post.slug);

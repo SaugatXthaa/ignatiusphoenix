@@ -72,13 +72,13 @@ async function getGotScraping() {
 // ─── HTTP helpers (got-scraping — bypasses Cloudflare) ─────────────────────
 async function fetchText(url, opts) {
   opts = opts || {};
-  // Task 33: per-fetch timeout tightened 15s → 8s. The full chain is 5-8
-  // sequential hops; on Render's 0.1-CPU instances every hop runs 2-4x
-  // slower than sandbox, and a single 15s-stalled hop used to eat half of
-  // the source time budget before the quality pool even started. Normal
-  // hops answer in 1-3s; 8s keeps ~2.5x headroom while capping the damage
-  // of one dead hop. Env-tunable for ops without a redeploy.
-  const timeout = opts.timeout || (parseInt(process.env.MDV2_FETCH_TIMEOUT_MS, 10) || 8000);
+  // Task 53b: per-fetch timeout 8s → 15s — ALIGNED TO THE TRUE ORIGINAL REPO
+  // (github.com/SaugatXthaa/PhoeniX, whose fetchText uses 15s). Task 33's 8s
+  // tightening zeroed slow-but-alive hops under Render contention (a 6-9s hop
+  // is common on the 0.1-CPU instance); the chain total stays bounded by the
+  // __deadline__ budget below + the resolver's 45s source ceiling, so a dead
+  // hop can no longer starve the pool. Env-tunable for ops without a redeploy.
+  const timeout = opts.timeout || (parseInt(process.env.MDV2_FETCH_TIMEOUT_MS, 10) || 15000);
   const gotScraping = await getGotScraping();
   if (!gotScraping) throw new Error('got-scraping unavailable');
   const headers = {
@@ -131,9 +131,11 @@ async function fetchRedirectChain(url, maxHops) {
           'Accept': 'text/html,*/*',
           'Referer': referer,
         },
-        // Task 33: 10s → 6s per hop — the pixel chain is up to 5 hops, so a
-        // fully-stalled chain must not exceed ~30s of the source budget.
-        timeout: { request: 6000 },
+        // Task 53b: 6s → 10s per hop — ALIGNED TO THE TRUE ORIGINAL REPO
+        // (SaugatXthaa/PhoeniX uses 10s for this same hop). 6s zeroed
+        // slow-but-alive hops under Render contention; the fully-stalled
+        // chain stays bounded by the __deadline__ budget.
+        timeout: { request: 10000 },
         throwHttpErrors: false,
         followRedirect: false,
         http2: true,
@@ -190,7 +192,8 @@ async function getTMDBInfo(tmdbId, type) {
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': UA },
-      signal: AbortSignal.timeout(8000),
+      // Task 53b: 8s → 10s — same value as the true original repo.
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const j = await res.json();
