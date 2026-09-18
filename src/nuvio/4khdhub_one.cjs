@@ -563,7 +563,14 @@ async function getStreams(tmdbId, type, season, episode) {
     return [];
   }
 
-  const resolved = await resolveBlocks(blocks, 6);
+  // Task 53: series resolves fewer blocks than movies. The post-episode chain
+  // (greenmotors decode + hubcloud extract per block) inflates 2-3s local →
+  // 35-95s on Render's 0.1-CPU under resolver contention — the background
+  // continuation then misses the next refresh entirely ("4khdhub not showing
+  // until I refresh 4-5 times"). 4 blocks (4K-first order preserved by
+  // resolveBlocks' qRank sort) cuts the fetch count ~1/3 so the chain
+  // completes in ~25-35s and caches (15min TTL) for refresh 2-3.
+  const resolved = await resolveBlocks(blocks, isMovie ? 6 : 4);
   console.log('[4KHDHubOne] Resolved ' + resolved.length + ' file URLs');
 
   const epSuffix = isMovie ? '' : ' S' + String(season || 1).padStart(2, '0') + 'E' + String(episode || 1).padStart(2, '0');
