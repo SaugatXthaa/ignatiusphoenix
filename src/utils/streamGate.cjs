@@ -78,7 +78,14 @@ const MAX_CONCURRENT = 6;       // probe chains in flight (fire-and-forget CPU g
 //   nexabloom.top       — CF 403-html anime CDN (itachi/anikoto/…)
 //   nhdapi.com          — HTML page shipped as stream URL (raflix)
 //   anicore.tv          — anikage relay; whole-host 502 outages (see WHY #6)
-const GATED_HOST_RE = /(^|\.)pixeldrain\.(com|dev)$|(^|\.)vimeos\.(zip|net)$|(^|\.)peakstorm\.top$|(^|\.)animeapps\.top$|(^|\.)vidbolt\.xyz$|(^|\.)nexabloom\.top$|(^|\.)nhdapi\.com$|(^|\.)urbansolardiyprojectshub\.site$|(^|\.)anicore\.tv$/i;
+//   lh3.googleusercontent.com — Task 54: HDHub4u/AcerMovies extraction
+//                       sometimes falls back to a Google Photos THUMBNAIL
+//                       (lh3.../pw/... → 200 image/png) shipped as a "stream";
+//                       probing + the image-body verdict (below) kills the card.
+//   NOTE: video-downloads.googleusercontent.com is deliberately NOT gated —
+//   its signed links are ONE-TIME/short-lived; a probe would consume the token
+//   and break real playback (Task 54: fresh link 200 video/mkv direct).
+const GATED_HOST_RE = /(^|\.)pixeldrain\.(com|dev)$|(^|\.)vimeos\.(zip|net)$|(^|\.)peakstorm\.top$|(^|\.)animeapps\.top$|(^|\.)vidbolt\.xyz$|(^|\.)nexabloom\.top$|(^|\.)nhdapi\.com$|(^|\.)urbansolardiyprojectshub\.site$|(^|\.)anicore\.tv$|(^|\.)lh3\.googleusercontent\.com$/i;
 const VIDEO_EXT_RE = /\.(mkv|mp4|webm|avi|ts|m2ts|mov|flv|wmv|mpg|mpeg|m4v)(?:[?#]|$)/i;
 const ARCHIVE_EXT_RE = /\.(zip|rar|7z|tar|gz|001)(?:[?#]|$)/i;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
@@ -245,6 +252,11 @@ async function fetchHlsLevel(url, headers = {}) {
     return { state: 'dead', status, ct };
   }
   if (isMediaBody(body)) return { state: 'media', status, ct };
+  // Task 54: a body that is genuinely an IMAGE (thumbnails shipped as streams —
+  // lh3.googleusercontent.com/pw/ Google Photos previews via HDHub4u) can never
+  // play. AFTER the isMediaBody check so the Task 42 verified lie class
+  // (206 image/jpeg ct over a real TS body) still verdicts 'media'.
+  if (ct.startsWith('image/')) return { state: 'dead', status, ct, note: 'image-body' };
   if (ct.includes('text/html')) return { state: 'dead', status, ct }; // html-ish body without literal <html head
   if (ct.includes('application/json')) return { state: 'dead', status, ct };
   if (ct.includes('mpegurl') || ct.includes('vnd.apple')) return { state: 'unknown', status, ct }; // ct says playlist, body unclear (truncated fetch)
