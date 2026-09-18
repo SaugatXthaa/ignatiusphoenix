@@ -408,29 +408,17 @@ export class StreamResolver {
     const sourceTimings = [];
 
     const SOURCE_TIMEOUT_MS = 35_000;
-    // Task 53b: TIMEOUTS ALIGNED TO THE TRUE ORIGINAL REPO —
-    // github.com/SaugatXthaa/PhoeniX (user-confirmed original). The real
-    // original has NO per-provider table: every source races the same flat
-    // SOURCE_TIMEOUT_MS (35s), movies and series alike. The earlier Task 53
-    // per-provider caps (12s DDL blogs / 25s MoviesDrive) were ported from a
-    // sootio MIRROR, which is a different codebase — those tighter ceilings
-    // cut movie chains short under Render contention (12.6s zero with the
-    // scraper healthy) and are removed.
-    // "Little more timeout" allowance (user contract): the original's own
-    // comments document long chains — MoviesDrive 8-hop chains, UHDMovies
-    // "DriveSeed resolution can be slow" (40s internal race), 4khdhub
-    // ~900KB season pages, MoviesHunt season mega-packs. These measured-slow
-    // sources get 45s. Env overrides (kept from Task 53):
+    // Task 56: EXACT timeout parity with the true original repo —
+    // github.com/SaugatXthaa/PhoeniX (user-confirmed). The original is flat:
+    // every source races the same SOURCE_TIMEOUT_MS (35s), movies and series
+    // alike, with NO per-provider table and NO per-source extensions. Our
+    // earlier Task 53b "little more timeout" 45s extras are REMOVED — under
+    // the restored 40s global cutoff (see CLIENT_BUDGET_MS below) any cap
+    // above 40s could never land in the first response anyway, and the user
+    // has explicitly re-demanded EXACT original values. Env overrides are
+    // kept (opt-in only, no behavior change while unset):
     //   HTTP_STREAMING_TIMEOUT_MS_<SOURCE_ID>  (per source, wins)
     //   HTTP_STREAMING_TIMEOUT_MS              (global)
-    const EXTRA_TIMEOUT_MS = {
-      '4khdhub': 45_000,
-      'fourkhdhubone': 45_000,
-      'hdhub4uv2': 45_000,
-      'uhdmovies': 45_000,
-      'moviesdrivev2': 45_000,
-      'movieshuntv2': 45_000,
-    };
     const parseTimeoutOverride = (v) => {
       if (v == null || v === '') return null;
       const n = parseInt(v, 10);
@@ -440,7 +428,6 @@ export class StreamResolver {
       const envKey = 'HTTP_STREAMING_TIMEOUT_MS_' + String(sourceId).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toUpperCase();
       return parseTimeoutOverride(process.env[envKey])
           ?? parseTimeoutOverride(process.env.HTTP_STREAMING_TIMEOUT_MS)
-          ?? EXTRA_TIMEOUT_MS[sourceId]
           ?? SOURCE_TIMEOUT_MS;
     };
     // Limit concurrency to prevent CPU starvation on Render's free tier.
@@ -453,14 +440,16 @@ export class StreamResolver {
     // limit of 15 (down from 20), sources wait less time in the queue, giving
     // them more actual execution time. Cinejoy needs ~6s of actual execution,
     // so a 15s limit gives it ~15s of slack for queue + execution.
-    // Task 37: 15 → 10. Production /debug/source isolation runs prove the
-    // "0-stream" sources (stellarrip, hindmoviez, moviesdrivev2, kmmovies)
-    // DO resolve on Render when given CPU — under 15-way concurrency on the
-    // 0.1-CPU instance their fetches inflate 2-3x and blow internal budgets.
-    // The response deadline is the 15s CLIENT_BUDGET, so concentrating CPU on
-    // fewer concurrent sources = more sources actually land within budget;
-    // the tail drains in background and caches for the next request.
-    const MAX_CONCURRENT_SOURCES = 10;
+    // Task 56: restored to 15 — the EXACT original value. The Task 37
+    // reduction to 10 was tuned FOR the old 13s client budget (concentrate
+    // CPU so more sources land in-window). With the original's 40s global
+    // cutoff restored, throughput-per-window matters more than per-source
+    // latency: 15 slots let all 70+ sources actually run INSIDE the request
+    // instead of draining into a background tail that multi-instance Render
+    // free-tier deployments never see again (memory caches are per-instance,
+    // so background-cached results were frequently lost on the next refresh —
+    // the real root cause of "source shows nothing until refresh 4-5").
+    const MAX_CONCURRENT_SOURCES = 15;
 
     // ─── THREE-WAVE SCHEDULING (Task 43 — data-driven, production-measured)
     //
@@ -696,16 +685,23 @@ export class StreamResolver {
     // are still running keep going in the BACKGROUND and their results land
     // in the per-source caches (Source.handle, 5min TTL), so the NEXT request
     // for the same id returns a much fuller set well within the budget.
-    // Set STREAM_CLIENT_BUDGET_MS=40000 (or higher) to restore the old
-    // wait-for-everything semantics (used by task23_baseline.mjs count guards).
-    // Task 53: default 15000 → 13000. On the 0.1-CPU instance the budget
-    // timer overshoots under load (sync page parses block the event loop at
-    // exactly the wrong moment): measured responses were budget+2 to +8s.
-    // 13s keeps worst-case responses ≤~18s — inside Stremio's ~20s patience —
-    // while the promoted user-reported sources (moviesdrivev2 6.5s, uhdmovies
-    // 6.7s, movieshuntv2 10.1s isolated fresh) still land in-window; anything
-    // slower completes in background and caches for the next refresh.
-    const CLIENT_BUDGET_MS = Math.max(5000, parseInt(process.env.STREAM_CLIENT_BUDGET_MS, 10) || 13000);
+    // Task 56: CLIENT BUDGET = the ORIGINAL repo's GLOBAL_TIMEOUT_MS (40s),
+    // verbatim. The user has repeatedly demanded exact global-timeout parity
+    // with github.com/SaugatXthaa/PhoeniX, whose resolve ends with:
+    //   await Promise.race([Promise.all(sources), timeout(GLOBAL_TIMEOUT_MS=40s)])
+    // — i.e. the HTTP response WAITS for every source (each capped at 35s)
+    // and only cuts at 40s. Our 13s partial+background-continuation contract
+    // assumed the background tail would cache results for the next refresh,
+    // but on Render free tier the service routinely runs MORE THAN ONE
+    // instance with per-instance memory caches — the next refresh hits a
+    // DIFFERENT instance, the cached tail is invisible, and slow sources
+    // (hdhub4u 35s+, 4khdhub under contention) appeared as "stuck on loading
+    // / zero streams" no matter how many times the user refreshed. Waiting
+    // for sources inside the request (like the original) is the only
+    // multi-instance-correct architecture. The background tail is KEPT (it
+    // is strictly better than the original's hard cut for sources exceeding
+    // 40s) and the Task 54 playback-priority gate stays armed for it.
+    const CLIENT_BUDGET_MS = Math.max(5000, parseInt(process.env.STREAM_CLIENT_BUDGET_MS, 10) || 40000);
 
     // Track how many sources have fully settled (scrape + extractor stage).
     let settledCount = 0;
