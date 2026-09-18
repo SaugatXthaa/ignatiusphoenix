@@ -71,9 +71,11 @@ const HEADERS = {
 };
 
 // Task 55: per-fetch cap. Warm measurements: resolve ~0.5-1.1s, master ~0.3-0.6s,
-// child validation ~0.4-0.9s. 6.5s absorbs heavy congestion while keeping the
-// serial chain (resolve → master → validate) inside the shared deadline.
+// child validation ~0.4-0.9s. Caps keep the serial chain (resolve → master →
+// validate) inside the shared 10.5s deadline even when both attempts fire:
+// artemis resolve 2×4.5s + 0.4s backoff = 9.4s worst < 10.5s deadline.
 const MASTER_TIMEOUT_MS = 6500;
+const RESOLVE_TIMEOUT_MS = 4500;
 
 // Task 48 production evidence: Cloudflare 429-blocks RENDER's datacenter IP
 // on peraspera.nbsycfzrpa4.workers.dev (both plain undici AND got-scraping
@@ -112,6 +114,7 @@ async function ftext(url, { headers = {}, timeoutMs = MASTER_TIMEOUT_MS, fetcher
         return { ok: r.status >= 200 && r.status < 300, status: r.status, data: String(r.data || '') };
       } catch (e) {
         const status = e?.statusCode || 0;
+        console.log(`[Atlantic] fetcher fail${tag ? ` (${tag})` : ''} attempt ${i + 1}/${attempts}: ${e?.constructor?.name || ''} ${e?.message || e} (${url.slice(0, 70)})`);
         // Real HTTP answers are not retried (404 = not-found, 403 = gated,
         // 429 = datacenter gate — the ipGated advisory logic handles them).
         if (status >= 400) return { ok: false, status, data: '' };
@@ -241,7 +244,7 @@ async function resolveArtemis(tmdbId, type, season, episode, fetcher, ctx) {
     q.set('season', String(season || 1));
     q.set('episode', String(episode || 1));
   }
-  const r = await ftext(`${ARTEMIS}?${q.toString()}`, { headers: HEADERS, fetcher, ctx, attempts: 2, tag: 'artemis' });
+  const r = await ftext(`${ARTEMIS}?${q.toString()}`, { headers: HEADERS, timeoutMs: RESOLVE_TIMEOUT_MS, fetcher, ctx, attempts: 2, tag: 'artemis' });
   if (!r.ok) return null;
   let j;
   try { j = JSON.parse(r.data); } catch { return null; }
