@@ -165,6 +165,17 @@ function parseAudioToken(postTitle) {
 function parseDownloadLinks(html) {
   const links = [];
 
+  // Task 53: season hint from the text around a link ("Season 2", "S02",
+  // "S2 1080p"). Season-pack pages (e.g. "Season 1-8 Complete") list EVERY
+  // season's archives; without this hint the resolver burned its whole
+  // deadline resolving other seasons' 8-hop chains only for the episode
+  // filter to discard them afterwards (measured: Game of Thrones S1E1 →
+  // 0 streams forever on production). null = no explicit season in context.
+  const seasonHintOf = (context) => {
+    const m = context.match(/\bseason[ .:_\-]?(\d{1,2})\b/i) || context.match(/\bs(\d{1,2})\b(?=[ .:_)\-]|$)/i);
+    return m ? m[1] : null;
+  };
+
   // Post H1/title — site's own audio/source text for the whole post
   const h1Match = html.match(/<h1[^>]*>([\s\S]{0,300}?)<\/h1>/i);
   const postTitle = h1Match ? h1Match[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
@@ -177,7 +188,7 @@ function parseDownloadLinks(html) {
     const qMatch = context.match(/(2160p|1080p|720p|480p|4K)/i);
     const quality = qMatch ? qMatch[0].toLowerCase() : '?';
     const size = parseSizeToken(context);
-    links.push({ quality, url: m[1], archiveId: m[2], type: 'abhilinks', size });
+    links.push({ quality, url: m[1], archiveId: m[2], type: 'abhilinks', size, seasonHint: seasonHintOf(context) });
   }
 
   // Find direct hubcloud links (both /drive/ and /video/ paths)
@@ -188,7 +199,7 @@ function parseDownloadLinks(html) {
     const qMatch = context.match(/(2160p|1080p|720p|480p|4K)/i);
     const quality = qMatch ? qMatch[0].toLowerCase() : '?';
     const size = parseSizeToken(context);
-    links.push({ quality, url: m[1], fileId: m[2], type: 'hubcloud', size });
+    links.push({ quality, url: m[1], fileId: m[2], type: 'hubcloud', size, seasonHint: seasonHintOf(context) });
   }
 
   // Find gdflix links
@@ -199,7 +210,7 @@ function parseDownloadLinks(html) {
     const qMatch = context.match(/(2160p|1080p|720p|480p|4K)/i);
     const quality = qMatch ? qMatch[0].toLowerCase() : '?';
     const size = parseSizeToken(context);
-    links.push({ quality, url: m[1], fileId: m[2], type: 'gdflix', size });
+    links.push({ quality, url: m[1], fileId: m[2], type: 'gdflix', size, seasonHint: seasonHintOf(context) });
   }
 
   // Dedupe by URL
@@ -506,6 +517,25 @@ async function getStreams(tmdbId, type, season, episode) {
   // so the background continuation cached 0 instead of its results. 30s lets
   // the late-but-real completion reach the 5-min cache (next request gets it
   // at ~0ms per the Task 36 warm-up contract); the client budget is untouched.
+  // Task 53: TV — order links by season relevance BEFORE the 14-link slice.
+  // Requested-season links first, unknown-season next, different-season last
+  // (and sliced away). For "Season 1-8 Complete" pages this cuts resolution
+  // work from 14 mostly-irrelevant chains to the few that carry S1 files.
+  if (type === 'tv' && season != null) {
+    const want = parseInt(season, 10);
+    const rankOf = (l) => {
+      if (l.seasonHint == null) return 1;
+      return parseInt(l.seasonHint, 10) === want ? 0 : 2;
+    };
+    links.sort((a, b) => rankOf(a) - rankOf(b));
+    if (links.some(l => rankOf(l) === 0)) {
+      // keep only requested-season + unknown-hint links (hint page knows best)
+      const keep = links.filter(l => rankOf(l) <= 1);
+      console.log('[MoviesHunt] Season filter: ' + keep.length + '/' + links.length + ' links for season ' + want);
+      links.length = 0;
+      links.push(...keep);
+    }
+  }
   const linksToProcess = links.slice(0, 14);
   const resolveOneLink = async (link) => {
     const push = (s) => { if (s) allStreams.push(s); };

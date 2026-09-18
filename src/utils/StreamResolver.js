@@ -405,6 +405,37 @@ export class StreamResolver {
     const sourceTimings = [];
 
     const SOURCE_TIMEOUT_MS = 35_000;
+    // Task 53: PER-SOURCE TIMEOUTS — ported from the original repo
+    // (sootio-stremio-addon lib/stream-provider/config/timeouts.js). The
+    // original gives HTTP providers per-provider minimums: 12s for the DDL
+    // blogs (4KHDHub / HDHub4u / CineDoze / UHDMovies / XDMovies) and 25s for
+    // MoviesDrive (default 4s there maps to nothing here — our ported scrapers
+    // have longer measured chains, so unlisted sources keep the historical
+    // 35s). Env overrides mirror the original contract:
+    //   HTTP_STREAMING_TIMEOUT_MS_<SOURCE_ID>  (per source, wins)
+    //   HTTP_STREAMING_TIMEOUT_MS              (global)
+    // A tighter ceiling only frees the concurrency slot sooner — the aborted
+    // await keeps running in background (node never cancels promises) and its
+    // results still cache via Source.handle for the next request (Task 36).
+    const ORIGINAL_PROVIDER_TIMEOUTS = {
+      '4khdhub': 12_000,        // original: 4KHDHUB → max(base, 12000)
+      'fourkhdhubone': 12_000,  // 4KHDHub mirror domain
+      'hdhub4uv2': 12_000,      // original: HDHUB4U → max(base, 12000)
+      'uhdmovies': 12_000,      // original: UHDMOVIES → max(base, 12000)
+      'moviesdrivev2': 25_000,  // original: MOVIESDRIVE → max(base, 25000)
+    };
+    const parseTimeoutOverride = (v) => {
+      if (v == null || v === '') return null;
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const sourceTimeoutMs = (sourceId) => {
+      const envKey = 'HTTP_STREAMING_TIMEOUT_MS_' + String(sourceId).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toUpperCase();
+      return parseTimeoutOverride(process.env[envKey])
+          ?? parseTimeoutOverride(process.env.HTTP_STREAMING_TIMEOUT_MS)
+          ?? ORIGINAL_PROVIDER_TIMEOUTS[sourceId]
+          ?? SOURCE_TIMEOUT_MS;
+    };
     // Limit concurrency to prevent CPU starvation on Render's free tier.
     // Without this, all 85+ sources fire simultaneously, causing CPU-intensive
     // sources (Cinejoy's lumen-gate-v1 crypto, ZinkMovies, etc.) to take 30s+
@@ -493,6 +524,15 @@ export class StreamResolver {
       'meinecloud',    // 4 @3.8s
       'raflix',        // 7 @2.1s production isolated
       'videasy',       // 6 (proven cold lander, slower fresh)
+      // Task 53: user-reported missing sources — promoted from wave-2.
+      // Isolated fresh measurements: moviesdrivev2 4 @6.5s, uhdmovies 1 @6.7s,
+      // movieshuntv2 5 @10.1s. Starting them AFTER the light/medium sources
+      // churned (slots free at ~3-5s) puts their settle time at ~10-15s —
+      // INSIDE the 15s client budget — instead of background-only + next
+      // refresh. Per-source timeouts (12s/25s, original repo) cap their slots.
+      'moviesdrivev2', // 4 @6.5s fresh (8-hop chain) — original MoviesDrive 25s
+      'uhdmovies',     // 6.7s+ multi-hop — original UHDMOVIES 12s
+      'movieshuntv2',  // 5 @10.1s (abhilinks→hubcloud/gdflix chains)
       // heavy multi-server aggregators — last in wave, warm via cache
       'necro',         // 5
       'watchseries',   // 11
@@ -500,10 +540,10 @@ export class StreamResolver {
     ];
     const WAVE2_SOURCE_IDS = new Set([
       // measured 8-16s solo — partial cold landing, rest cached in background
-      'movieshuntv2',  // 5 @10.1s
+      // (Task 53: movieshuntv2/moviesdrivev2/uhdmovies PROMOTED to wave-0 —
+      // user-reported missing; see WAVE1_SOURCE_ORDER)
       'streamxtv',     // 4-5
-      'moviesdrivev2', // 3-4 (8-hop chain)
-      'uhdmovies', 'stellar', 'vegamovies2',   // uhdmovies: 6.7s+ multi-hop (4K lands warm via cache)
+      'stellar', 'vegamovies2',   // uhdmovies: promoted (6.7s+ multi-hop, 4K group)
       'hindmoviez', 'cinebyrocks', 'nowhdtime', 'zxcstream',
       'imdbplay', 'framextv',
       'vixsrc', 'kmmovies', 'vidzee', 'pantyflix', 'peckle',
@@ -561,7 +601,7 @@ export class StreamResolver {
       let status = 'ok';
       let resultCount = 0;
       try {
-        const sourceResults = await withTimeout(source.handle(ctx, type, id), SOURCE_TIMEOUT_MS, source.id);
+        const sourceResults = await withTimeout(source.handle(ctx, type, id), sourceTimeoutMs(source.id), source.id);
         resultCount = sourceResults.length;
         this.logger.info(`Source ${source.id} returned ${sourceResults.length} results`);
         const sourceUrlResults = await Promise.all(
@@ -698,6 +738,13 @@ export class StreamResolver {
     // 29s response, beyond client patience). Warm resolves that settle
     // comfortably early still get the full subtitle injection.
     if (allSettled && (Date.now() - resolveT0) < CLIENT_BUDGET_MS - 2000) {
+    // Task 53: the 9s OpenSubtitles races below used to run UNBOUNDED inside
+    // this block. Production evidence (Sep 2026): warm all-settled responses
+    // measured 19-22s — past Stremio's ~20s client patience — so the user saw
+    // "no streams" on refresh after refresh even though the sources had
+    // delivered. Subtitles are best-effort; the client budget is a promise.
+    // Bound the whole phase to the remaining budget (floor 500ms).
+    const SUBS_PHASE_DEADLINE_MS = Math.max(500, CLIENT_BUDGET_MS - 1500 - (Date.now() - resolveT0));
     try {
       // Identify streams that need OpenSubtitles fallback
       const streamsNeedingSubs = urlResults.filter(r =>
@@ -770,7 +817,17 @@ export class StreamResolver {
           );
         }
 
-        const results = await Promise.all(fetchTasks);
+        // Task 53: race the whole lookup batch against the remaining client
+        // budget — on deadline, ship WITHOUT subs instead of overshooting the
+        // response past Stremio's patience. Deadline → empty batch; the attach
+        // loop below no-ops on it (every entry filtered by subs.length === 0).
+        const results = await Promise.race([
+          Promise.all(fetchTasks),
+          new Promise(resolve => setTimeout(() => resolve([]), SUBS_PHASE_DEADLINE_MS)),
+        ]);
+        if (!Array.isArray(results) || results.length === 0) {
+          this.logger.info(`StreamResolver: subtitle phase hit its ${SUBS_PHASE_DEADLINE_MS}ms deadline (or no subs) — shipping to protect the client budget`);
+        }
 
         // Attach subtitles to each group
         let totalAttached = 0;
@@ -825,10 +882,15 @@ export class StreamResolver {
     //   - partial path (budget expired) → 0 wait — ship whatever is ready so
     //     the client-budget contract (Task 36) stays intact.
     if (!subsState.settled && allSettled) {
-      await Promise.race([
-        unifiedSubsP.catch(() => []),
-        new Promise(resolve => setTimeout(resolve, 3000)),
-      ]);
+      // Task 53: the flat 3s wait could push the response past the client
+      // budget (3s + card build after a late settle). Bound it by remaining.
+      const unifiedWaitMs = Math.max(0, Math.min(3000, CLIENT_BUDGET_MS - 1200 - (Date.now() - resolveT0)));
+      if (unifiedWaitMs > 0) {
+        await Promise.race([
+          unifiedSubsP.catch(() => []),
+          new Promise(resolve => setTimeout(resolve, unifiedWaitMs)),
+        ]);
+      }
     }
     const universalSubs = subsState.value;
 
