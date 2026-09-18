@@ -1,4 +1,4 @@
-// src/nuvio/atlantic.cjs — Atlantic (atlantic.st) provider (Task 48 clean rewrite)
+// src/nuvio/atlantic.cjs — Atlantic (atlantic.st) provider (Task 48 rewrite; Task 55 budget fix)
 //
 // Reverse engineering trail (verified live 2026-09-17):
 //   https://atlantic.st/            → React SPA (Vite build), TMDB-driven catalog.
@@ -35,20 +35,20 @@
 //   through /proxy with referer= + origin= (+ forceHls=1, URLs are ambiguous)
 //   and the proxy propagates both onto the whole rewritten m3u8 tree.
 //
-//   Subtitles (the site's 3-provider stack; all fetched per play):
-//     granite  — GET https://sub.vdrk.site/v1/movie/<tmdb> | /v1/tv/<tmdb>/<s>/<e>
-//                → [{label:"Arabic Hi5"|..., file:"https://cache.vdrk.site/...vtt"}]
-//                VTT, header-free (UA-only verified 200). "Hi"/"HiN" label
-//                suffix = hearing-impaired (site convention).
-//     natsuki  — GET https://natsuki.maybeoneday.ch/subs?tmdbId=&[season&episode]
-//                     (also imdbId= variant; tmdbId path preferred, verified)
-//                → {subtitles:[{sid,language,langCode,url,fileName,hearingImpaired}]}
-//                SRT files — Origin/Referer GATED (403 UA-only) → sub URLs are
-//                wrapped through the addon's own /proxy (referer+origin params)
-//                so players can actually fetch them.
-//     opensubs — VLSub rest.opensubtitles.org path exists in the bundle but the
-//                addon already has OpenSubtitles fallback injection for streams
-//                without meta.subtitles — skipped here to avoid double work.
+//   SUBTITLES (Task 55 change): REMOVED from this scraper. The addon's unified
+//   subtitle stack (src/utils/siteSubtitles.cjs — the SAME granite+natsuki
+//   providers, Fetcher-backed) runs once per title in StreamResolver and is
+//   merged into EVERY source's cards. Keeping a second inline copy here only
+//   duplicated upstream load inside Atlantic's critical path — production
+//   evidence (Task 55): the inline natsuki stage burned 2×5s in bare-fetch DNS
+//   stalls while the unified module (via Fetcher) delivered 48 tracks, pushing
+//   Atlantic past the 13s client budget → ZERO Atlantic cards in responses.
+//
+// Task 55 deadline architecture: every stage is raced against a shared
+// deadline (default 10.5s, under the 13s client budget) so getStreams ALWAYS
+// RETURNS instead of being cut off by the client budget with nothing. The
+// wrapper's empty-retry is elapsed-capped so a slow first attempt cannot
+// double the wall time past the budget.
 //
 // Metadata honesty: quality labels come from parsed master RESOLUTION lines,
 // server names (Artemis/Orbit/Nova/Aphrodite) from the site's own bundle,
@@ -62,8 +62,6 @@ const crypto = require('crypto');
 const ATLANTIC_ORIGIN = 'https://atlantic.st';
 const CDN = 'https://cdn.maybeoneday.ch';
 const ARTEMIS = 'https://stellar.maybeoneday.ch/resolve';
-const GRANITE_API = 'https://sub.vdrk.site/v1';
-const NATSUKI_API = 'https://natsuki.maybeoneday.ch/subs';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 const HEADERS = {
@@ -72,13 +70,10 @@ const HEADERS = {
   'Referer': `${ATLANTIC_ORIGIN}/`,
 };
 
-// Task 49: 9s → 12s. Live evidence: stellar answered 200 in 10.5s during a
-// slow-but-alive window — the old 9s cap aborted a REAL answer and zeroed the
-// whole card set (the Task 49 baseline's atlantic guard failed on exactly
-// this). Worst case 2×12s + 400ms backoff runs in parallel stages, still
-// inside the resolver's 35s SOURCE_TIMEOUT (wrapper race removed in fix6).
-const MASTER_TIMEOUT_MS = 12000;
-const SUBS_TIMEOUT_MS = 6000;
+// Task 55: per-fetch cap. Warm measurements: resolve ~0.5-1.1s, master ~0.3-0.6s,
+// child validation ~0.4-0.9s. 6.5s absorbs heavy congestion while keeping the
+// serial chain (resolve → master → validate) inside the shared deadline.
+const MASTER_TIMEOUT_MS = 6500;
 
 // Task 48 production evidence: Cloudflare 429-blocks RENDER's datacenter IP
 // on peraspera.nbsycfzrpa4.workers.dev (both plain undici AND got-scraping
@@ -95,56 +90,43 @@ function isDatacenterGated(url) {
 }
 
 // Production evidence (Render 0.1 CPU, Task 48 deploy day): under resolve
-// storms (prewarm loop + 20 concurrent sources) all four upstream stages can
-// fail SIMULTANEOUSLY (~3.3s) — the DNS-resolver/socket hiccup class, since
-// the same hosts answer 200 via /debug/rawfetch and /proxy from the same
-// instance seconds later. A single fast retry per call absorbs it without
-// endangering the 20s wrapper race (worst case 2×9s + 400ms backoff, still
-// under budget because stages run in parallel).
-async function fetchRetry(url, opts = {}, attempts = 2, tag = '') {
-  let lastErr;
+// storms all upstream stages can fail SIMULTANEOUSLY (~3.3s) — the
+// DNS-resolver/socket hiccup class, since the same hosts answer 200 via
+// /debug/rawfetch and /proxy from the same instance seconds later. A single
+// fast retry per call absorbs it. HTTP-status answers (404/403/429/5xx) are
+// REAL answers — returned as-is, never retried.
+//
+// Task 55: when the caller provides the addon Fetcher (preloaded.fetcher +
+// preloaded.ctx), all GETs route through it — family:4 forced, node-level
+// timeout, got-scraping CF fallback. Bare undici fetch hangs on Render during
+// resolve storms past AbortSignal deadlines (the documented DNS-stall class —
+// Task 55 measured it killing the natsuki stage at 2×5s while the Fetcher path
+// returned 48 items in <1s). Bare fetch remains the fallback (local tooling).
+async function ftext(url, { headers = {}, timeoutMs = MASTER_TIMEOUT_MS, fetcher, ctx, attempts = 2, tag = '' } = {}) {
+  // → { ok, status, data } — never throws
   for (let i = 0; i < attempts; i++) {
     if (i > 0) await new Promise(r => setTimeout(r, 400));
+    if (fetcher && ctx) {
+      try {
+        const r = await fetcher.fetchWithTimeout(ctx, new URL(url), { timeout: timeoutMs, headers });
+        return { ok: r.status >= 200 && r.status < 300, status: r.status, data: String(r.data || '') };
+      } catch (e) {
+        const status = e?.statusCode || 0;
+        // Real HTTP answers are not retried (404 = not-found, 403 = gated,
+        // 429 = datacenter gate — the ipGated advisory logic handles them).
+        if (status >= 400) return { ok: false, status, data: '' };
+        continue; // network-level error → one fast retry
+      }
+    }
     try {
-      const res = await fetch(url, opts);
-      // 404/403/429/5xx are REAL answers (not-found / gated / rate-limited) —
-      // return them; the caller decides. Only network-level errors retry.
-      return res;
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+      const data = await res.text();
+      return { ok: res.ok, status: res.status, data };
     } catch (e) {
-      lastErr = e;
       console.log(`[Atlantic] fetch fail${tag ? ` (${tag})` : ''} attempt ${i + 1}/${attempts}: ${e?.message || e} (${url.slice(0, 70)})`);
     }
   }
-  throw lastErr;
-}
-
-// Subtitle caps — Stremio renders one selector per stream; the site exposes
-// 90-230 files per title (per-release duplicates). Keep every granite language
-// once (VTT, direct), then fill remaining slots with natsuki languages the
-// granite set lacks (one file per language).
-const MAX_SUBS = 48;
-const MAX_GRANITE_SUBS = 32;
-
-// ─── Language table — verbatim from the site bundle (name → ISO code) ───
-const LANG_MAP = {
-  english: 'en', french: 'fr', spanish: 'es', 'spanish (latin america)': 'es',
-  german: 'de', italian: 'it', portuguese: 'pt', 'portuguese (brazil)': 'pt-br',
-  brazilian: 'pt-br', dutch: 'nl', russian: 'ru', japanese: 'ja', korean: 'ko',
-  'chinese (simplified)': 'zh-cn', 'chinese (traditional)': 'zh-tw', chinese: 'zh',
-  arabic: 'ar', hindi: 'hi', turkish: 'tr', polish: 'pl', swedish: 'sv',
-  norwegian: 'no', danish: 'da', finnish: 'fi', greek: 'el', hebrew: 'he',
-  thai: 'th', vietnamese: 'vi', indonesian: 'id', czech: 'cs', hungarian: 'hu',
-  romanian: 'ro', ukrainian: 'uk', bulgarian: 'bg', croatian: 'hr', serbian: 'sr',
-  slovak: 'sk', slovenian: 'sl', estonian: 'et', latvian: 'lv', lithuanian: 'lt',
-  farsi: 'fa', persian: 'fa', bengali: 'bn', tamil: 'ta', telugu: 'te',
-  malay: 'ms', filipino: 'tl', tagalog: 'tl',
-};
-function langCodeOf(name) {
-  const s = String(name || '').trim().toLowerCase();
-  if (!s) return '';
-  if (LANG_MAP[s]) return LANG_MAP[s];
-  if (/^[a-z]{2}(-[a-z]{2})?$/.test(s)) return s;
-  return '';
+  return { ok: false, status: 0, data: '' };
 }
 
 // ─── Aphrodite gate (aphrodite.a.v1) ───
@@ -169,16 +151,17 @@ function gateReset() {
   gateSession = null;
 }
 
+// POST is not supported by the addon Fetcher (no body option) — bare fetch.
 async function gateBootstrap() {
   const ts = Math.floor(Date.now() / 1000);
   const nonce = crypto.randomBytes(8).toString('hex');
   const sig = crypto.createHmac('sha256', gateMasterKey).update(`${GATE_LABEL}|${ts}|${nonce}`).digest('hex');
-  const res = await fetchRetry(`${CDN}/content/index`, {
+  const res = await fetch(`${CDN}/content/index`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...HEADERS },
     body: JSON.stringify({ c: GATE_LABEL, ts, n: nonce, s: sig }),
     signal: AbortSignal.timeout(8000),
-  }, 2, 'gate-bootstrap');
+  });
   if (!res.ok) throw new Error(`gate bootstrap HTTP ${res.status}`);
   const j = await res.json();
   if (!j || !j.d) throw new Error('gate bootstrap missing payload');
@@ -219,44 +202,38 @@ function gateSignHeaders(sess, path) {
 
 // Signed GET — one renew/401/403-triggered session reset + retry (mirrors the
 // client's renew flow; the wasm-less sibling of cinejoy's 404→refresh-retry).
-async function gateGet(path) {
+async function gateGet(path, fetcher, ctx) {
   for (let attempt = 0; attempt < 2; attempt++) {
     let sess;
     try {
       sess = await gateGetSession();
     } catch {
-      return null; // bootstrap down — nothing this source can do
+      return { ok: false, status: 0, data: '' }; // bootstrap down — nothing this source can do
     }
-    let res;
-    try {
-      res = await fetchRetry(`${CDN}${path}`, {
-        headers: { ...gateSignHeaders(sess, path), ...HEADERS },
-        signal: AbortSignal.timeout(MASTER_TIMEOUT_MS),
-      });
-    } catch {
-      return null;
-    }
-    if (res.status === 401 || res.status === 403) {
+    const r = await ftext(`${CDN}${path}`, {
+      headers: { ...gateSignHeaders(sess, path), ...HEADERS }, fetcher, ctx, attempts: 1, tag: 'gate',
+    });
+    if (r.status === 401 || r.status === 403) {
       gateReset();
       continue; // fresh session, retry once
     }
-    if (!res.ok) return null; // 404 = not on Aphrodite (curated catalog)
+    if (!r.ok) return r; // 404 = not on Aphrodite (curated catalog)
+    if (!r.data || r.data[0] !== '{') return { ok: false, status: r.status, data: '' };
     let j;
-    try { j = await res.json(); } catch { return null; }
-    if (!j || typeof j !== 'object') return null;
+    try { j = JSON.parse(r.data); } catch { return { ok: false, status: r.status, data: '' }; }
     if (j.renew === true) {
       gateReset();
       if (attempt === 0) continue;
-      return null;
+      return { ok: false, status: r.status, data: '' };
     }
-    return j;
+    return { ok: true, status: r.status, json: j };
   }
-  return null;
+  return { ok: false, status: 0, data: '' };
 }
 
 // ─── Stream servers ───
 
-async function resolveArtemis(tmdbId, type, season, episode) {
+async function resolveArtemis(tmdbId, type, season, episode, fetcher, ctx) {
   const q = new URLSearchParams();
   q.set('tmdbId', String(tmdbId));
   q.set('type', type);
@@ -264,26 +241,21 @@ async function resolveArtemis(tmdbId, type, season, episode) {
     q.set('season', String(season || 1));
     q.set('episode', String(episode || 1));
   }
-  try {
-    const res = await fetchRetry(`${ARTEMIS}?${q.toString()}`, {
-      headers: HEADERS,
-      signal: AbortSignal.timeout(MASTER_TIMEOUT_MS),
-    }, 2, 'artemis');
-    if (!res.ok) return null;
-    const j = await res.json();
-    if (!j || j.found !== true || typeof j.url !== 'string' || !/^https?:\/\//.test(j.url)) return null;
-    return { url: j.url, server: String(j.source || 'Artemis') };
-  } catch {
-    return null;
-  }
+  const r = await ftext(`${ARTEMIS}?${q.toString()}`, { headers: HEADERS, fetcher, ctx, attempts: 2, tag: 'artemis' });
+  if (!r.ok) return null;
+  let j;
+  try { j = JSON.parse(r.data); } catch { return null; }
+  if (!j || j.found !== true || typeof j.url !== 'string' || !/^https?:\/\//.test(j.url)) return null;
+  return { url: j.url, server: String(j.source || 'Artemis') };
 }
 
-async function resolveAphrodite(tmdbId, type, season, episode) {
+async function resolveAphrodite(tmdbId, type, season, episode, fetcher, ctx) {
   const path = type === 'tv'
     ? `/content/tv/${tmdbId}/${season || 1}/${episode || 1}`
     : `/content/movie/${tmdbId}`;
-  const j = await gateGet(path);
-  if (!j || j.found !== true) return null;
+  const r = await gateGet(path, fetcher, ctx);
+  if (!r.ok || !r.json || r.json.found !== true) return null;
+  const j = r.json;
   const url = (typeof j.hls === 'string' && j.hls) || (j.type === 'hls' && typeof j.url === 'string' ? j.url : '');
   if (!url || !/^https?:\/\//.test(url)) return null;
   return { url, server: 'Aphrodite', title: typeof j.title === 'string' ? j.title : '' };
@@ -340,23 +312,21 @@ function isMuxedVariants(parsed) {
 // shipped ONLY when the exact bytes players will need validate.
 
 // A child/variant playlist must be an m3u8 with at least one playable line.
-async function validatePlaylistChild(url) {
-  try {
-    const res = await fetchRetry(url, { headers: HEADERS, signal: AbortSignal.timeout(MASTER_TIMEOUT_MS) });
-    if (!res.ok) return false;
-    const body = await res.text();
-    if (!body.startsWith('#EXTM3U')) return false;
-    return body.split('\n').some(l => l.trim() && !l.startsWith('#'));
-  } catch { return false; }
+async function validatePlaylistChild(url, fetcher, ctx) {
+  const r = await ftext(url, { headers: HEADERS, fetcher, ctx, attempts: 1, tag: 'child' });
+  if (!r.ok) return false;
+  if (!r.data.startsWith('#EXTM3U')) return false;
+  return r.data.split('\n').some(l => l.trim() && !l.startsWith('#'));
 }
 
-// First bytes of a media segment — TS sync byte or fMP4 box magic. Reads at
-// most 4KB (Range, with body-cancel fallback for Range-hostile CDNs).
+// First bytes of a media segment — TS sync byte or fMP4 box magic. Bare fetch
+// with a Range + body-cancel (NOT the addon Fetcher: it buffers the whole body,
+// and a Range-hostile CDN would mean a full multi-MB segment download).
 async function probeSegmentMagic(url) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), MASTER_TIMEOUT_MS);
   try {
-    const res = await fetchRetry(url, { headers: { ...HEADERS, Range: 'bytes=0-4095' }, signal: ac.signal });
+    const res = await fetch(url, { headers: { ...HEADERS, Range: 'bytes=0-4095' }, signal: ac.signal });
     if (!res.ok && res.status !== 206) return false;
     const reader = res.body.getReader();
     const { value } = await reader.read();
@@ -377,213 +347,106 @@ function qualityLabel(h) {
   return 'Auto';
 }
 
-// ─── Subtitles ───
-
-async function fetchGraniteSubs(tmdbId, type, season, episode) {
-  const path = type === 'tv'
-    ? `${GRANITE_API}/tv/${tmdbId}/${season || 1}/${episode || 1}`
-    : `${GRANITE_API}/movie/${tmdbId}`;
-  try {
-    const res = await fetchRetry(path, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(SUBS_TIMEOUT_MS) });
-    if (!res.ok) return [];
-    const arr = await res.json();
-    if (!Array.isArray(arr)) return [];
-    const out = [];
-    for (const item of arr) {
-      if (!item || typeof item.file !== 'string' || typeof item.label !== 'string') continue;
-      // Site convention: "Arabic Hi5" / "English hi" = hearing-impaired track.
-      // Trailing digits are distinct site variants ("Arabic2" ≠ "Arabic") —
-      // keep them as a display suffix so Stremio shows unique track names.
-      const hi = /\shi\d*$/i.test(item.label);
-      const base = item.label.replace(/\s*hi\d*$/i, '').trim();
-      const variant = base.match(/(\d+)$/);
-      const langName = (base.replace(/(\d+)$/, '').trim() || base);
-      const display = langName + (variant ? ` ${variant[1]}` : '');
-      out.push({
-        id: `gr-${langCodeOf(langName) || display.slice(0, 4)}-${out.length}`,
-        url: item.file,
-        lang: display + (hi ? ' (HI)' : ''),
-      });
-      if (out.length >= MAX_GRANITE_SUBS) break;
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
-
-// natsuki sub files are Origin-gated → wrap in the addon's own /proxy so any
-// player can fetch them (hostUrl passed in from the wrapper's ctx).
-// Both queries (tmdbId + imdbId) fire in PARALLEL with a 5s cap — the site's
-// sequential fallback once burned 12s on a title whose tmdbId path hung.
-// Preference: tmdbId result, then imdbId result (site order).
-async function fetchNatsukiSubs(tmdbId, imdbId, type, season, episode, hostUrl) {
-  if (!hostUrl) return []; // cannot proxy-wrap → raw URLs would 403 in players
-  const buildQuery = (params) => {
-    const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) q.set(k, String(v));
-    if (type === 'tv') { q.set('season', String(season || 1)); q.set('episode', String(episode || 1)); }
-    return q;
-  };
-  const queries = [];
-  if (tmdbId) queries.push(buildQuery({ tmdbId }));
-  if (imdbId) queries.push(buildQuery({ imdbId }));
-  if (queries.length === 0) return [];
-
-  const attempt = async (q) => {
-    try {
-      const res = await fetchRetry(`${NATSUKI_API}?${q.toString()}`, { headers: HEADERS, signal: AbortSignal.timeout(5000) });
-      if (!res.ok) return [];
-      const j = await res.json();
-      const subs = Array.isArray(j?.subtitles) ? j.subtitles : [];
-      const out = [];
-      const seenLangs = new Set();
-      for (const s of subs) {
-        if (!s || typeof s.url !== 'string' || !s.url) continue;
-        const code = langCodeOf(s.langCode) || langCodeOf(s.language);
-        if (!code || seenLangs.has(code)) continue;
-        seenLangs.add(code);
-        const display = (s.language && String(s.language).trim()) || code;
-        const proxy = new URL('/proxy', hostUrl);
-        proxy.searchParams.set('url', s.url);
-        proxy.searchParams.set('referer', `${ATLANTIC_ORIGIN}/`);
-        proxy.searchParams.set('origin', ATLANTIC_ORIGIN);
-        out.push({
-          id: `nk-${code}-${out.length}`,
-          url: proxy.href,
-          lang: display + (s.hearingImpaired ? ' (HI)' : ''),
-        });
-        if (out.length >= MAX_SUBS) break;
-      }
-      // Sample-validate the first file — natsuki's SRT host flaps 502 per-file
-      // (verified live: same-title files answer 200 and 502 alternately). If
-      // even the first file fails, drop the whole natsuki set rather than ship
-      // dead subtitle tracks; granite (stable, direct VTT) still covers the
-      // common languages.
-      if (out.length > 0) {
-        const sampleUrl = subs.find(s => s && typeof s.url === 'string' && s.url)?.url;
-        const ok = sampleUrl ? await probeSubFile(sampleUrl) : false;
-        if (!ok) return [];
-      }
-      return out;
-    } catch { return []; }
-  };
-
-  const results = await Promise.all(queries.map(attempt));
-  return results.find(r => r.length > 0) || [];
-}
-
-// Status-only probe of a subtitle file (3s cap) — 200/206 is enough, the
-// bytes are text by construction.
-async function probeSubFile(url) {
-  try {
-    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(3000) });
-    return res.ok;
-  } catch { return false; }
-}
-
-function mergeSubs(granite, natsuki) {
-  const out = [...granite];
-  const seen = new Set(granite.map(s => s.lang.toLowerCase()));
-  for (const s of natsuki) {
-    if (out.length >= MAX_SUBS) break;
-    const key = String(s.lang || '').toLowerCase().replace(/\s*\(hi\)$/i, '');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(s);
-  }
-  return out.slice(0, MAX_SUBS);
-}
-
 // ─── TMDB fallback (wrapper normally preloads title/year/imdbId) ───
-async function getTmdbMeta(tmdbId, mediaType) {
+async function getTmdbMeta(tmdbId, mediaType, fetcher, ctx) {
   const type = mediaType === 'tv' ? 'tv' : 'movie';
   const key = process.env.TMDB_API_KEY || '439c478a771f35c05022f9feabcca01c';
+  const r = await ftext(`https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${key}&append_to_response=external_ids`, {
+    timeoutMs: 8000, fetcher, ctx, attempts: 1, tag: 'tmdb',
+  });
+  if (!r.ok) return null;
   try {
-    const res = await fetchRetry(`https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${key}&append_to_response=external_ids`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return null;
-    const j = await res.json();
+    const j = JSON.parse(r.data);
     return {
       title: (type === 'tv' ? j.name : j.title) || '',
       year: ((type === 'tv' ? j.first_air_date : j.release_date) || '').slice(0, 4),
       imdbId: j.external_ids?.imdb_id || '',
     };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 // ─── Main ───
 // getStreams(tmdbId, mediaType, season, episode, preloaded)
-// preloaded: { title, year, imdbId, hostUrl } — hostUrl enables natsuki
-// proxy-wrapping. Returns nuvio stream objects for buildStreamResults.
+// preloaded: { title, year, imdbId, hostUrl, fetcher, ctx }
+//   - hostUrl: enables /proxy-wrapped sub URLs (unused since Task 55 — kept
+//     for wrapper compatibility)
+//   - fetcher + ctx: route all upstream GETs through the addon Fetcher
+//     (Task 55 — kills the Render bare-fetch DNS-stall class in-budget)
+// Returns nuvio stream objects for buildStreamResults. Cards carry NO
+// subtitles field — StreamResolver merges the unified granite+natsuki set
+// (the SAME providers the site uses) into every source's cards.
 async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
   try {
     const type = mediaType === 'tv' ? 'tv' : 'movie';
     const id = parseInt(tmdbId, 10);
     if (!id) return [];
 
+    const fetcher = preloaded?.fetcher || null;
+    const ctx = preloaded?.ctx || null;
+
     let imdbId = preloaded?.imdbId || '';
     if (!imdbId) {
-      const meta = await getTmdbMeta(id, type);
+      const meta = await getTmdbMeta(id, type, fetcher, ctx);
       if (meta?.imdbId) imdbId = meta.imdbId;
     }
 
-    // Everything in parallel — servers, subs, no serial chains. Each step is
-    // independently skippable; a failure never blocks the others.
+    // Task 55: SHARED DEADLINE. Everything is raced against it so this
+    // function always RETURNS (with whatever validated in time) instead of
+    // being truncated by the resolver's client budget with zero cards.
+    const DEADLINE_MS = Math.max(4000, parseInt(process.env.ATLANTIC_DEADLINE_MS, 10) || 10500);
     const t0 = Date.now();
-    const timed = (label, p) => p.then(v => {
+    const remainingMs = () => DEADLINE_MS - (Date.now() - t0);
+    const withDeadline = (p) => Promise.race([
+      p.catch(() => null),
+      new Promise(r => setTimeout(() => r(null), Math.max(250, remainingMs()))),
+    ]);
+
+    const timed = (label, v) => {
       const desc = v === null || v === undefined ? 'null'
         : Array.isArray(v) ? `${v.length} items`
         : (v && v.kind) ? v.kind : 'ok';
       console.log(`[Atlantic] ${label}: ${desc} +${Date.now() - t0}ms`);
       return v;
-    });
+    };
 
-    const artemisP = resolveArtemis(id, type, season, episode);
-    const aphroditeP = resolveAphrodite(id, type, season, episode);
-    // Both master fetches depend on their resolve; chain them.
-    const artemisMasterP = artemisP.then(async (a) => {
+    // — Artemis (Orbit/Nova): resolve → master parse, deadline-raced —
+    const artemisChain = (async () => {
+      const a = await resolveArtemis(id, type, season, episode, fetcher, ctx);
       if (!a) return null;
-      try {
-        const res = await fetchRetry(a.url, { headers: HEADERS, signal: AbortSignal.timeout(MASTER_TIMEOUT_MS) });
-        if (!res.ok) return null;
-        const body = await res.text();
-        if (!body.startsWith('#EXTM3U')) return null;
-        return { ...a, parsed: parseMaster(body) };
-      } catch { return null; }
-    });
-    const aphroditeMasterP = aphroditeP.then(async (a) => {
-      if (!a) return null;
-      try {
-        const res = await fetchRetry(a.url, { headers: HEADERS, signal: AbortSignal.timeout(MASTER_TIMEOUT_MS) });
-        if (!res.ok) return null;
-        const body = await res.text();
-        if (!body.startsWith('#EXTM3U')) return null;
-        return { ...a, body, parsed: parseMaster(body) };
-      } catch { return null; }
-    });
-    const graniteP = fetchGraniteSubs(id, type, season, episode);
-    const natsukiP = fetchNatsukiSubs(id, imdbId, type, season, episode, preloaded?.hostUrl);
+      const r = await ftext(a.url, { headers: HEADERS, fetcher, ctx, attempts: 1, tag: 'artemis-master' });
+      if (r.ok && r.data.startsWith('#EXTM3U')) {
+        return { ...a, parsed: parseMaster(r.data), masterOk: true };
+      }
+      // Master fetch failed from OUR IP. For datacenter-gated hosts
+      // (workers.dev 429 class, Task 48/41/44) that says nothing about the
+      // PLAYER's residential IP — ship one advisory "Auto" master card so the
+      // source still surfaces (the site itself plays through this CDN from
+      // browsers). Non-gated hosts keep strict behavior (200-html decoy class).
+      if (isDatacenterGated(a.url)) {
+        console.log(`[Atlantic] artemis master gated from our IP (${r.status}) — shipping advisory card`);
+        return { ...a, parsed: null, masterOk: false };
+      }
+      console.log(`[Atlantic] artemis master failed (${r.status})`);
+      return null;
+    })();
 
-    const [artemisMaster, aphroditeMaster, granite, natsuki] = await Promise.all([
-      timed('artemis', artemisMasterP),
-      timed('aphrodite', aphroditeMasterP),
-      timed('granite', graniteP),
-      timed('natsuki', natsukiP),
+    // — Aphrodite: gate-signed resolve → master parse, deadline-raced —
+    const aphroditeChain = (async () => {
+      const a = await resolveAphrodite(id, type, season, episode, fetcher, ctx);
+      if (!a) return null;
+      const r = await ftext(a.url, { headers: HEADERS, fetcher, ctx, attempts: 1, tag: 'aphrodite-master' });
+      if (!r.ok || !r.data.startsWith('#EXTM3U')) return null;
+      return { ...a, body: r.data, parsed: parseMaster(r.data) };
+    })();
+
+    const [artemisMaster, aphroditeMaster] = await Promise.all([
+      withDeadline(artemisChain).then(v => timed('artemis', v)),
+      withDeadline(aphroditeChain).then(v => timed('aphrodite', v)),
     ]);
-    const subs = mergeSubs(granite, natsuki);
 
-    // Validate + emit. Orbit-style masters: the top child playlist is the
-    // bytes the player hits first — verify it. Aphrodite-style flat media
-    // playlists (no variants): verify the first segment's magic bytes, else
-    // skip (stub manifests ship broken segments). Nova muxed variants: verify
-    // each child playlist, ship only validated ones.
     const streams = [];
     const seen = new Set();
-    const push = (url, quality, title, subtitles, ipGated = false) => {
+    const push = (url, quality, title, ipGated = false) => {
       if (!url || !/^https?:\/\//.test(url) || seen.has(url)) return;
       seen.add(url);
       streams.push({
@@ -597,51 +460,55 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
         // NuvioExtractor ships the card DIRECT with requestHeaders instead of
         // routing through /proxy (which cannot fetch from this IP).
         ...(ipGated && { ipGated: true }),
-        subtitles: subtitles || [],
       });
     };
 
     // — Artemis (Orbit/Nova) —
-    if (artemisMaster && artemisMaster.parsed) {
-      const { variants, audioTracks, separateAudio } = artemisMaster.parsed;
-      if (variants.length > 0) {
-        const maxH = variants[0].h;
-        const audioNote = audioTracks.length > 1
-          ? `, ${audioTracks.length} audio tracks (player audio menu)`
-          : (audioTracks.length === 1 ? ', 1 audio track' : '');
-        const ipGated = isDatacenterGated(artemisMaster.url);
-        if (separateAudio || !isMuxedVariants(artemisMaster.parsed)) {
-          // Master card — players pick quality (and audio) natively. Children
-          // are video-only renditions here; bare variant URLs would be silent.
-          let topChildOk = false;
-          if (ipGated) {
-            // ADVISORY: our IP is 429-gated by Cloudflare — failure here says
-            // nothing about the player's residential IP (Task 41/44 class).
-            topChildOk = variants[0].uri ? await validatePlaylistChild(variants[0].uri) : false;
-            console.log(`[Atlantic] artemis top-child validation (advisory, ip-gated): ${topChildOk ? 'ok' : 'skip-fail'} +${Date.now() - t0}ms`);
-            topChildOk = true; // ship — residential IPs decide
+    if (artemisMaster) {
+      if (artemisMaster.parsed) {
+        const { variants, audioTracks, separateAudio } = artemisMaster.parsed;
+        if (variants.length > 0) {
+          const maxH = variants[0].h;
+          const audioNote = audioTracks.length > 1
+            ? `, ${audioTracks.length} audio tracks (player audio menu)`
+            : (audioTracks.length === 1 ? ', 1 audio track' : '');
+          const ipGated = isDatacenterGated(artemisMaster.url);
+          if (separateAudio || !isMuxedVariants(artemisMaster.parsed)) {
+            // Master card — players pick quality (and audio) natively. Children
+            // are video-only renditions here; bare variant URLs would be silent.
+            let topChildOk = false;
+            if (ipGated) {
+              // ADVISORY: our IP is 429-gated by Cloudflare — failure here says
+              // nothing about the player's residential IP (Task 41/44 class).
+              topChildOk = variants[0].uri ? await withDeadline(validatePlaylistChild(variants[0].uri, fetcher, ctx)) : false;
+              console.log(`[Atlantic] artemis top-child validation (advisory, ip-gated): ${topChildOk ? 'ok' : 'skip-fail'} +${Date.now() - t0}ms`);
+              topChildOk = true; // ship — residential IPs decide
+            } else {
+              topChildOk = variants[0].uri ? await withDeadline(validatePlaylistChild(variants[0].uri, fetcher, ctx)) : false;
+              console.log(`[Atlantic] artemis top-child validation: ${topChildOk ? 'ok' : 'FAIL'} +${Date.now() - t0}ms`);
+            }
+            if (topChildOk) {
+              push(artemisMaster.url, qualityLabel(maxH), `${artemisMaster.server} — Auto (up to ${qualityLabel(maxH)})${audioNote}`, ipGated);
+            }
           } else {
-            topChildOk = variants[0].uri ? await validatePlaylistChild(variants[0].uri) : false;
-            console.log(`[Atlantic] artemis top-child validation: ${topChildOk ? 'ok' : 'FAIL'} +${Date.now() - t0}ms`);
-          }
-          if (topChildOk) {
-            push(artemisMaster.url, qualityLabel(maxH), `${artemisMaster.server} — Auto (up to ${qualityLabel(maxH)})${audioNote}`, subs, ipGated);
-          }
-        } else {
-          // Muxed children — per-variant cards. peraspera is ip-gated: ship
-          // without gating on validation verdicts (advisory only).
-          const perH = new Map();
-          for (const v of variants) { if (!perH.has(v.h) || perH.get(v.h).bw < v.bw) perH.set(v.h, v); }
-          const top = [...perH.values()].sort((a, b) => b.h - a.h).slice(0, 4);
-          if (ipGated) {
-            top.forEach((v) => push(v.uri, qualityLabel(v.h), `${artemisMaster.server} — ${qualityLabel(v.h)}`, subs, true));
-          } else {
-            const verdicts = await Promise.all(top.map(v => validatePlaylistChild(v.uri)));
-            top.forEach((v, i) => {
-              if (verdicts[i]) push(v.uri, qualityLabel(v.h), `${artemisMaster.server} — ${qualityLabel(v.h)}`, subs, false);
-            });
+            // Muxed children — per-variant cards. peraspera is ip-gated: ship
+            // without gating on validation verdicts (advisory only).
+            const perH = new Map();
+            for (const v of variants) { if (!perH.has(v.h) || perH.get(v.h).bw < v.bw) perH.set(v.h, v); }
+            const top = [...perH.values()].sort((a, b) => b.h - a.h).slice(0, 4);
+            if (ipGated) {
+              top.forEach((v) => push(v.uri, qualityLabel(v.h), `${artemisMaster.server} — ${qualityLabel(v.h)}`, true));
+            } else {
+              const verdicts = await Promise.all(top.map(v => withDeadline(validatePlaylistChild(v.uri, fetcher, ctx))));
+              top.forEach((v, i) => {
+                if (verdicts[i]) push(v.uri, qualityLabel(v.h), `${artemisMaster.server} — ${qualityLabel(v.h)}`, false);
+              });
+            }
           }
         }
+      } else if (!artemisMaster.masterOk) {
+        // Advisory direct card (datacenter-gated master, unparseable from our IP)
+        push(artemisMaster.url, 'Auto', `${artemisMaster.server} — Auto (direct)`, true);
       }
     }
 
@@ -650,10 +517,10 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
       const { variants, audioTracks } = aphroditeMaster.parsed;
       if (variants.length > 0) {
         // Real master (probed earlier: single 2160p variant + audio group)
-        const topChildOk = variants[0].uri ? await validatePlaylistChild(variants[0].uri) : false;
+        const topChildOk = variants[0].uri ? await withDeadline(validatePlaylistChild(variants[0].uri, fetcher, ctx)) : false;
         if (topChildOk) {
           const audioNote = audioTracks.length > 1 ? `, ${audioTracks.length} audio tracks` : '';
-          push(aphroditeMaster.url, qualityLabel(variants[0].h), `Aphrodite — ${qualityLabel(variants[0].h)}${audioNote}`, subs);
+          push(aphroditeMaster.url, qualityLabel(variants[0].h), `Aphrodite — ${qualityLabel(variants[0].h)}${audioNote}`);
         }
       } else if (/#EXTINF/.test(aphroditeMaster.body)) {
         // Flat media playlist — validate first segment before shipping
@@ -661,10 +528,10 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
           .map(l => l.trim()).find(l => l && !l.startsWith('#'));
         let segUrl = null;
         try { if (firstSeg) segUrl = new URL(firstSeg, aphroditeMaster.url).href; } catch { segUrl = null; }
-        const segOk = segUrl ? await probeSegmentMagic(segUrl) : false;
+        const segOk = segUrl ? await withDeadline(probeSegmentMagic(segUrl)) : false;
         console.log(`[Atlantic] aphrodite media-playlist validation: ${segOk ? 'ok' : 'FAIL'} +${Date.now() - t0}ms`);
         if (segOk) {
-          push(aphroditeMaster.url, 'Auto', 'Aphrodite — Auto', subs);
+          push(aphroditeMaster.url, 'Auto', 'Aphrodite — Auto');
         }
       }
     }
@@ -674,6 +541,7 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
       const rank = (q) => { const m = /(\d{3,4})/.exec(String(q)); return m ? parseInt(m[1], 10) : 0; };
       return rank(b.quality) - rank(a.quality);
     });
+    console.log(`[Atlantic] getStreams done: ${streams.length} cards in ${Date.now() - t0}ms (deadline ${DEADLINE_MS}ms)`);
     return streams;
   } catch (e) {
     console.error('[Atlantic]', e?.message || e);

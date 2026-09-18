@@ -1,17 +1,20 @@
 // src/source/ZXCStream.js
-// zxcstream — movies/series/anime via player.zxcstream.xyz embed URLs
+// zxcstream — movies/series via player.zxcstream.xyz (Task 55 protocol rewrite)
 //
-// Uses the Nuvio provider (src/nuvio/zxcstream.cjs) which generates an auth
-// token (sha512) and calls the /backend_/embed/sentinel endpoint to get an
-// iframe embed URL for the content.
+// Uses the Nuvio provider (src/nuvio/zxcstream.cjs) which now implements the
+// site's CURRENT token protocol (obfuscated FIELD_MAP + /backend/a1b2c3 token
+// POST → /backend_/embed/sentinel) and extracts REAL media URLs from the
+// embed player server-side.
+//
+// Task 55: the old player-PAGE fallback card (an HTML URL shipped as a
+// "stream") is GONE — it produced the user's "ZXCStream mpv error" (mpv
+// cannot play HTML). The provider returns [] when nothing playable can be
+// extracted (honest zero), so every ZXCStream card is directly playable.
 //
 // Flow:
 //   1. Resolve TMDB ID + name/year
 //   2. Call provider.getStreams(tmdbId, 'movie'|'tv', season, episode)
 //   3. Convert streams to Source result format via buildStreamResults()
-//
-// The provider returns embed URLs (iframe pages) — NuvioExtractor routes
-// them through /proxy with forceHls=1 to detect if the response is HLS.
 
 import path from 'path';
 import { fileURLToPath } from 'url';

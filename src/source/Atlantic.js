@@ -1,16 +1,15 @@
-// src/source/Atlantic.js — atlantic.st (Task 48 reverse engineering)
+// src/source/Atlantic.js — atlantic.st (Task 48 reverse engineering; Task 55 budget fix)
 //
-// https://atlantic.st/ is a TMDB-driven React SPA with two stream servers and
-// a 3-provider subtitle stack (full RE trail in src/nuvio/atlantic.cjs):
+// https://atlantic.st/ is a TMDB-driven React SPA with two stream servers
+// (full RE trail in src/nuvio/atlantic.cjs):
 //   Artemis   — stellar.maybeoneday.ch/resolve (Orbit fMP4 up to 2160p movies/
 //               TV, Nova muxed up to 1080p anime/TV) — no signing
 //   Aphrodite — cdn.maybeoneday.ch/content/... (curated single-4K-variant
 //               masters) — aphrodite.a.v1 HMAC/AES-GCM gate (port in scraper)
-// Subtitles: granite (sub.vdrk.site, VTT, header-free, up to ~100 languages)
-// + natsuki (natsuki.maybeoneday.ch, SRT, Origin-gated → /proxy-wrapped).
-// Both attach as meta.subtitles → Stremio stream.subtitles (site-native subs
-// take priority; the addon's OpenSubtitles fallback only fills sources that
-// ship none).
+// Subtitles: the source no longer fetches its own (Task 55) — StreamResolver's
+// unified stack (src/utils/siteSubtitles.cjs) runs the SAME granite+natsuki
+// providers ONCE per title and merges the set into EVERY source's cards,
+// Atlantic's included. One provider set for movies/series/kdramas/animes.
 //
 // Audio metadata: Orbit multi-audio masters carry unnamed audio groups
 // ("Audio 1"/"Audio 2", no LANGUAGE attribute upstream) — the card title says
@@ -110,33 +109,37 @@ export class Atlantic extends Source {
     const mod = getScraperModule();
     if (!mod || typeof mod.getStreams !== 'function') return [];
 
-    // Both servers + subs run in parallel inside the scraper (~2-5s measured
-    // uncontended, 6-30s under Render resolve storms with fetchRetry). One
-    // empty retry absorbs transient upstream windows.
-    //
-    // NO internal race here (cineby's 30s pattern deliberately not copied):
-    // under contention the race fires null and DISCARDS the eventual scraper
-    // result — the per-source cache then never fills and every re-open re-runs
-    // full-cold (production evidence: /debug/stream triggers + /debug/source
-    // re-running the whole chain each time). Without the race, the resolver's
-    // own 35s SOURCE_TIMEOUT gives the cold-request partial (Task 36 budget
-    // contract) while the underlying handle promise keeps running to completion
-    // and its result lands in Source.handle's 15min cache — the next open of
-    // the title is served warm, exactly the architecture's intent.
+    // Both servers run in parallel inside the scraper (~2-5s measured
+    // uncontended, deadline-bounded 10.5s inside the scraper since Task 55).
+    // One empty retry absorbs transient upstream windows — SKIPPED when the
+    // first attempt already consumed most of the client budget (a retry would
+    // blow past it and the client-budget cutoff would zero the source again).
     const EMPTY_RETRY_MAX = 1;
     const EMPTY_RETRY_DELAY_MS = 2000;
+    const EMPTY_RETRY_MAX_FIRST_MS = 8000;
 
     const preloaded = {
       title: name,
       year: year ? String(year) : '',
       imdbId,
       hostUrl: ctx?.hostUrl ? ctx.hostUrl.href : '',
+      // Task 55: route all upstream GETs through the addon Fetcher (family:4,
+      // node-level timeout, got-scraping CF fallback) — bare undici fetch
+      // stalls on Render during resolve storms past AbortSignal deadlines,
+      // which was pushing Atlantic past the client budget (zero cards).
+      fetcher: this.fetcher,
+      ctx,
     };
 
     let streams;
     try {
+      const t0 = Date.now();
       let out = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null, preloaded);
       for (let attempt = 0; Array.isArray(out) && out.length === 0 && attempt < EMPTY_RETRY_MAX; attempt++) {
+        if (Date.now() - t0 > EMPTY_RETRY_MAX_FIRST_MS) {
+          console.log(`[Atlantic] first attempt took ${Date.now() - t0}ms — skipping empty-retry (client budget)`);
+          break;
+        }
         await new Promise(r => setTimeout(r, EMPTY_RETRY_DELAY_MS));
         out = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season || null, tmdbId.episode || null, preloaded);
       }
