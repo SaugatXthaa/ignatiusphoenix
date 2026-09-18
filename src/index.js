@@ -1159,7 +1159,7 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
-    version: 'task56b-primeshows-cookie-gate-fix',
+    version: 'task57-debug-headers',
     startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,
@@ -1348,6 +1348,11 @@ app.get('/debug/source/:sourceId', async (req, res) => {
       results: Array.isArray(results) ? results.slice(0, sliceLen).map(r => ({
         url: wantFull ? r.url?.href : r.url?.href?.slice(0, 150),
         format: r.format,
+        // Task 57: expose requestHeaders + notWebReady so external playability
+        // probes can replicate the player's fetch (behaviorHints.proxyHeaders
+        // comes from urlResult.requestHeaders on direct cards). Diagnostic only.
+        requestHeaders: r.requestHeaders || null,
+        notWebReady: r.notWebReady,
         meta: { ...r.meta, title: r.meta?.title?.slice(0, 120) },
       })) : [],
     });
