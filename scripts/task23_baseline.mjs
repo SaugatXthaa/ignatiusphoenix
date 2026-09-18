@@ -350,20 +350,26 @@ async function runChecks(child, logFile, bootLines) {
   if (amCount >= 2) check('animotvslash Frieren S2E1 >= 2 (Task 28 guard)', true, `count=${amCount}`);
   else if (amGate) console.log(`  [SKIP] animotvslash guard — upstream CF managed-challenge gate active (EXTERNAL, recovery auto-detects via this check) count=${amCount}`);
   else check('animotvslash Frieren S2E1 >= 2 (Task 28 guard)', false, `count=${amCount}`);
-  // movielinkbd guard (Task 58): movielinkbd.net RE — WP API search + KiteCloud
-  // landing/drive chain → direct googleusercontent. I Am Number Four's file
-  // has been alive since 2022 (durable guard anchor, 3 editions). Series side
-  // anchored on Squid Game S1E1 (recent post; upstream file death → the
-  // scraper's honest zero means this guard degrades gracefully to a visible
-  // count, mirroring the dead-GoT-files class documented in Task 58).
-  const mlb = await getJson(`${base}/debug/source/movielinkbd?type=movie&id=tmdb:46529`, 60000);
+  // movielinkbd guard (Task 58 v2): movielinkbd.one/.pw RE — /search?q= +
+  // mlbdInlinePlayerData JSON blob → direct cdn.dramalinkbd.tv/p/ MKV
+  // (native Range, CORS *). Anchors on titles with per-episode files on the
+  // NEW site: Kattalan (4 editions incl. 2160p "Best Quality" — validates
+  // the 4K path), Squid Game S2E1 (per-episode WebRip), Dr Stone S4E1
+  // (multi-audio anime sub+dub, 1080p+720p). NOTE: the .one site's Squid
+  // Game S1 post is ZIP-only (whole-season pack → honest zero, not a bug);
+  // movielinkbd.NET is a different site and deliberately unused.
+  const mlb = await getJson(`${base}/debug/source/movielinkbd?type=movie&id=tmdb:1065834`, 60000);
   let mlbCount = mlb?.count ?? 0;
-  if (mlbCount < 3) { await new Promise(r => setTimeout(r, 8000)); const mlb2 = await getJson(`${base}/debug/source/movielinkbd?type=movie&id=tmdb:46529`, 60000); mlbCount = Math.max(mlbCount, mlb2?.count ?? 0); }
-  check('movielinkbd I Am Number Four >= 3 (Task 58 guard)', mlbCount >= 3, `count=${mlbCount}`);
-  const mlbTv = await getJson(`${base}/debug/source/movielinkbd?type=series&id=tt10919420:1:1`, 60000);
+  if (mlbCount < 3) { await new Promise(r => setTimeout(r, 8000)); const mlb2 = await getJson(`${base}/debug/source/movielinkbd?type=movie&id=tmdb:1065834`, 60000); mlbCount = Math.max(mlbCount, mlb2?.count ?? 0); }
+  check('movielinkbd Kattalan >= 3 incl 2160p (Task 58 guard)', mlbCount >= 3, `count=${mlbCount}`);
+  const mlbTv = await getJson(`${base}/debug/source/movielinkbd?type=series&id=tt10919420:2:1`, 60000);
   let mlbTvCount = mlbTv?.count ?? 0;
-  if (mlbTvCount < 1) { await new Promise(r => setTimeout(r, 8000)); const mlbTv2 = await getJson(`${base}/debug/source/movielinkbd?type=series&id=tt10919420:1:1`, 60000); mlbTvCount = Math.max(mlbTvCount, mlbTv2?.count ?? 0); }
-  check('movielinkbd Squid Game S1E1 >= 1 (Task 58 guard)', mlbTvCount >= 1, `count=${mlbTvCount}`);
+  if (mlbTvCount < 1) { await new Promise(r => setTimeout(r, 8000)); const mlbTv2 = await getJson(`${base}/debug/source/movielinkbd?type=series&id=tt10919420:2:1`, 60000); mlbTvCount = Math.max(mlbTvCount, mlbTv2?.count ?? 0); }
+  check('movielinkbd Squid Game S2E1 >= 1 (Task 58 guard)', mlbTvCount >= 1, `count=${mlbTvCount}`);
+  const mlbAnime = await getJson(`${base}/debug/source/movielinkbd?type=series&id=tmdb:86031:4:1`, 60000);
+  let mlbAnimeCount = mlbAnime?.count ?? 0;
+  if (mlbAnimeCount < 2) { await new Promise(r => setTimeout(r, 8000)); const mlbAnime2 = await getJson(`${base}/debug/source/movielinkbd?type=series&id=tmdb:86031:4:1`, 60000); mlbAnimeCount = Math.max(mlbAnimeCount, mlbAnime2?.count ?? 0); }
+  check('movielinkbd Dr Stone S4E1 >= 2 multi-audio (Task 58 guard)', mlbAnimeCount >= 2, `count=${mlbAnimeCount}`);
 
   child.kill('SIGTERM');
   await new Promise(r => setTimeout(r, 800));

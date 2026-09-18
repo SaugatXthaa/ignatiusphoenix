@@ -67,6 +67,10 @@ const DIRECT_CDN_HOSTS = [
   // Without Range support, Stremio can't seek in the video. They're now handled
   // by the DirectStream extractor which routes them through /range-proxy for
   // Range translation (see extractInternal below).
+  // MovieLinkBD (Task 58) — cdn.dramalinkbd.tv direct MKV (video/x-matroska,
+  // accept-ranges: bytes verified 206 mid-file, CORS *). Native Range support
+  // → passthrough as-is, NO range-proxy hop needed.
+  'cdn.dramalinkbd.tv',
 ];
 
 // Google Drive hosts that DON'T support HTTP Range requests.

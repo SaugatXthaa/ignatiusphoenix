@@ -1,74 +1,83 @@
 // src/nuvio/movielinkbd.cjs
-// movielinkbd.net — movies/series/kdrama/animes/cartoons via WP REST API +
-// post-page parsing, resolved through the KiteCloud file host to DIRECT
-// googleusercontent MKV files. Task 58 reverse engineering (2026-09-19).
+// movielinkbd.one / movielinkbd.pw / ssged4.movielinkbd.li — MovieLinkBD
+// Official. Movies / series / kdrama / cdrama / jdrama / animes / cartoons,
+// MULTI-REGIONAL (language taxonomy: english, korean, chinese, japanese,
+// french, italian, portuguese, bangla, hindi, tamil, telugu, ...), up to
+// 4K/2160p. Task 58 v2 (2026-09-19) — full reverse engineering.
 //
-// SITE MAP (verified live):
-//   - Discovery : GET /wp-json/wp/v2/posts?search=<q>&per_page=20
-//                 (JSON — no CF challenge; title/link/id per post)
-//   - Post page : HTML only (theme renders quality blocks from post meta,
-//                 NOT in wp-json content) → must parse HTML:
-//       movies : <div class="dl-box"> → dl-quality-text (480P/720P/1080P),
-//                dl-size-badge (430 MB), kitecloud.me/<code> link
-//       series : <div class="yv-season-block"> → yv-season-header (Season NN)
-//                → yv-ep-row → yv-ep-title ("Episode 01" | "Ep 01-05" zip
-//                pack) + yv-ep-lang ("Hindi & English", "Bengali",
-//                "Hindi, English & Japanese") + yv-pill links (480p/720p/1080p)
-//   - Host      : kitecloud.me is the ONLY file host (all posts, all types)
+// SITE ARCHITECTURE (verified live on the open w23gdv.movielinkbd.pw mirror):
+//   - Discovery : GET {base}/search?q=<query> (HTML) → links
+//                 /movie/mKs_* /series/mKs_* /anime/mKs_* /drama/mKs_* + titles
+//   - Content   : GET {base}/<section>/mKs_* → the page embeds a machine-
+//                 readable JSON blob: <script id="mlbdInlinePlayerData"
+//                 type="application/json"> with title, poster (TMDB/IMDb),
+//                 content_type, episodes[{number, label, season, kind,
+//                 sources[...]}]
+//   - Sources[] : name  = REAL filename (e.g. "MovieLinkBD.com -
+//                 Kattalan.2026.2160p.Hindi.AAC.WEB-DL.HEVC.h265.ESub.mkv",
+//                 "Flex.x.Cop.S02E01.720p.Korean.AAC.WEB-DL.h264.ESub.mkv")
+//                 quality/is_best/quality_label/codec/hevc/audio_languages,
+//                 url      = https://cdn.dramalinkbd.tv/p/<token> (player)
+//                 download_url = https://cdn.dramalinkbd.tv/d/<token>
+//                 external_subtitles[] = {language, label, url} → WEBVTT
+//   - CDN       : cdn.dramalinkbd.tv serves video/x-matroska with
+//                 accept-ranges: bytes (206 mid-file verified), CORS *,
+//                 access-control-allow-origin * — DIRECT playable, native
+//                 seeking, no proxy needed. Tokens are time-limited (the
+//                 health_token exp ≈ 8 days; a refresh regenerates anyway).
 //
-// KITECLOUD CHAIN (verified live, fully server-side):
-//   1. GET  kitecloud.me/<code>            → landing HTML
-//         dead file  = generic "Secure Cloud Storage" page, NO /drive/ href
-//         live file  = <title> holds the REAL filename
-//                      (Movielinkbd.net.Squid.Game.S01E01.WEB.DL...1080p.ESub.mkv)
-//                      + /drive/<token> href + metadata (resolution badge,
-//                      audio tracks, subtitle tracks, size, codec)
-//   2. POST kitecloud.me/drive/<token>     → 302
-//         body get_10gbps_link=1 (+ Referer/Origin); Location =
-//         kitecloud.pages.dev/?file=<video-downloads.googleusercontent.com
-//         signed URL> — parse the file= param → DIRECT playable URL
-//   3. GET  file URL                       → 200 video/mkv, Content-Length
-//         real, works fresh (server ignores Range → sequential playback;
-//         same documented class as UHDMovies/CineFreak GDrive files).
+// QUALITY TRUTH: the `quality` field LIES for 4K (measured: the 2160p file
+// carries quality:720 + is_best:true + quality_label:"Best Quality"). The
+// FILENAME is ground truth — parse 2160p/1080p/720p/480p from `name`.
 //
-// FACTS (honest, verified):
-//   - Site quality ceiling is 1080p — dl-quality-text across the catalog
-//     only ever reads 480P/720P/1080P (the "2160p"/"4K" strings found on
-//     pages are site chrome, not per-post download blocks). No 4K exists
-//     upstream; nothing fabricated.
-//   - Audio is embedded multi-track (Hindi+English dual audio; anime posts
-//     list "Hindi, English & Japanese") — both sub & dub languages in ONE
-//     file per quality. Subtitles are EMBEDDED (ESub/English) — the site
-//     exposes no separate .srt endpoints; side-loaded tracks still come
-//     from the addon-wide unified granite+natsuki stack like every source.
-//   - Old uploads go dead on kitecloud (generic landing page) — landing
-//     liveness check at resolve time drops them (free, one GET per code).
+// SEASONS: posts are season-specific ("Squid Game (2024) Season 2",
+// "Flex x Cop Season 2"); the blob's `season` is null on these. Requested
+// season comes from the POST TITLE, verified by the filename SxxExx.
+//
+// SUBTITLES: the site serves separate WEBVTT tracks (text/vtt, CORS *)
+// per source when available — shipped as Stremio subtitle tracks alongside
+// the addon-wide unified granite+natsuki stack (which still runs for every
+// card like every other source).
+//
+// MULTI-AUDIO: audio_languages e.g. ['Hindi','Japanese','English'] (anime
+// sub+dub), ['Korean'] (kdrama subs), Multi[Hindi-Tamil-Telugu-Malayalam].
+// Both sub & dub live in ONE file per quality.
+//
+// MIRRORS: w23gdv.movielinkbd.pw (open, datacenter-friendly), vpha33.
+// movielinkbd.pw (redirects to the current rotating subdomain), apex
+// movielinkbd.pw, and the CF-gated ssged4.movielinkbd.li / movielinkbd.one
+// (403 from datacenter IPs — kept as last-resort candidates; the probe
+// drops them when challenged). movielinkbd.NET is a DIFFERENT (older,
+// BD-only, no-4K) site — deliberately NOT used (user instruction).
 //
 // Task 57 pattern: ALL upstream GETs route through the addon Fetcher
 // (preloaded {fetcher, ctx}) — family:4, node-level timeout, got-scraping
-// CF fallback for GETs; bare fetch remains the fallback for local tooling.
+// CF fallback; bare fetch remains the fallback for local tooling.
 
 'use strict';
 
 const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
-const BASE_URL = 'https://movielinkbd.net';
-const KITE_BASE = 'https://kitecloud.me';
+const BASE_CANDIDATES = [
+  'https://w23gdv.movielinkbd.pw',   // verified-open rotating subdomain
+  'https://vpha33.movielinkbd.pw',   // redirects to the current one
+  'https://movielinkbd.pw',          // apex
+  'https://ssged4.movielinkbd.li',   // CF-gated (user-provided URL)
+  'https://movielinkbd.one',         // CF-gated official alternative
+];
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-// Internal soft deadline — the resolver's flat 35s cap still governs; we aim
-// to RETURN inside ~25s so background-cache writes land well before it.
 const SEARCH_TIMEOUT = 12000;
 const PAGE_TIMEOUT = 12000;
-const LANDING_TIMEOUT = 10000;
-const DRIVE_TIMEOUT = 12000;
-const RESOLVE_CAP = 6;      // max kitecloud codes resolved in parallel batch
-const PAGE_CAP = 4;         // max post pages fetched in parallel (series)
-const MOVIE_PAGE_CAP = 2;   // movies live in ONE post; 2 covers split posts
+const PROBE_TIMEOUT = 8000;
+const PAGE_CAP = 4;        // max content pages fetched in parallel (TV seasons live in different posts)
+const MOVIE_PAGE_CAP = 2;  // movies live in one post; 2 covers split editions
+const BASE_CACHE_TTL = 10 * 60 * 1000;
+let _baseCache = { url: null, ts: 0 };
 
 // Safe error brief — error objects from Fetcher/AbortSignal can carry EMPTY
-// or non-string messages (e.status-bearing HttpError instances); falling
-// back to the raw object then calling .slice crashes the catch handler
-// itself and MASKS the real failure (found live in the first E2E run).
+// or non-string messages; falling back to the raw object then calling .slice
+// crashes the catch handler itself and MASKS the real failure (Task 58 v1
+// lesson, kept for v2).
 function errBrief(e) {
   if (e instanceof Error && e.message) return String(e.message).slice(0, 80);
   if (typeof e === 'string') return e.slice(0, 80);
@@ -85,77 +94,38 @@ async function fetchText(url, options = {}) {
   const { fetcher, ctx, timeout = 15000, headers = {} } = options;
   if (fetcher && ctx) {
     try {
-      const data = await fetcher.text(ctx, new URL(url), {
+      return await fetcher.text(ctx, new URL(url), {
         headers: { 'User-Agent': UA, 'Accept': 'text/html,application/json,*/*', ...headers },
         timeout,
       });
-      return data;
     } catch (e) {
-      const status = e?.statusCode || e?.status || 0;
-      if (status === 404) return ''; // clean no-match for search/pages
+      const status = e?.status || e?.statusCode || 0;
+      if (status === 404) return '';
       throw e;
     }
   }
-  // bare-fetch fallback (local tooling / no-fetcher callers)
   const r = await fetch(url, { signal: AbortSignal.timeout(timeout), headers: { 'User-Agent': UA, ...headers } });
   if (!r.ok) return '';
   return r.text();
 }
 
-// POST that does NOT follow redirects (kitecloud drive → 302 Location).
-// Fetcher.queuedFetch returns the raw {status, headers} for 3xx when
-// maxRedirects: 0 (Fetcher.fetchWithTimeout only follows when the option
-// is absent/non-zero) — exactly what the chain needs.
-//
-// CF REALITY (measured live, Task 58): kitecloud.me challenges Node's TLS
-// fingerprint on POST — https.request POST = 403 "cf-mitigated: challenge"
-// while browser-TLS got-scraping POST passes with 302 (the Fetcher's
-// got-scraping fallback only covers GETs, so the POST carries its own).
-async function drivePost(driveUrl, fetcher, ctx) {
-  const headers = {
-    'User-Agent': UA,
-    'Content-Type': 'application/x-www-form-urlencoded',
-    'Referer': driveUrl,
-    'Origin': 'https://kitecloud.me',
-  };
-  if (fetcher && ctx) {
+// Base resolution: first candidate that answers with the real site (not a
+// CF challenge). Cached 10min; re-probes expire automatically.
+async function getBase(fetcher, ctx) {
+  const now = Date.now();
+  if (_baseCache.url && now - _baseCache.ts < BASE_CACHE_TTL) return _baseCache.url;
+  for (const base of BASE_CANDIDATES) {
     try {
-      const res = await fetcher.fetch(ctx, new URL(driveUrl), {
-        method: 'POST',
-        data: 'get_10gbps_link=1',
-        headers,
-        maxRedirects: 0,
-        timeout: DRIVE_TIMEOUT,
-      });
-      return { status: res.status, location: res.headers?.location || '' };
-    } catch (e) {
-      const status = e?.status || e?.statusCode || 0;
-      // 403/CF-challenge (and any hard error) → got-scraping browser-TLS retry
-      console.log(`[MovieLinkBD] drive POST via Fetcher failed (status ${status || 'n/a'}) → got-scraping fallback`);
-    }
-    try {
-      const { gotScraping } = await import('got-scraping');
-      const resp = await gotScraping.post(driveUrl, {
-        body: 'get_10gbps_link=1',
-        headers,
-        timeout: { request: DRIVE_TIMEOUT },
-        throwHttpErrors: false,
-        followRedirect: false,
-      });
-      return { status: resp.statusCode, location: resp.headers?.location || '' };
-    } catch (e) {
-      throw new Error(`drive POST failed: ${errBrief(e)}`);
-    }
+      const html = await fetchText(base + '/', { fetcher, ctx, timeout: PROBE_TIMEOUT });
+      if (html && html.includes('MovieLinkBD') && !html.includes('Just a moment')) {
+        _baseCache = { url: base, ts: now };
+        return base;
+      }
+    } catch { /* next candidate */ }
   }
-  // bare fallback (no Fetcher — local tooling)
-  const r = await fetch(driveUrl, {
-    method: 'POST',
-    signal: AbortSignal.timeout(DRIVE_TIMEOUT),
-    redirect: 'manual',
-    headers,
-    body: 'get_10gbps_link=1',
-  });
-  return { status: r.status, location: r.headers.get('location') || '' };
+  // nothing answered — fall back to the first candidate (the fetch itself
+  // will surface the error state downstream)
+  return BASE_CANDIDATES[0];
 }
 
 async function getTMDBInfo(tmdbId, mediaType, fetcher, ctx) {
@@ -179,24 +149,54 @@ function normalize(s) {
     .trim();
 }
 
-// WP REST API search — JSON, no CF, includes id/title/link
-async function searchPosts(title, fetcher, ctx) {
-  const url = `${BASE_URL}/wp-json/wp/v2/posts?search=${encodeURIComponent(title)}&per_page=20&_fields=id,title,link,date`;
+function decodeEntities(s) {
+  return String(s || '')
+    .replace(/&amp;/g, '&').replace(/&#0*39;|&apos;|&#8217;|&rsquo;/g, "'")
+    .replace(/&quot;/g, '"').replace(/&ndash;/g, '-').replace(/&mdash;/g, '—')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
+}
+
+// Search: /search?q= HTML → result entries (section path + title)
+async function searchContent(title, fetcher, ctx) {
+  const base = await getBase(fetcher, ctx);
+  const url = `${base}/search?q=${encodeURIComponent(title)}`;
+  let html = '';
   try {
-    const raw = await fetchText(url, { fetcher, ctx, timeout: SEARCH_TIMEOUT, headers: { Accept: 'application/json,text/plain,*/*' } });
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr.map(p => ({ id: p.id, title: String(p.title?.rendered || '').replace(/&#8217;|&#[0-9]+;/g, "'").replace(/&amp;/g, '&').replace(/&#039;/g, "'").trim(), link: p.link, date: p.date })).filter(p => p.link);
+    html = await fetchText(url, { fetcher, ctx, timeout: SEARCH_TIMEOUT });
   } catch (e) {
     console.error('[MovieLinkBD] search error: ' + errBrief(e));
     return [];
   }
+  if (!html) return [];
+  // NOTE: each result appears as TWO anchors — an image card (no text)
+  // followed by the titled link. Dedupe per path but keep the first
+  // NON-EMPTY title (adding the path on the empty anchor would drop the
+  // real entry — found live in the first v2 parse).
+  const byPath = new Map();
+  const re = /<a[^>]*href="(\/(?:movie|series|anime|drama)\/mKs_[^"#?]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const path = m[1];
+    const text = decodeEntities(m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')).trim();
+    const existing = byPath.get(path);
+    if (existing !== undefined) {
+      if (!existing && text) byPath.set(path, text);
+      continue;
+    }
+    byPath.set(path, text);
+  }
+  const results = [];
+  for (const [path, title] of byPath) {
+    if (!title) continue;
+    results.push({ path: base + path, section: path.split('/')[1], title });
+  }
+  return results;
 }
 
-// Candidate ordering: normalized-title containment is mandatory; score by
-// name equality + year. TV keeps several candidates (seasons live in
-// different posts — GoT 2011..2014 = S1..S4; Naruto Shippuden splits S6/S15/S16).
-function rankCandidates(posts, info, isTv) {
+// Candidate ranking: normalized-title containment mandatory; score = name
+// equality + year. TV keeps several candidates (seasons live in different
+// posts: "Squid Game (2021) season 1" vs "(2024) Season 2").
+function rankCandidates(posts, info) {
   const nameNorm = normalize(info.title);
   const origNorm = normalize(info.originalTitle);
   const words = nameNorm.split(' ').filter(w => w.length > 2);
@@ -210,102 +210,61 @@ function rankCandidates(posts, info, isTv) {
     if (origNorm && tNorm.includes(origNorm)) score += 2;
     const ym = p.title.match(/\b(19|20)\d{2}\b/);
     if (info.year && ym && ym[0] === String(info.year)) score += 2;
-    // TV: a post titled with the EXACT requested year may be another season's
-    // post — never punish, the season blocks decide. Movie: year bonus above.
     scored.push({ ...p, score });
   }
   scored.sort((a, b) => b.score - a.score);
   return scored;
 }
 
-// ---- Post page parsing (HTML; theme-rendered blocks) ----
-
-function decodeEntities(s) {
-  return String(s || '')
-    .replace(/&amp;/g, '&').replace(/&#0*39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"').replace(/&#8217;|&rsquo;/g, "'")
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
-}
-
-function parsePostPage(html) {
-  const out = { seasons: [], movieBoxes: [], tmdb: null, poster: '', duration: '' };
-
-  // TMDB id (enriched metadata hook, e.g. themoviedb.org/tv/1399)
-  const tm = html.match(/themoviedb\.org\/(movie|tv)\/(\d+)/);
-  if (tm) out.tmdb = { type: tm[1], id: tm[2] };
-
-  const pm = html.match(/<img[^>]+src="(https:\/\/image\.tmdb\.org\/t\/p\/[^"]+)"/);
-  if (pm) out.poster = pm[1];
-
-  const dm = html.match(/(\d+\s*Hours?\s+\d+\s*Minutes?|\d+\s*Minutes?)/i);
-  if (dm) out.duration = dm[1];
-
-  // MOVIE boxes: dl-grid → dl-box (quality / size / kitecloud link).
-  // NOTE: `</div></div>` boundaries CANNOT delimit dl-boxes — the only
-  // adjacent double-close in the panel is (dl-box close + dl-grid close),
-  // so a lazy body regex swallows all boxes into one match. Parse by
-  // SEGMENTS instead: split on each `<div class="dl-box">` opening; each
-  // box's quality/size/link live before the next box opens.
-  const boxStarts = [];
-  {
-    const re = /<div class="dl-box">/g;
-    let m;
-    while ((m = re.exec(html))) boxStarts.push(m.index);
-  }
-  for (let i = 0; i < boxStarts.length; i++) {
-    const seg = html.slice(boxStarts[i], i + 1 < boxStarts.length ? boxStarts[i + 1] : Math.min(boxStarts[i] + 4000, html.length));
-    const q = (seg.match(/dl-quality-text">([^<]+)/) || [])[1];
-    const s = (seg.match(/dl-size-badge">([^<]+)/) || [])[1];
-    const l = (seg.match(/href="(https:\/\/kitecloud\.me\/[^"]+)"/) || [])[1];
-    if (q && l) out.movieBoxes.push({ quality: decodeEntities(q).trim(), size: s ? decodeEntities(s).trim() : '', url: l });
-  }
-
-  // SERIES rows: yv-season-block → season header → ep rows → pills.
-  // Split on season headers so rows attach to the RIGHT season even when
-  // one post holds several (Naruto Shippuden S06+S16 in one post).
-  const seasonRe = /yv-season-header">\s*<span>([^<]+)<\/span>/g;
-  const marks = [];
-  let m;
-  while ((m = seasonRe.exec(html))) marks.push({ idx: m.index, name: decodeEntities(m[1]).trim() });
-  for (let i = 0; i < marks.length; i++) {
-    const start = marks[i].idx;
-    const end = i + 1 < marks.length ? marks[i + 1].idx : (html.length);
-    const seg = html.slice(start, end);
-    const numM = marks[i].name.match(/(\d+)/);
-    const season = { name: marks[i].name, num: numM ? parseInt(numM[1]) : null, rows: [] };
-    if (season.num === null) { out.seasons.push(season); continue; }
-
-    const rowRe = /<div class="yv-ep-row">([\s\S]*?)<div class="yv-pill-group">([\s\S]*?)<\/div>\s*<\/div>/g;
-    let r;
-    while ((r = rowRe.exec(seg))) {
-      const info = r[1];
-      const pillsHtml = r[2];
-      const titleM = info.match(/yv-ep-title">([^<]+)/);
-      if (!titleM) continue;
-      const epTitle = decodeEntities(titleM[1]).trim();
-      const langM = info.match(/yv-ep-lang">([^<]+)/);
-      const lang = langM ? decodeEntities(langM[1]).trim() : '';
-      const isPack = /yv-tag-combo/i.test(info) || /\bpack\b/i.test(epTitle) || /\bEp\s*\d+\s*-\s*\d+/i.test(epTitle);
-      const pills = [];
-      const pillRe = /<a href="(https:\/\/kitecloud\.me\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
-      let p;
-      while ((p = pillRe.exec(pillsHtml))) {
-        const label = decodeEntities(p[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')).trim();
-        pills.push({ url: p[1], label });
-      }
-      if (pills.length) season.rows.push({ epTitle, lang, isPack, pills });
+// Content page → mlbdInlinePlayerData JSON
+function parseContentPage(html) {
+  const m = html.match(/<script id="mlbdInlinePlayerData" type="application\/json">([\s\S]*?)<\/script>/);
+  if (!m) return null;
+  let d;
+  try { d = JSON.parse(m[1]); } catch { return null; }
+  const episodes = [];
+  for (const e of (Array.isArray(d.episodes) ? d.episodes : [])) {
+    const sources = [];
+    for (const s of (Array.isArray(e.sources) ? e.sources : [])) {
+      if (!s || typeof s.url !== 'string' || !/^https:\/\//.test(s.url)) continue;
+      sources.push({
+        name: String(s.name || '').trim(),
+        qualityField: s.quality,
+        isBest: !!s.is_best,
+        qualityLabel: String(s.quality_label || '').trim(),
+        codec: String(s.codec || '').trim(),
+        hevc: !!s.hevc,
+        type: String(s.type || '').trim(),
+        audio: String(s.audio || '').trim(),
+        audioLanguages: Array.isArray(s.audio_languages) ? s.audio_languages.map(String) : [],
+        url: s.url,
+        subtitles: (Array.isArray(s.external_subtitles) ? s.external_subtitles : [])
+          .filter(x => x && typeof x.url === 'string' && /^https:\/\//.test(x.url))
+          .map(x => ({ language: String(x.language || '').trim(), label: String(x.label || '').trim(), url: x.url })),
+      });
     }
-    out.seasons.push(season);
+    episodes.push({
+      label: String(e.label ?? '').trim(),
+      number: e.number,
+      season: e.season,
+      kind: String(e.kind || '').trim(),
+      sources,
+    });
   }
-  return out;
+  return {
+    title: String(d.title || '').trim(),
+    poster: String(d.poster || '').trim(),
+    contentType: String(d.content_type || '').trim(),
+    episodes,
+  };
 }
 
-// Quality helpers -----------------------------------------------------------
-
-function pillQuality(label, filename) {
-  const hay = `${label || ''} ${filename || ''}`;
-  if (/2160|4k/i.test(hay)) return '2160p';
-  const m = hay.match(/(\d{3,4})p/i);
+// Quality from the FILENAME (ground truth — the JSON `quality` field lies
+// for 4K: measured 2160p file carried quality:720 + is_best:true).
+function nameQuality(name) {
+  const s = String(name || '');
+  if (/2160|4k\b/i.test(s)) return '2160p';
+  const m = s.match(/(\d{3,4})p/i);
   return m ? m[1] + 'p' : '';
 }
 
@@ -318,22 +277,33 @@ function qRank(q) {
   return 4;
 }
 
-function parseSizeBytes(size) {
-  const m = String(size || '').match(/([\d.]+)\s*(GB|MB|TB)/i);
-  if (!m) return 0;
-  const n = parseFloat(m[1]);
-  const u = m[2].toUpperCase();
-  return u === 'TB' ? n * 1024 ** 4 : u === 'GB' ? n * 1024 ** 3 : n * 1024 ** 2;
+// Sizes from the page's download-button labels ("Download [480p • 623 MB]",
+// "Download [Best Quality 🔥 • 5.5 GB]") — keyed by quality word, order-safe.
+function extractSizeMap(html) {
+  const out = new Map();
+  const re = /Download\s*\[([^\]]+)\]/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const inner = decodeEntities(m[1]);
+    const sm = inner.match(/([\d.]+)\s*(GB|MB|TB)/i);
+    if (!sm) continue;
+    const q = /best/i.test(inner) ? 'best' : (inner.match(/(\d{3,4})p/i)?.[0]?.toLowerCase() || '');
+    if (q && !out.has(q)) out.set(q, `${sm[1]} ${sm[2].toUpperCase()}`);
+  }
+  return out;
 }
 
-// KiteCloud resolution ------------------------------------------------------
+// Post-title season ("Squid Game (2024) Season 2", "[S02 Ep01-09 Added]",
+// "Season 02", "S2") — null when the post is a season-1/single-season post.
+function titleSeason(title) {
+  const t = String(title || '');
+  const m = t.match(/\bS(?:eason)?\s*\.?\s*0*(\d{1,2})\b/i);
+  return m ? parseInt(m[1]) : null;
+}
 
 // Movie filename → request verification (Task 53 wrong-content class).
-// Filenames look like "Movielinkbd.net.Your.Fault.London.2026.WEB.DL...mkv".
-// Checks: (a) ≥80% of significant title words (len>2) hit as word-boundary
-// matches in the normalized filename; (b) when BOTH years are known, they
-// must be within ±1 (franchise entries years apart get rejected). Titles
-// with few significant words ("Up", "It") pass on the year gate alone.
+// ≥80% of significant title words as word-boundary hits in the filename,
+// plus a year gate (±1) when both years are known.
 function movieFileMatches(fname, title, originalTitle, reqYear) {
   const norm = s => String(s || '').toLowerCase().replace(/&[a-z#0-9]+;/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
   const fn = norm(fname);
@@ -358,95 +328,25 @@ function movieFileMatches(fname, title, originalTitle, reqYear) {
   return { ok: true };
 }
 
-// Landing GET → { dead, filename, driveUrl, meta }
-async function resolveLanding(codeUrl, fetcher, ctx) {
-  let html = '';
-  try {
-    html = await fetchText(codeUrl, { fetcher, ctx, timeout: LANDING_TIMEOUT });
-  } catch (e) {
-    return { dead: true, reason: 'landing ' + errBrief(e) };
-  }
-  if (!html) return { dead: true, reason: 'empty landing' };
-  const drive = (html.match(/href="(\/drive\/[^"]+)"/) || [])[1];
-  if (!drive) return { dead: true, reason: 'no drive href (generic/dead page)' };
-  const filename = decodeEntities((html.match(/<title>([^<]+)<\/title>/) || [])[1] || '').trim();
-  const meta = {
-    resolution: (html.match(/badge-spec">([\d x]+)<\/span>/) || [])[1] || '',
-    codec: '',
-    audio: '',
-    subs: '',
-    size: (html.match(/<i id="size">([^<]+)<\/i>/) || [])[1] || '',
-    type: '',
-  };
-  // list-group items are stable anchors: File Type / Audio Tracks / Subtitles
-  const itemType = html.match(/File Type(?:<\/i><i>|<i[^>]*>)([^<]+)</i);
-  if (itemType) meta.type = itemType[1].trim();
-  const itemAudio = html.match(/Audio Tracks<\/span>[\s\S]{0,120}?<i[^>]*>([\s\S]*?)<\/i>/);
-  if (itemAudio) meta.audio = decodeEntities(itemAudio[1].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
-  const itemSubs = html.match(/Subtitles<\/span>[\s\S]{0,120}?<i[^>]*>([\s\S]*?)<\/i>/);
-  if (itemSubs) meta.subs = decodeEntities(itemSubs[1].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
-  const codecM = html.match(/badge-spec">([^<]*)<\/span>\s*<span class="badge bg-secondary badge-spec">([^<]+)</);
-  if (codecM) meta.codec = codecM[2].trim();
-  return { dead: false, filename, driveUrl: KITE_BASE + drive, meta };
-}
-
-// Drive POST → direct file URL (302 Location ?file= param)
-async function resolveDrive(driveUrl, fetcher, ctx) {
-  let res;
-  try {
-    res = await drivePost(driveUrl, fetcher, ctx);
-  } catch (e) {
-    return { url: '', reason: errBrief(e) };
-  }
-  const loc = res.location || '';
-  if (!loc) return { url: '', reason: 'no redirect (status ' + res.status + ')' };
-  try {
-    const fileUrl = new URL(loc).searchParams.get('file') || '';
-    if (!fileUrl || !/^https?:\/\//.test(fileUrl)) return { url: '', reason: 'no file param' };
-    return { url: fileUrl };
-  } catch {
-    return { url: '', reason: 'bad redirect URL' };
-  }
-}
-
-// Resolve one kitecloud code end-to-end, with the filename cross-check that
-// prevents the Task 53 wrong-content class (verify SxxExx on series files
-// when the filename carries it; movie files check the title words + year).
-async function resolveCode(job, fetcher, ctx) {
-  const land = await resolveLanding(job.codeUrl, fetcher, ctx);
-  if (land.dead) return { ok: false, reason: land.reason };
-  const fname = land.filename || '';
-  // WRONG-CONTENT GUARD (series): if the filename carries SxxExx it MUST
-  // match the request. Filenames look like "...S01E01.WEB.DL...1080p.mkv".
-  if (job.isTv && job.season && job.episode) {
-    const m = fname.match(/\bS(\d{1,2})E(\d{1,3})\b/i);
-    if (m) {
-      const fs = parseInt(m[1]);
-      const fe = parseInt(m[2]);
-      if (fs !== Number(job.season) || fe !== Number(job.episode)) {
-        return { ok: false, reason: `filename mismatch S${fs}E${fe}` };
-      }
-    }
-  }
-  // WRONG-CONTENT GUARD (movies): the post title can be a FRANCHISE NEIGHBOUR
-  // (measured live: request "Your Fault (2024)" matched the "Your Fault:
-  // London (2026)" post — different movie). The FILENAME is ground truth:
-  // require the title words as word-boundary hits AND a plausible year.
-  if (!job.isTv && job.reqTitle) {
-    const verdict = movieFileMatches(fname, job.reqTitle, job.reqOriginalTitle, job.reqYear);
-    if (!verdict.ok) return { ok: false, reason: `file mismatch: ${verdict.reason}` };
-  }
-  const drv = await resolveDrive(land.driveUrl, fetcher, ctx);
-  if (!drv.url) return { ok: false, reason: drv.reason };
-  const quality = job.quality || pillQuality(job.label, fname) || pillQuality('', fname) || '';
-  return {
-    ok: true,
-    url: drv.url,
-    filename: fname,
-    quality,
-    size: land.meta.size || job.size || '',
-    meta: land.meta,
-  };
+// Site subtitle language normalization: the API carries language codes
+// ('en') or provider names ('MoviesMod.org') in `language`/`label` — map
+// proper codes to display names (Stremio groups by this), fall back to the
+// label, and only then to 'Unknown'.
+const SUB_LANG_NAMES = {
+  en: 'English', ko: 'Korean', zh: 'Chinese', ja: 'Japanese', hi: 'Hindi',
+  ta: 'Tamil', te: 'Telugu', ml: 'Malayalam', kn: 'Kannada', bn: 'Bengali',
+  ar: 'Arabic', es: 'Spanish', fr: 'French', de: 'German', it: 'Italian',
+  pt: 'Portuguese', ru: 'Russian', tr: 'Turkish', id: 'Indonesian', ms: 'Malay',
+  th: 'Thai', vi: 'Vietnamese', ur: 'Urdu', fa: 'Persian', pl: 'Polish',
+  nl: 'Dutch', sv: 'Swedish', fil: 'Filipino',
+};
+function subLangName(x) {
+  const code = String(x.language || '').toLowerCase().trim();
+  if (SUB_LANG_NAMES[code]) return SUB_LANG_NAMES[code];
+  const label = String(x.label || '').trim();
+  // Provider names like "MoviesMod.org" are NOT language names — skip them.
+  if (label && !/\.(com|org|net|io|tv|cc|xyz|me)$/i.test(label)) return label;
+  return 'English';
 }
 
 // Main ----------------------------------------------------------------------
@@ -464,121 +364,123 @@ async function getStreams(tmdbId, type, season, episode, preloaded) {
   if (!info.title) return [];
   console.log(`[MovieLinkBD] TMDB: ${info.title}${info.year ? ' (' + info.year + ')' : ''}`);
 
-  const posts = await searchPosts(info.title, fetcher, ctx);
+  const posts = await searchContent(info.title, fetcher, ctx);
   if (!posts.length) {
     console.log('[MovieLinkBD] no search results');
     return [];
   }
-  const candidates = rankCandidates(posts, info, isTv);
+  const candidates = rankCandidates(posts, info);
   if (!candidates.length) {
     console.log('[MovieLinkBD] no candidates after title ranking');
     return [];
   }
   console.log(`[MovieLinkBD] ${candidates.length} candidate post(s), top: ${candidates[0].title}`);
 
-  // Fetch post pages in parallel (cap)
+  // Fetch content pages in parallel (cap)
   const cap = isTv ? PAGE_CAP : MOVIE_PAGE_CAP;
   const tops = candidates.slice(0, cap);
   const pages = await Promise.all(tops.map(async c => {
     try {
-      const html = await fetchText(c.link, { fetcher, ctx, timeout: PAGE_TIMEOUT });
-      return { post: c, parsed: html ? parsePostPage(html) : null };
-    } catch { return { post: c, parsed: null }; }
+      const html = await fetchText(c.path, { fetcher, ctx, timeout: PAGE_TIMEOUT });
+      const parsed = html ? parseContentPage(html) : null;
+      return { post: c, parsed, html };
+    } catch { return { post: c, parsed: null, html: '' }; }
   }));
 
-  // Collect kitecloud jobs
+  // Normalize sources → stream jobs
   const jobs = [];
-  if (isTv) {
-    const targetSeason = Number(season) || 1;
-    const targetEpisode = Number(episode) || 1;
-    for (const { post, parsed } of pages) {
-      if (!parsed) continue;
-      for (const s of parsed.seasons) {
-        if (s.num !== targetSeason) continue;
-        for (const row of s.rows) {
-          if (row.isPack) continue; // zip packs are not per-episode playable
-          const em = row.epTitle.match(/Ep(?:isode)?\s*\.?\s*0*(\d{1,3})/i);
-          if (!em) continue;
-          if (parseInt(em[1]) !== targetEpisode) continue;
-          for (const pill of row.pills) {
-            jobs.push({
-              codeUrl: pill.url,
-              label: pill.label,
-              quality: pillQuality(pill.label, ''),
-              size: '',
-              lang: row.lang,
-              postTitle: post.title,
-              isTv, season: targetSeason, episode: targetEpisode,
-            });
-          }
+  const targetSeason = isTv ? (Number(season) || 1) : null;
+  const targetEpisode = isTv ? (Number(episode) || 1) : null;
+
+  for (const { post, parsed, html } of pages) {
+    if (!parsed || !parsed.episodes.length) continue;
+    const postSeason = titleSeason(post.title); // null = single-season/season-1 post
+    const sizes = extractSizeMap(html || '');
+
+    if (!isTv) {
+      // MOVIE: the single episode entry holds every edition
+      for (const ep of parsed.episodes) {
+        for (const s of ep.sources) {
+          jobs.push({ post, parsed, src: s, postSeason, sizes });
         }
       }
-    }
-  } else {
-    // movie: best-scoring page that actually carries dl-boxes wins; all boxes
-    // from it (site editions are complete in one post)
-    const withBoxes = pages.find(p => p.parsed && p.parsed.movieBoxes.length);
-    if (withBoxes) {
-      for (const b of withBoxes.parsed.movieBoxes) {
-        jobs.push({
-          codeUrl: b.url, label: b.quality, quality: pillQuality(b.quality, ''),
-          size: b.size, lang: '', postTitle: withBoxes.post.title, isTv: false,
-          season: null, episode: null,
-          reqTitle: info.title, reqOriginalTitle: info.originalTitle || '',
-          reqYear: info.year || '',
-        });
+    } else {
+      // TV: match episode; season = post title season (fallback: filename)
+      for (const ep of parsed.episodes) {
+        for (const s of ep.sources) {
+          const fnameSeason = s.name.match(/\bS(\d{1,2})E(\d{1,3})\b/i);
+          const sSeason = fnameSeason ? parseInt(fnameSeason[1]) : (postSeason || 1);
+          const sEp = fnameSeason ? parseInt(fnameSeason[2])
+            : (Number.isFinite(ep.number) && ep.number !== null ? Number(ep.number)
+              : (parseInt(String(ep.label).match(/0*(\d{1,3})/)?.[1] || '')) || null);
+          if (sSeason !== targetSeason) continue;
+          if (sEp !== targetEpisode) continue;
+          jobs.push({ post, parsed, src: s, postSeason, sizes });
+        }
       }
     }
   }
 
   if (!jobs.length) {
-    console.log('[MovieLinkBD] no matching kitecloud links for the request');
+    console.log('[MovieLinkBD] no matching sources for the request');
     return [];
   }
 
-  // Dedupe + quality-first ordering, resolve in one parallel batch
+  // Dedupe by URL + wrong-content guards, quality-first
   const seen = new Set();
-  const unique = jobs.filter(j => !seen.has(j.codeUrl) && seen.add(j.codeUrl));
-  unique.sort((a, b) => qRank(a.quality) - qRank(b.quality));
-  const batch = unique.slice(0, RESOLVE_CAP);
-  console.log(`[MovieLinkBD] resolving ${batch.length}/${unique.length} kitecloud link(s)`);
-
-  const settled = await Promise.all(batch.map(j => resolveCode(j, fetcher, ctx).catch(e => ({ ok: false, reason: errBrief(e) }))));
-  const resolved = [];
-  const seenUrls = new Set();
-  for (let i = 0; i < settled.length; i++) {
-    const r = settled[i];
-    if (!r.ok) {
-      console.log(`[MovieLinkBD] drop ${batch[i].codeUrl}: ${r.reason}`);
-      continue;
+  const unique = jobs.filter(j => !seen.has(j.src.url) && seen.add(j.src.url));
+  const accepted = [];
+  for (const j of unique) {
+    const q = nameQuality(j.src.name) || (j.src.isBest ? '2160p' : '');
+    if (!isTv && info.title) {
+      const verdict = movieFileMatches(j.src.name, info.title, info.originalTitle, info.year);
+      if (!verdict.ok) {
+        console.log(`[MovieLinkBD] drop ${j.src.name.slice(0, 60)}: file mismatch: ${verdict.reason}`);
+        continue;
+      }
     }
-    if (seenUrls.has(r.url)) continue;
-    seenUrls.add(r.url);
-    resolved.push({ ...r, label: batch[i].label, lang: batch[i].lang });
+    if (isTv && targetSeason && targetEpisode) {
+      const m = j.src.name.match(/\bS(\d{1,2})E(\d{1,3})\b/i);
+      if (m && (parseInt(m[1]) !== targetSeason || parseInt(m[2]) !== targetEpisode)) {
+        console.log(`[MovieLinkBD] drop ${j.src.name.slice(0, 60)}: filename mismatch S${m[1]}E${m[2]}`);
+        continue;
+      }
+    }
+    accepted.push({ ...j, quality: q });
   }
-  if (!resolved.length) {
-    console.log('[MovieLinkBD] all links dead or unresolvable (honest zero)');
+  if (!accepted.length) {
+    console.log('[MovieLinkBD] all sources dropped by guards (honest zero)');
     return [];
   }
+  accepted.sort((a, b) => qRank(a.quality) - qRank(b.quality));
 
-  // Highest quality first
-  resolved.sort((a, b) => qRank(a.quality) - qRank(b.quality));
-
-  const epSuffix = isTv ? ` S${String(season || 1).padStart(2, '0')}E${String(episode || 1).padStart(2, '0')}` : '';
-  return resolved.map(r => {
-    const langTag = r.lang ? ` — ${r.lang}` : '';
-    const name = `MovieLinkBD${epSuffix} — ${r.quality || 'Auto'}${r.size ? ' [' + r.size + ']' : ''}${langTag}`;
-    // Rich title feeds enrichMeta: filename carries WEB.DL/Hindi/English/ESub
-    const richTitle = `${info.title}${epSuffix} — ${r.filename || r.quality || 'Download'}${r.meta?.audio ? ' — Audio: ' + r.meta.audio : ''}${r.meta?.subs ? ' — Subs: ' + r.meta.subs : ''}`;
+  const epSuffix = isTv ? ` S${String(targetSeason).padStart(2, '0')}E${String(targetEpisode).padStart(2, '0')}` : '';
+  return accepted.map(j => {
+    const s = j.src;
+    const langTag = s.audioLanguages.length ? ` — ${s.audioLanguages.join(', ')}` : (s.audio ? ` — ${s.audio}` : '');
+    const size = (j.sizes.get(j.quality.toLowerCase()) || j.sizes.get('best') || '');
+    const sizeTag = size && j.quality !== '2160p' ? ` [${size}]` : (size ? ` [${size}]` : '');
+    const codecTag = /hevc|h265/i.test(s.name) || s.hevc ? ' HEVC' : '';
+    const name = `MovieLinkBD${epSuffix} — ${j.quality}${sizeTag}${codecTag}${langTag}`;
+    // Rich title feeds enrichMeta: the real filename carries WEB-DL/HEVC/
+    // Hindi/English/ESub; audio languages + subs appended explicitly.
+    const subTag = s.subtitles.length ? ` — Subs: ${s.subtitles.map(x => subLangName(x)).join(', ')}` : '';
+    const richTitle = `${info.title}${epSuffix} — ${s.name || j.quality}${langTag ? ' — Audio: ' + s.audioLanguages.join(', ') : ''}${subTag}`;
+    // Site-provided WEBVTT subtitle tracks (Stremio shape {id, url, lang})
+    const subtitles = s.subtitles.map((x, i) => ({
+      id: `mlbd-${(x.language || x.label || 's' + i).toLowerCase().replace(/[^a-z0-9]/g, '')}-${i}`,
+      url: x.url,
+      lang: subLangName(x),
+    }));
     return {
       name,
       title: richTitle,
-      url: r.url,
-      quality: r.quality || '',
-      size: r.size || '',
-      filename: r.filename || '',
-      audioTracks: r.meta?.audio || '',
-      subsInfo: r.meta?.subs || '',
+      url: s.url,
+      quality: j.quality,
+      size,
+      filename: s.name,
+      audioTracks: s.audioLanguages.join(', ') || s.audio,
+      subtitles,
       type: 'video/mkv',
       headers: { 'User-Agent': UA },
       behaviorHints: { bingeGroup: 'movielinkbd' + epSuffix },
@@ -586,4 +488,4 @@ async function getStreams(tmdbId, type, season, episode, preloaded) {
   });
 }
 
-module.exports = { getStreams, searchPosts, parsePostPage, resolveCode, resolveLanding, resolveDrive, rankCandidates, movieFileMatches };
+module.exports = { getStreams, searchContent, parseContentPage, rankCandidates, movieFileMatches, nameQuality, titleSeason, extractSizeMap };

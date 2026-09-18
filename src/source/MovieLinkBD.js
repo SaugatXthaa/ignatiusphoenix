@@ -1,34 +1,40 @@
 // src/source/MovieLinkBD.js
-// movielinkbd.net — movies / series / kdrama / cdrama / jdrama / animes /
-// cartoons via WordPress REST API discovery + KiteCloud file host, resolved
-// to DIRECT googleusercontent MKV files. Task 58 reverse engineering.
+// movielinkbd.one / movielinkbd.pw / ssged4.movielinkbd.li — MovieLinkBD
+// Official. Movies / series / kdrama / cdrama / jdrama / animes / cartoons,
+// MULTI-REGIONAL (english, korean, chinese, japanese, french, italian,
+// portuguese, bangla, hindi, ...), up to 4K/2160p. Task 58 reverse
+// engineering (v2 — the .one/.pw architecture; movielinkbd.NET is a
+// different older site without 4K, deliberately not used).
 //
 // Flow (see src/nuvio/movielinkbd.cjs for the full site map):
-//   1. WP REST API search (?search=) → candidate posts (JSON, no CF)
-//   2. Post page HTML → movie dl-boxes / series season+episode pills
-//   3. KiteCloud: landing (liveness + real filename + audio/sub metadata)
-//      → drive POST → 302 ?file= → direct video-downloads.googleusercontent
+//   1. /search?q= HTML → /movie|series|anime|drama/mKs_* result links
+//   2. Content page → embedded mlbdInlinePlayerData JSON → episodes →
+//      sources with the REAL filename, direct cdn.dramalinkbd.tv/p/ URLs
+//      (video/x-matroska, accept-ranges → native 206 seeking, CORS *),
+//      audio_languages (sub+dub multi-audio) and external_subtitles
+//      (site-served WEBVTT tracks)
+//   3. DIRECT playback — no proxy hop; tokens are time-limited but a
+//      refresh regenerates (standard DDL-token class).
 //
 // Facts encoded by the scraper:
-//   - Site ceiling is 1080p upstream (no fabricated 4K; the "2160p" strings
-//     on pages are site chrome) — cards ship at the file's real quality.
-//   - Dual/multi audio (Hindi+English; anime: Hindi+English+Japanese) is
-//     EMBEDDED in the MKV — sub & dub in one file per quality.
-//   - Subtitles are embedded (ESub) — no separate .srt endpoints exist on
-//     the site; the addon-wide unified granite+natsuki stack still adds
-//     side-loaded tracks to every card like for every other source.
+//   - Site ceiling is 2160p ("Best Quality" = 2160p HEVC — measured on
+//     Kattalan 2026 5.52GB); the JSON quality field LIES for 4K so the
+//     scraper parses quality from the filename.
+//   - Wrong-content guards (Task 53 class): movies = title-word min-hit
+//     gate + year ±1; series = filename SxxExx must match the request.
+//   - Subtitles: site WEBVTT tracks pass through meta.subtitles; the
+//     addon-wide unified granite+natsuki stack still fills in every card
+//     like for every other source.
 //
 // Enriched metadata:
-//   - height from the quality label (480/720/1080)
-//   - sourceType / audio languages parsed by enrichMeta from the REAL
-//     filename (Movielinkbd.net.X.WEB.DL.Hindi.English.1080p.ESub.mkv)
-//   - bytes from the size badge
-//   - countryCodes [multi, hi, en] — dual-audio content
+//   - height from the filename quality (480/720/1080/2160)
+//   - sourceType / codecs / audio languages parsed by enrichMeta from the
+//     real filename (MovieLinkBD.com - X.2160p.WEB-DL.HEVC.h265.ESub.mkv)
+//   - serverName 'MLBD CDN' (the site's own provider label)
 
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import bytes from 'bytes';
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId, findCountryCodes } from '../utils/index.js';
 import { Source } from './Source.js';
@@ -53,11 +59,6 @@ function parseHeight(q) {
   return m ? parseInt(m[1]) : undefined;
 }
 
-function parseSize(size) {
-  if (!size || typeof size !== 'string') return undefined;
-  try { return bytes.parse(size) || undefined; } catch { return undefined; }
-}
-
 export class MovieLinkBD extends Source {
   constructor(fetcher) {
     super();
@@ -65,7 +66,7 @@ export class MovieLinkBD extends Source {
     this.label = 'MovieLinkBD';
     this.contentTypes = ['movie', 'series'];
     this.countryCodes = [CountryCode.multi, CountryCode.hi, CountryCode.en];
-    this.baseUrl = 'https://movielinkbd.net';
+    this.baseUrl = 'https://movielinkbd.one';
     this.fetcher = fetcher;
     this.ttl = 30 * 60 * 1000; // 30min
   }
@@ -104,27 +105,24 @@ export class MovieLinkBD extends Source {
       let url;
       try { url = new URL(s.url); } catch { continue; }
 
-      // Only ship the resolved direct file class (video-downloads.
-      // googleusercontent.com — deliberately NOT gated by streamGate,
-      // Task 54: probing would burn one-time signed URLs).
-      if (!/googleusercontent\.com$/i.test(url.hostname)) {
-        console.error(`[movielinkbd] unexpected non-direct host skipped: ${url.hostname}`);
+      // Only ship the site's own CDN class (cdn.dramalinkbd.tv — direct
+      // files with native Range support; verified 206 mid-file).
+      if (!/(^|\.)dramalinkbd\.tv$/i.test(url.hostname)) {
+        console.error(`[movielinkbd] unexpected non-CDN host skipped: ${url.hostname}`);
         continue;
       }
 
       const height = parseHeight(s.quality) || parseHeight(s.filename);
-      const fileSize = parseSize(s.size);
-
       const qualityLabel = s.quality || (height ? `${height}p` : 'Auto');
-      const sizeLabel = s.size ? ` [${s.size}]` : '';
       const audioLabel = s.audioTracks ? ` • ${s.audioTracks}` : '';
-      const subsLabel = s.subsInfo && !/no|none/i.test(s.subsInfo) ? ` • Subs: ${s.subsInfo}` : '';
-      // Rich title → enrichMeta parses WebDL/BluRay, Hindi/English audio,
-      // ESub subs from the real filename; drive-page metadata appended.
-      const displayTitle = `${title} (MovieLinkBD ${qualityLabel}${sizeLabel}${audioLabel}${subsLabel}) — ${s.filename || ''}`;
+      const subsLabel = Array.isArray(s.subtitles) && s.subtitles.length
+        ? ` • Subs: ${s.subtitles.map(t => t.lang).join(', ')}` : '';
+      // Rich title → enrichMeta parses WebDL/HEVC/Hindi/English audio from
+      // the real filename; audio tracks + site subs appended explicitly.
+      const displayTitle = `${title} (MovieLinkBD ${qualityLabel}${audioLabel}${subsLabel}) — ${s.filename || ''}`;
 
       const filenameForCodes = s.filename || '';
-      const countryCodes = [...new Set([...this.countryCodes, ...findCountryCodes(`${s.name || ''} ${filenameForCodes}`)])];
+      const countryCodes = [...new Set([...this.countryCodes, ...findCountryCodes(`${s.audioTracks || ''} ${filenameForCodes}`)])];
 
       results.push({
         url,
@@ -135,13 +133,14 @@ export class MovieLinkBD extends Source {
           sourceId: this.id,
           sourceLabel: this.label,
           ...(height && { height }),
-          ...(fileSize && { bytes: fileSize }),
-          // serverName (not subSource): the shared AcerMovies extractor
-          // claims video-downloads.googleusercontent.com URLs for /range-proxy
-          // and stamps extractorLabel='AcerMovies' — serverName outranks it
-          // in buildName so the card keeps the true KiteCloud host label.
-          serverName: 'KiteCloud',
+          // serverName (not subSource): shared extractors that claim this
+          // URL class would stamp their own extractorLabel — serverName
+          // outranks it in buildName so the card keeps the site's label.
+          serverName: 'MLBD CDN',
           ...(filenameForCodes && { filename: filenameForCodes }),
+          // Site-served WEBVTT tracks (Stremio {id, url, lang}) — merged
+          // with the universal granite+natsuki set by StreamResolver.
+          ...(Array.isArray(s.subtitles) && s.subtitles.length && { subtitles: s.subtitles }),
         },
       });
     }
