@@ -46,10 +46,47 @@ export class Netlio extends Extractor {
   }
 
   async extractInternal(ctx, url, meta) {
-    // Cloudflare-protected CDN (aurorionacademy.site, professionalidentity.cyou, etc.)
-    // returns 403 to server-side requests. Route through /proxy which uses
-    // got-scraping with HeaderGenerator for CF bypass.
+    // Cloudflare-protected CDN (aurorionacademy.site, professionalidentity.cyou,
+    // etc.) returns 403 to server-side requests. Route through /proxy which
+    // uses got-scraping with HeaderGenerator for CF bypass.
     // The proxy also rewrites relative URLs in the m3u8 playlist.
+    //
+    // Task 57 (2026-09-19): the rotating CDN hosts now also IP-GATE specific
+    // datacenter egresses. Live evidence (Squid Game S1E1,
+    // 1hyahuwewhyvwmq.mortgagerefinance.cfd): the /proxy path (Render egress)
+    // gets 404 from BOTH got-scraping AND plain fetch, while the same URL
+    // returns 200 #EXTM3U from a different datacenter IP — the /proxy path
+    // can never work from Render. Fix (Task 54 fix4 salsa pattern): quick
+    // server-side reachability probe (3.5s cap); if the CDN answers → /proxy
+    // wrap (existing behavior, CF-bypass + rewrite benefits); if it blocks
+    // Render → ship DIRECT + requestHeaders (netlio referer) so the PLAYER's
+    // IP fetches it — exactly what the real site's browser does.
+    let renderBlocked = false;
+    try {
+      await this.fetcher.fetchWithTimeout(ctx, new URL(url.href), {
+        timeout: 3500,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', Referer: REFERER },
+        maxRedirects: 0,
+      });
+      renderBlocked = false; // 2xx from Render → /proxy path works
+    } catch (e) {
+      const status = e?.statusCode || e?.status || 0;
+      // Real HTTP answers from the CDN (403/404) = Render-blocked. Network
+      // flakes (status 0) stay on the /proxy path — never flip on inconclusive.
+      renderBlocked = status === 403 || status === 404 || status === 410;
+      if (renderBlocked) this.logger?.info?.(`Netlio extractor: CDN ${url.hostname} blocks Render egress (HTTP ${status}) — shipping DIRECT + proxyHeaders`);
+    }
+
+    if (renderBlocked) {
+      return [{
+        url: new URL(url.href),
+        format: Format.hls,
+        label: this.label,
+        meta: { ...meta, nuvioDirectWithHeaders: true },
+        requestHeaders: { Referer: REFERER, 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
+      }];
+    }
+
     const proxyUrl = new URL('/proxy', ctx.hostUrl);
     proxyUrl.searchParams.set('url', url.href);
     proxyUrl.searchParams.set('referer', REFERER);
