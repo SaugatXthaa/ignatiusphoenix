@@ -52,8 +52,11 @@ async function gotPage(url, referer) {
         headers: { ...hg.getHeaders({ httpVersion: http2 ? '2' : '1' }), 'User-Agent': UA, 'Accept': 'text/html,*/*', ...(referer && { Referer: referer }) },
         timeout: { request: 12000 }, throwHttpErrors: false, http2,
       });
-      if (res.statusCode === 200 && res.body) return res.body;
-      if (res.statusCode === 403) console.log(`[AnimeKai] got(${http2 ? 'h2' : 'h1'}) HTTP 403 for ${url.slice(0, 70)}`);
+      if (res.statusCode === 200 && res.body) {
+        console.log(`[AnimeKai] got(${http2 ? 'h2' : 'h1'}) 200 len=${String(res.body).length} for ${url.slice(0, 70)}`);
+        return res.body;
+      }
+      if (res.statusCode !== 200) console.log(`[AnimeKai] got(${http2 ? 'h2' : 'h1'}) HTTP ${res.statusCode} for ${url.slice(0, 70)}`);
     } catch (e) {
       console.log(`[AnimeKai] got(${http2 ? 'h2' : 'h1'}) failed: ${String(e?.message || e).slice(0, 70)}`);
     }
@@ -182,16 +185,21 @@ export class AnimeKai extends Source {
     console.log(`[AnimeKai] matched "${best.slug}" (score=${bestScore.toFixed(1)})`);
 
     // Step 2: Get anime info (POST_ID, MAL_ID) — curl first (local), then the
-    // got-scraping h2→h1 chain (Render has no curl binary). If curl came back
-    // with a CF challenge/empty shell (no MAL_ID), retry through gotPage so a
-    // locally-challenged curl never silently kills the source.
+    // got-scraping h2→h1 chain. Production note (Task 52): the deployed Render
+    // image HAS curl but animekai.at CF-403s it, so the got h1 transport is
+    // the one that lands. If the fetched shell lacks the MAL_ID var (challenge
+    // or variant page), fall back to the myanimelist.net/anime/<id>/ link that
+    // every watch page carries.
+    const extractMalId = (html) => html?.match(/MAL_ID\s*=\s*["']?(\d+)["']?/)?.[1]
+      || html?.match(/myanimelist\.net\/anime\/(\d+)\//)?.[1]
+      || null;
     const watchUrl = `${BASE}/watch/${best.slug}/`;
     let watchHtml = curlGet(watchUrl, `${BASE}/`);
-    let malId = watchHtml?.match(/MAL_ID\s*=\s*["'](\d+)["']/)?.[1];
+    let malId = extractMalId(watchHtml);
     if (!malId) {
       const gotHtml = await gotPage(watchUrl, `${BASE}/`);
       if (gotHtml) {
-        malId = gotHtml.match(/MAL_ID\s*=\s*["'](\d+)["']/)?.[1];
+        malId = extractMalId(gotHtml);
         if (malId) watchHtml = gotHtml;
       }
     }
@@ -201,7 +209,7 @@ export class AnimeKai extends Source {
     }
 
     if (!malId) {
-      console.log('[AnimeKai] MAL_ID not found on watch page');
+      console.log(`[AnimeKai] MAL_ID not found on watch page (len=${watchHtml.length})`);
       return [];
     }
 
