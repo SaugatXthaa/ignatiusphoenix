@@ -108,6 +108,10 @@ import { PersianStremio } from './PersianStremio.js';
 import { VideasyTo } from './VideasyTo.js';
 // kmmovies.pics — movies/TV with direct playable MKV (up to 4K) via R2 + Pixeldrain
 import { KMMovies } from './KMMovies.js';
+// movielinkbd.net — movies/series/kdrama/animes/cartoons via WP REST API +
+//   KiteCloud host resolved to DIRECT googleusercontent MKV (up to 1080p
+//   upstream, dual/multi embedded audio, Task 58 reverse engineering)
+import { MovieLinkBD } from './MovieLinkBD.js';
 // ─── Orphan sources (complete but never registered — batch add) ───
 // All verified as complete with unique source IDs. Some use Nuvio scrapers,
 // others use got-scraping or this.fetcher directly.
@@ -268,5 +272,9 @@ export const createSources = (fetcher) => {
     // (Orbit 4K multi-audio / Nova muxed), granite+natsuki subtitles, all
     // cards live-validated before shipping (Task 48)
     new Atlantic(fetcher),
+    // movielinkbd.net — movies/series/kdrama/animes/cartoons, direct
+    // googleusercontent MKV via KiteCloud (dual/multi embedded audio,
+    // embedded ESub, up to 1080p upstream — Task 58)
+    new MovieLinkBD(fetcher),
   ].filter(source => !disabledSources.includes(source.id));
 };

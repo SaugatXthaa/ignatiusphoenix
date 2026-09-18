@@ -197,7 +197,8 @@ async function runChecks(child, logFile, bootLines) {
   // Task 38: 70 → 71 — CineFreak revived (cinefreak.net, search-api + cinecloud)
   // Task 48: 71 → 72 — Atlantic (atlantic.st RE: Aphrodite gate + Artemis)
   // Task 50: 72 → 70 — dahmermovies + dahmermovies4k removed (user request)
-  check('boot source count = 70', srcM && srcM[1] === '70', `got ${srcM?.[1]}`);
+  // Task 58: 70 → 71 — MovieLinkBD (movielinkbd.net RE: WP API + KiteCloud)
+  check('boot source count = 71', srcM && srcM[1] === '71', `got ${srcM?.[1]}`);
   // Task 25: 30 → 31 — VidZee extractor registered (ported file existed but
   // was never wired into createExtractors; vidzee source shipped 0 streams).
   // Task 28: 31 → 32 — MixDrop extractor (verhdlink mixdrop mirrors → direct MP4)
@@ -349,6 +350,20 @@ async function runChecks(child, logFile, bootLines) {
   if (amCount >= 2) check('animotvslash Frieren S2E1 >= 2 (Task 28 guard)', true, `count=${amCount}`);
   else if (amGate) console.log(`  [SKIP] animotvslash guard — upstream CF managed-challenge gate active (EXTERNAL, recovery auto-detects via this check) count=${amCount}`);
   else check('animotvslash Frieren S2E1 >= 2 (Task 28 guard)', false, `count=${amCount}`);
+  // movielinkbd guard (Task 58): movielinkbd.net RE — WP API search + KiteCloud
+  // landing/drive chain → direct googleusercontent. I Am Number Four's file
+  // has been alive since 2022 (durable guard anchor, 3 editions). Series side
+  // anchored on Squid Game S1E1 (recent post; upstream file death → the
+  // scraper's honest zero means this guard degrades gracefully to a visible
+  // count, mirroring the dead-GoT-files class documented in Task 58).
+  const mlb = await getJson(`${base}/debug/source/movielinkbd?type=movie&id=tmdb:46529`, 60000);
+  let mlbCount = mlb?.count ?? 0;
+  if (mlbCount < 3) { await new Promise(r => setTimeout(r, 8000)); const mlb2 = await getJson(`${base}/debug/source/movielinkbd?type=movie&id=tmdb:46529`, 60000); mlbCount = Math.max(mlbCount, mlb2?.count ?? 0); }
+  check('movielinkbd I Am Number Four >= 3 (Task 58 guard)', mlbCount >= 3, `count=${mlbCount}`);
+  const mlbTv = await getJson(`${base}/debug/source/movielinkbd?type=series&id=tt10919420:1:1`, 60000);
+  let mlbTvCount = mlbTv?.count ?? 0;
+  if (mlbTvCount < 1) { await new Promise(r => setTimeout(r, 8000)); const mlbTv2 = await getJson(`${base}/debug/source/movielinkbd?type=series&id=tt10919420:1:1`, 60000); mlbTvCount = Math.max(mlbTvCount, mlbTv2?.count ?? 0); }
+  check('movielinkbd Squid Game S1E1 >= 1 (Task 58 guard)', mlbTvCount >= 1, `count=${mlbTvCount}`);
 
   child.kill('SIGTERM');
   await new Promise(r => setTimeout(r, 800));
