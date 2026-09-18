@@ -106,10 +106,14 @@ function fetchBufCurl(url, { headers = {}, timeout = 30000 } = {}) {
     out = execFileSync('curl', args, { maxBuffer: 50 * 1024 * 1024, timeout: timeout + 5000, encoding: 'buffer' });
   } catch (e) {
     if (e.code === 'ENOENT' || /ENOENT|not found/i.test(e.message || '')) {
-      out = fetchBufViaNodeChild(url, finalHeaders, timeout);
-    } else {
-      throw new Error(`curl failed for ${url}: ${(e.message || '').slice(0, 100)}`);
+      // Task 52: curl is ABSENT on Render (node:20-slim). Throw the marker so
+      // fetchBufCurlChain can try got-scraping (browser JA3 — reanime.to's CF
+      // accepts it locally) before the plain-node child (Node JA3 → CF 403).
+      const err = new Error('NO_CURL');
+      err.noCurl = true;
+      throw err;
     }
+    throw new Error(`curl failed for ${url}: ${(e.message || '').slice(0, 100)}`);
   }
   // Parse the trailing status marker that curl appended via -w
   const str = out.toString('utf8');
@@ -117,6 +121,38 @@ function fetchBufCurl(url, { headers = {}, timeout = 30000 } = {}) {
   const status = statusMatch ? parseInt(statusMatch[1]) : 200;
   const body = statusMatch ? out.slice(0, out.length - statusMatch[0].length - 1) : out;
   return { status, headers: {}, body };
+}
+
+// Task 52: production chain for CF-protected hosts — curl (local/dev, browser-
+// like TLS) → got-scraping (browser JA3 via header-generator + custom TLS
+// client; the only browser-fingerprint transport available on Render) →
+// plain-node child (last resort; reanime.to's CF answers it with 403, kept
+// for non-CF hosts and complete-failure logging). Same {status, headers, body}
+// contract as fetchBufCurl.
+async function fetchBufCurlChain(url, { headers = {}, timeout = 30000 } = {}) {
+  try {
+    return fetchBufCurl(url, { headers, timeout });
+  } catch (e) {
+    if (!e.noCurl) throw e;
+  }
+  const finalHeaders = { 'User-Agent': UA, 'Accept': '*/*', ...headers };
+  try {
+    const { gotScraping } = await import('got-scraping');
+    const res = await gotScraping.get(url, {
+      headers: finalHeaders,
+      timeout: { request: timeout },
+      throwHttpErrors: false,
+      followRedirect: true,
+      headerGeneratorOptions: { browsers: ['chrome'], devices: ['desktop'], operatingSystems: ['windows'] },
+    });
+    if (res.statusCode === 200) {
+      return { status: 200, headers: {}, body: Buffer.from(res.body) };
+    }
+    console.log(`[reanime] got-scraping transport: HTTP ${res.statusCode} for ${url.slice(0, 80)}`);
+  } catch (e2) {
+    console.log(`[reanime] got-scraping transport failed: ${String(e2?.message || e2).slice(0, 90)}`);
+  }
+  return fetchBufViaNodeChild(url, finalHeaders, timeout);
 }
 
 // ─── HTTP: Node https (for flixcloud.cc, TMDB, fetch8, vault-95 — no CF JA3) ──
@@ -147,7 +183,7 @@ async function fetchJson(url, opts = {}, useCurl = true) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const r = useCurl
-        ? await fetchBufCurl(url, { ...opts, headers: { Accept: 'application/json', ...(opts.headers || {}) } })
+        ? await fetchBufCurlChain(url, { ...opts, headers: { Accept: 'application/json', ...(opts.headers || {}) } })
         : await fetchBufNode(url, { ...opts, headers: { Accept: 'application/json', ...(opts.headers || {}) } });
       if (r.status !== 200) throw new Error(`HTTP ${r.status} from ${url}`);
       return JSON.parse(r.body.toString('utf8'));
@@ -163,7 +199,7 @@ async function fetchText(url, opts = {}, useCurl = true) {
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const r = useCurl ? await fetchBufCurl(url, opts) : await fetchBufNode(url, opts);
+      const r = useCurl ? await fetchBufCurlChain(url, opts) : await fetchBufNode(url, opts);
       if (r.status !== 200) throw new Error(`HTTP ${r.status} from ${url}`);
       return r.body.toString('utf8');
     } catch (e) {

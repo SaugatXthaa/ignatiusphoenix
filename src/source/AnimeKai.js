@@ -40,6 +40,27 @@ function curlGet(url, referer) {
   } catch { return null; }
 }
 
+// Task 52: got-scraping transport with h2→h1 fallback. On Render: curl is
+// ABSENT (node:20-slim) and a single h2 attempt dies (GOAWAY class — Task 51
+// evidence). h1 keeps the same browser JA3, which is what animekai.at's
+// passive CF actually gates on (plain node TLS 403s even locally; curl and
+// got-scraping pass).
+async function gotPage(url, referer) {
+  for (const http2 of [true, false]) {
+    try {
+      const res = await gotScraping.get(url, {
+        headers: { ...hg.getHeaders({ httpVersion: http2 ? '2' : '1' }), 'User-Agent': UA, 'Accept': 'text/html,*/*', ...(referer && { Referer: referer }) },
+        timeout: { request: 12000 }, throwHttpErrors: false, http2,
+      });
+      if (res.statusCode === 200 && res.body) return res.body;
+      if (res.statusCode === 403) console.log(`[AnimeKai] got(${http2 ? 'h2' : 'h1'}) HTTP 403 for ${url.slice(0, 70)}`);
+    } catch (e) {
+      console.log(`[AnimeKai] got(${http2 ? 'h2' : 'h1'}) failed: ${String(e?.message || e).slice(0, 70)}`);
+    }
+  }
+  return null;
+}
+
 function deobfuscate(p) {
   const padded = p + '='.repeat((4 - (p.length % 4)) % 4);
   const raw = Buffer.from(padded, 'base64');
@@ -53,12 +74,9 @@ function deobfuscate(p) {
 // Fetch stream URL from zokoanime.video
 async function getStream(malId, episode, type) {
   const streamUrl = `${ZOKO}/stream/mal/${malId}/${episode}/${type}`;
-  const res = await gotScraping.get(streamUrl, {
-    headers: { ...hg.getHeaders({ httpVersion: '2' }), 'User-Agent': UA, 'Accept': 'text/html,*/*', 'Referer': `${BASE}/` },
-    timeout: { request: 12000 }, throwHttpErrors: false, http2: true,
-  });
-  if (res.statusCode !== 200) return null;
-  const m = res.body.match(/window\.__P="([^"]+)"/);
+  const html = await gotPage(streamUrl, `${BASE}/`);
+  if (!html) return null;
+  const m = html.match(/window\.__P="([^"]+)"/);
   if (!m) return null;
   try { return deobfuscate(m[1]); } catch { return null; }
 }
@@ -87,15 +105,9 @@ function parseWatchLinks(html) {
 }
 
 // got-scraping fallback when plain curl comes back empty (CF TLS fingerprinting)
+// — now with h2→h1 inside gotPage (Task 52).
 async function gotSearch(query) {
-  try {
-    const res = await gotScraping.get(`${BASE}/?s=${encodeURIComponent(query)}`, {
-      headers: { ...hg.getHeaders({ httpVersion: '2' }), 'User-Agent': UA, 'Accept': 'text/html,*/*' },
-      timeout: { request: 12000 }, throwHttpErrors: false, http2: true,
-    });
-    if (res.statusCode !== 200) return null;
-    return res.body;
-  } catch { return null; }
+  return gotPage(`${BASE}/?s=${encodeURIComponent(query)}`);
 }
 
 export class AnimeKai extends Source {
@@ -169,15 +181,25 @@ export class AnimeKai extends Source {
     }
     console.log(`[AnimeKai] matched "${best.slug}" (score=${bestScore.toFixed(1)})`);
 
-    // Step 2: Get anime info (POST_ID, MAL_ID) via curl
+    // Step 2: Get anime info (POST_ID, MAL_ID) — curl first (local), then the
+    // got-scraping h2→h1 chain (Render has no curl binary). If curl came back
+    // with a CF challenge/empty shell (no MAL_ID), retry through gotPage so a
+    // locally-challenged curl never silently kills the source.
     const watchUrl = `${BASE}/watch/${best.slug}/`;
-    const watchHtml = curlGet(watchUrl, `${BASE}/`);
+    let watchHtml = curlGet(watchUrl, `${BASE}/`);
+    let malId = watchHtml?.match(/MAL_ID\s*=\s*["'](\d+)["']/)?.[1];
+    if (!malId) {
+      const gotHtml = await gotPage(watchUrl, `${BASE}/`);
+      if (gotHtml) {
+        malId = gotHtml.match(/MAL_ID\s*=\s*["'](\d+)["']/)?.[1];
+        if (malId) watchHtml = gotHtml;
+      }
+    }
     if (!watchHtml) {
       console.log('[AnimeKai] watch page fetch failed');
       return [];
     }
 
-    const malId = watchHtml.match(/MAL_ID\s*=\s*["'](\d+)["']/)?.[1];
     if (!malId) {
       console.log('[AnimeKai] MAL_ID not found on watch page');
       return [];

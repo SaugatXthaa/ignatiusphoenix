@@ -17,7 +17,7 @@ import { createRequire } from 'module';
 import { CountryCode } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
-import { buildStreamResults } from './nuvioHelpers.js';
+import { buildStreamResults, withRetryOnEmpty } from './nuvioHelpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_PATH = path.join(__dirname, '..', 'nuvio', 'persianstremio.cjs');
@@ -66,7 +66,14 @@ export class PersianStremio extends Source {
     let streams;
     try {
       streams = await Promise.race([
-        mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null),
+        // Task 52: the vercel upstream flaps (intermittent 503 / cold-boot
+        // timeouts — measured both directions). One bounded retry-on-empty
+        // (same pattern as StellarRip) doubles the success odds during flap
+        // windows without extending the 25s race.
+        withRetryOnEmpty(
+          () => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null),
+          { maxTotalMs: 14000, tag: 'persianstremio' }
+        ),
         new Promise(r => setTimeout(() => r(null), 25000)),
       ]);
     } catch (e) {

@@ -36,21 +36,56 @@ function deobfuscate(p) {
   return JSON.parse(out.toString('utf-8'));
 }
 
-async function fetchText(url, referer) {
-  const res = await gotScraping.get(url, {
-    headers: { ...hg.getHeaders({ httpVersion: '2' }), 'User-Agent': UA, 'Accept': 'text/html,*/*', ...(referer && { Referer: referer }) },
-    timeout: { request: 12000 }, throwHttpErrors: false, http2: true,
-  });
-  return res.statusCode === 200 ? res.body : null;
+// Task 52: transport strategy — gotScraping h2 dies in-process on Render
+// (the Task 51 pantyflix signature: instant fail while rawfetch from the SAME
+// instance answers 200). hianime.at verified 200 from Render's runtime via
+// rawfetch, so the addon Fetcher (https.request, h1, family:4 — the transport
+// every source already uses on Render) is tried FIRST; gotScraping stays as
+// the local/dev fallback. Silent nulls here meant a fully silent zero-stream
+// source (no logs, ~400ms) — the transport error is now logged once per call.
+async function fetchText(fetcher, ctx, url, referer) {
+  try {
+    const body = await fetcher.text(ctx, new URL(url), {
+      timeout: 12000,
+      headers: { 'User-Agent': UA, Accept: 'text/html,*/*', ...(referer && { Referer: referer }) },
+    });
+    if (body && typeof body === 'string' && body.length > 0) return body;
+  } catch (e) {
+    console.log(`[HiAnime] fetcher text failed (${String(e?.message || e).slice(0, 80)}) — trying gotScraping`);
+  }
+  try {
+    const res = await gotScraping.get(url, {
+      headers: { ...hg.getHeaders({ httpVersion: '1' }), 'User-Agent': UA, 'Accept': 'text/html,*/*', ...(referer && { Referer: referer }) },
+      timeout: { request: 12000 }, throwHttpErrors: false, http2: false,
+    });
+    return res.statusCode === 200 ? res.body : null;
+  } catch (e) {
+    console.log(`[HiAnime] gotScraping text failed: ${String(e?.message || e).slice(0, 80)}`);
+    return null;
+  }
 }
 
-async function fetchJson(url, referer) {
-  const res = await gotScraping.get(url, {
-    headers: { ...hg.getHeaders({ httpVersion: '2' }), 'User-Agent': UA, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...(referer && { Referer: referer }) },
-    timeout: { request: 12000 }, throwHttpErrors: false, http2: true,
-  });
-  if (res.statusCode !== 200) return null;
-  try { return JSON.parse(res.body); } catch { return null; }
+async function fetchJson(fetcher, ctx, url, referer) {
+  try {
+    const body = await fetcher.text(ctx, new URL(url), {
+      timeout: 12000,
+      headers: { 'User-Agent': UA, Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...(referer && { Referer: referer }) },
+    });
+    if (body) { try { return JSON.parse(body); } catch { /* fall through */ } }
+  } catch (e) {
+    console.log(`[HiAnime] fetcher json failed (${String(e?.message || e).slice(0, 80)}) — trying gotScraping`);
+  }
+  try {
+    const res = await gotScraping.get(url, {
+      headers: { ...hg.getHeaders({ httpVersion: '1' }), 'User-Agent': UA, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...(referer && { Referer: referer }) },
+      timeout: { request: 12000 }, throwHttpErrors: false, http2: false,
+    });
+    if (res.statusCode !== 200) return null;
+    return JSON.parse(res.body);
+  } catch (e) {
+    console.log(`[HiAnime] gotScraping json failed: ${String(e?.message || e).slice(0, 80)}`);
+    return null;
+  }
 }
 
 export class HiAnime extends Source {
@@ -72,8 +107,8 @@ export class HiAnime extends Source {
 
     // Step 1: Search by title
     const searchUrl = `${BASE}/search?keyword=${encodeURIComponent(name)}`;
-    const searchHtml = await fetchText(searchUrl, `${BASE}/`);
-    if (!searchHtml) return [];
+    const searchHtml = await fetchText(this.fetcher, ctx, searchUrl, `${BASE}/`);
+    if (!searchHtml) { console.log('[HiAnime] search page unavailable'); return []; }
 
     const $ = cheerio.load(searchHtml);
     const results = [];
@@ -118,7 +153,7 @@ export class HiAnime extends Source {
     if (!bestAnime || bestScore < 60) return [];
 
     // Step 2: Get episodes
-    const episodesData = await fetchJson(`${BASE}/api/theme/episode/list/${bestAnime.id}`, `${BASE}/watch/`);
+    const episodesData = await fetchJson(this.fetcher, ctx, `${BASE}/api/theme/episode/list/${bestAnime.id}`, `${BASE}/watch/`);
     if (!episodesData?.html) return [];
 
     const epHtml = episodesData.html;
@@ -142,7 +177,7 @@ export class HiAnime extends Source {
     if (!ep) return [];
 
     // Step 4: Get servers for episode (both sub and dub)
-    const serversData = await fetchJson(`${BASE}/api/theme/episode/servers?episodeId=${ep.id}`, `${BASE}/watch/`);
+    const serversData = await fetchJson(this.fetcher, ctx, `${BASE}/api/theme/episode/servers?episodeId=${ep.id}`, `${BASE}/watch/`);
     if (!serversData?.html) return [];
 
     const $srv = cheerio.load(serversData.html);
@@ -166,7 +201,7 @@ export class HiAnime extends Source {
       // Limit to first 2 servers per category to avoid timeout
       for (const server of categoryServers.slice(0, 2)) {
         try {
-          const streamHtml = await fetchText(server.url, `${BASE}/`);
+          const streamHtml = await fetchText(this.fetcher, ctx, server.url, `${BASE}/`);
           if (!streamHtml) continue;
 
           const m = streamHtml.match(/window\.__P="([^"]+)"/);

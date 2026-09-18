@@ -92,7 +92,13 @@ export class StellarRip extends Source {
     const mod = getScraperModule();
     if (!mod || typeof mod.getStreams !== 'function') return [];
 
-    const stellarType = tmdbId.season ? 'series' : 'movie';
+    // Task 52 CONTRACT FIX: stellarrip.cjs's getStreams gates TV on
+    // `type !== 'tv'` (its own doc: getStreams('1396', 'tv', 1, 1)). Passing
+    // 'series' silently routed EVERY series resolve down the movie path —
+    // wrong TMDB lookup (AoT 1429 → "25th Hour (2002)") AND the movie embed
+    // URL /en/watch/embed/movie/<id> instead of /en/watch/embed/tv/<id>-<s>-<e>
+    // → 0 streams for all series since the source landed.
+    const stellarType = tmdbId.season ? 'tv' : 'movie';
     let rawStreams;
     try {
       rawStreams = await Promise.race([
