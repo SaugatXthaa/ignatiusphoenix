@@ -182,6 +182,36 @@ function fetchBufNode(url, { headers = {}, timeout = 30000 } = {}) {
   });
 }
 
+// Task 52: node-TLS 403 escalation — flixcloud.cc (and its CDN hosts) answer
+// plain Node TLS with CF 403 from Render's range while accepting it from
+// residential networks (local chain verified end-to-end). got-scraping's
+// Chrome JA3 is the remaining transport (reanime.to's identical gate was
+// beaten by exactly this escalation). One got attempt per 403; the node
+// verdict is kept on got failure so behavior never regresses.
+async function fetchBufNodeChain(url, opts = {}) {
+  const r = await fetchBufNode(url, opts);
+  if (r.status !== 403) return r;
+  console.log(`[reanime] node transport: HTTP 403 for ${url.slice(0, 70)} — trying got-scraping`);
+  try {
+    const { gotScraping } = await import('got-scraping');
+    const res = await gotScraping.get(url, {
+      headers: { 'User-Agent': UA_SIMPLE, 'Accept': '*/*', ...(opts.headers || {}) },
+      timeout: { request: opts.timeout || 30000 },
+      throwHttpErrors: false,
+      followRedirect: true,
+      responseType: 'buffer',
+      headerGeneratorOptions: { browsers: ['chrome'], devices: ['desktop'], operatingSystems: ['windows'] },
+    });
+    if (res.statusCode === 200) {
+      return { status: 200, headers: res.headers || {}, body: Buffer.from(res.body || []) };
+    }
+    console.log(`[reanime] got transport: HTTP ${res.statusCode} for ${url.slice(0, 70)}`);
+  } catch (e) {
+    console.log(`[reanime] got transport failed: ${String(e?.message || e).slice(0, 90)}`);
+  }
+  return r;
+}
+
 // ─── Fetch helpers with retry ────────────────────────────────────────────────
 async function fetchJson(url, opts = {}, useCurl = true) {
   let lastErr;
@@ -189,7 +219,7 @@ async function fetchJson(url, opts = {}, useCurl = true) {
     try {
       const r = useCurl
         ? await fetchBufCurlChain(url, { ...opts, headers: { Accept: 'application/json', ...(opts.headers || {}) } })
-        : await fetchBufNode(url, { ...opts, headers: { Accept: 'application/json', ...(opts.headers || {}) } });
+        : await fetchBufNodeChain(url, { ...opts, headers: { Accept: 'application/json', ...(opts.headers || {}) } });
       if (r.status !== 200) throw new Error(`HTTP ${r.status} from ${url}`);
       return JSON.parse(r.body.toString('utf8'));
     } catch (e) {
@@ -204,7 +234,7 @@ async function fetchText(url, opts = {}, useCurl = true) {
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const r = useCurl ? await fetchBufCurlChain(url, opts) : await fetchBufNode(url, opts);
+      const r = useCurl ? await fetchBufCurlChain(url, opts) : await fetchBufNodeChain(url, opts);
       if (r.status !== 200) throw new Error(`HTTP ${r.status} from ${url}`);
       return r.body.toString('utf8');
     } catch (e) {
@@ -357,7 +387,7 @@ async function getWasm(wPayloadB64) {
 // Returns { masterUrl, xorKey (32-byte Buffer), videoId, videoTitle, accessId }.
 async function resolveFlixcloud(accessId) {
   console.log(`[ReAnime] FlixCloud: fetching /e/${accessId}?v=2`);
-  const r = await fetchBufNode(`${FLIXCLOUD}/e/${accessId}?v=2`);
+  const r = await fetchBufNodeChain(`${FLIXCLOUD}/e/${accessId}?v=2`);
   if (r.status !== 200) throw new Error(`flixcloud HTTP ${r.status}`);
   const html = r.body.toString('utf8');
 
@@ -390,7 +420,7 @@ async function resolveFlixcloud(accessId) {
 
   // Fetch the per-token m3u8 manifest keys.
   console.log(`[ReAnime] FlixCloud: fetching /api/m3u8/${tokenValue}`);
-  const m3u8Resp = await fetchBufNode(`${FLIXCLOUD}/api/m3u8/${tokenValue}`, {
+  const m3u8Resp = await fetchBufNodeChain(`${FLIXCLOUD}/api/m3u8/${tokenValue}`, {
     headers: { Accept: 'application/json, text/plain, */*' },
   });
   if (m3u8Resp.status !== 200) throw new Error(`/api/m3u8 HTTP ${m3u8Resp.status}`);
@@ -602,7 +632,7 @@ async function startProxy(port = 7654) {
       }
 
       // Fetch the upstream URL with FlixCloud Referer.
-      const r = await fetchBufNode(targetUrl, {
+      const r = await fetchBufNodeChain(targetUrl, {
         headers: {
           'Referer': 'https://flixcloud.cc/',
           'Origin': 'https://flixcloud.cc',
