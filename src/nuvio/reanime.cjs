@@ -125,13 +125,17 @@ function fetchBufCurl(url, { headers = {}, timeout = 30000 } = {}) {
 
 // Task 52: production chain for CF-protected hosts — curl (local/dev, browser-
 // like TLS) → got-scraping (browser JA3 via header-generator + custom TLS
-// client; the only browser-fingerprint transport available on Render) →
-// plain-node child (last resort; reanime.to's CF answers it with 403, kept
-// for non-CF hosts and complete-failure logging). Same {status, headers, body}
-// contract as fetchBufCurl.
+// client) → plain-node child (last resort). Triggered by BOTH no-curl (Render
+// images without the binary) AND curl-403 (CF IP/JA3 gate — production
+// evidence 2026-09-18: the deployed image HAS curl and reanime.to 403s it
+// from Render's range; undici rawfetch 403s too; got-scraping is the only
+// untried transport, so a 403 now falls through to it before giving up).
 async function fetchBufCurlChain(url, { headers = {}, timeout = 30000 } = {}) {
+  let curlResult = null;
   try {
-    return fetchBufCurl(url, { headers, timeout });
+    curlResult = fetchBufCurl(url, { headers, timeout });
+    if (curlResult.status !== 403) return curlResult;
+    console.log(`[reanime] curl transport: HTTP 403 for ${url.slice(0, 70)} — trying got-scraping`);
   } catch (e) {
     if (!e.noCurl) throw e;
   }
@@ -148,10 +152,11 @@ async function fetchBufCurlChain(url, { headers = {}, timeout = 30000 } = {}) {
     if (res.statusCode === 200) {
       return { status: 200, headers: {}, body: Buffer.from(res.body) };
     }
-    console.log(`[reanime] got-scraping transport: HTTP ${res.statusCode} for ${url.slice(0, 80)}`);
+    console.log(`[reanime] got-scraping transport: HTTP ${res.statusCode} for ${url.slice(0, 70)}`);
   } catch (e2) {
     console.log(`[reanime] got-scraping transport failed: ${String(e2?.message || e2).slice(0, 90)}`);
   }
+  if (curlResult) return curlResult; // keep the original 403 verdict for the caller
   return fetchBufViaNodeChild(url, finalHeaders, timeout);
 }
 
