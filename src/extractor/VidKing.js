@@ -310,7 +310,9 @@ export class VidKing extends Extractor {
         //     Wrapping these with the vidking referer (old behavior) shipped
         //     guaranteed-403 cards — the user's "stuck on loading screen".
         //     Ship vimeos DIRECT, unwrapped, like the site's own player does.
-        const isVimeosHost = /^vimeos\.(zip|net)$/i.test(streamUrl.hostname);
+        // fix3: suffix match (no leading anchor) — hosts arrive as
+        // s9.vimeos.net / p4.vimeos.zip (subdomain rotates per CDN node).
+        const isVimeosHost = /vimeos\.(zip|net)$/i.test(streamUrl.hostname);
         const cardUrl = isVimeosHost
           ? streamUrl
           : (() => {

@@ -386,6 +386,34 @@ app.get('/proxy', async (req, res) => {
         }
         if (!m3u8Res) throw lastErr;
 
+        // Task 54 fix3 — FINGERPRINT FALLBACK: some CDN hosts in the vidking
+        // family reject got-scraping's browser TLS/header fingerprint with 404
+        // while serving plain undici fetch. Verified LIVE on
+        // i-cdn-*.salsa436jam.com (hdmovie/cineby family): same signed URL —
+        // got-scraping 404, plain fetch 200 '#EXTM3U'. Before declaring
+        // "Upstream error: 404" (which shipped dead-looking cards that were
+        // actually ALIVE), retry once with plain global fetch and use it when
+        // it succeeds. Only reachable on the previously-broken path — zero
+        // behavior change for healthy upstreams.
+        if (m3u8Res.statusCode >= 400) {
+          const origStatus = m3u8Res.statusCode;
+          try {
+            const alt = await fetch(targetUrl.href, {
+              headers: proxyHeaders,
+              redirect: 'follow',
+              signal: AbortSignal.timeout(15000),
+            });
+            if (alt.ok) {
+              const text = await alt.text();
+              m3u8Res = {
+                statusCode: alt.status,
+                headers: { get: (k) => alt.headers.get(k) },
+                body: text,
+              };
+              logger.log(`[${ADDON_NAME}] proxy fingerprint-fallback OK for ${targetUrl.hostname} (got-scraping got ${origStatus})`);
+            }
+          } catch { /* keep the got-scraping failure */ }
+        }
         if (m3u8Res.statusCode >= 400) {
           logger.error(`[${ADDON_NAME}] proxy upstream ${m3u8Res.statusCode} for ${targetUrl.hostname}`);
           return res.status(m3u8Res.statusCode).send(`Upstream error: ${m3u8Res.statusCode}`);
@@ -1131,7 +1159,7 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
-    version: 'task54-playback-priority-gate',
+    version: 'task54-fix3-fingerprint-fallback',
     startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,
