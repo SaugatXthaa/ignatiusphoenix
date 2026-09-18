@@ -1,20 +1,73 @@
 // src/source/PrimeShows.js
 // primeshows.gd — TMDB-based streaming site with multiple embed servers
-// Watch page: /watch/movie/{tmdb_id} or /watch/tv/{tmdb_id}/season/{s}/episode/{e}?server={name}
-// Each server returns a different embed iframe URL (vidsrc.mov, vidsrc.fyi, etc.)
+//
+// Task 56 — SITE MIGRATION REVERSAL (production zero-streams fix):
+//   The watch page moved from per-server URLs (`?server=key` → one playerFrame
+//   iframe per fetch) to a JS-cookie-gated SPA-style page:
+//     1. Any watch-page GET without cookies returns a 676-byte interstitial
+//        that runs `document.cookie = "hv=1; ..."` and location.replace()s
+//        itself. Scrapers without the cookie see NO iframe → 0 streams
+//        (verified: production /debug/source 0 cards; plain curl 676b).
+//     2. With `Cookie: hv=1` the real page loads (62KB) and carries a
+//        client-side SRV_MAP JS object with ALL server embed URLs
+//        (vidsrc.mov, vidsrc.fyi, vidrock, vidnest, vidking, vidlink,
+//        vidfast, vidup, videasy, 111movies, 2embed, multiembed, superflix,
+//        peachify) — one fetch now covers every server the site offers.
+//   TV SRV_MAP paths use the site's own flattened season convention
+//   (`/tv/{id}/0/{ep}` — season 0 is what the site itself embeds and links
+//   from its episode buttons; kept verbatim).
+//
+// Extractor routing for the emitted embeds:
+//   vidsrc.mov / vidsrc.fyi → VidSrc extractor (host regex /vidsrc|vsrc/)
+//   vidnest.fun / player.videasy.net → NuvioExtractor EMBED_PAGE_HOST_PATTERN
+//   vidking.net → VidKing extractor
+//   2embed.cc / multiembed.mov → EmbedResolver fallback
+//   remaining hosts (vidrock/vidlink/vidfast/vidup/111movies/superflix/
+//   peachify) have no dedicated extractor: for MOVIES meta.vidking routes
+//   them through the VidKing speedracelight API (TMDB-based — needs no JS);
+//   for SERIES the registry returns [] for them (no card, no dead HTML).
 
 import { CountryCode } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
 
-const SERVERS = [
-  { key: 'vidsrcto', label: 'VidSrc' },
-  { key: 'vidsrcfyi', label: 'VidSrc.fyi' },
-  { key: 'vidnest', label: 'Vidnest' },
-  { key: 'vidlink', label: 'VidLink' },
-  { key: 'vidfast', label: 'VidFast' },
-  { key: '2embed', label: '2Embed' },
-];
+// Server-key → card label (covers every key observed in the live SRV_MAP).
+const SERVER_LABELS = {
+  vidsrcto: 'VidSrc',
+  vidsrcfyi: 'VidSrc.fyi',
+  vidrock: 'VidRock',
+  vidnest: 'Vidnest',
+  vidking: 'VidKing',
+  vidlink: 'VidLink',
+  vidfast: 'VidFast',
+  vidup: 'VidUp',
+  videasy: 'VidEasy',
+  '111movies': '111Movies',
+  '2embed': '2Embed',
+  multiembed: 'MultiEmbed',
+  superflix: 'SuperFlix',
+  peachify: 'Peachify',
+};
+
+// Fallback server keys (old `?server=` scheme) used only when the page
+// carries no SRV_MAP — keeps the pre-migration behavior as a safety net.
+const LEGACY_SERVERS = ['vidsrcto', 'vidsrcfyi', 'vidnest', 'vidlink', 'vidfast', '2embed'];
+
+const BROWSER_HEADERS = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' };
+
+// The interstitial's fingerprint (tiny body, no iframe, sets the cookie).
+const isInterstitial = (html) =>
+  typeof html === 'string' &&
+  html.length < 4000 &&
+  /document\.cookie\s*=/.test(html) &&
+  !/playerFrame/.test(html);
+
+// Parse `document.cookie = "NAME=VAL; ..."` out of the interstitial so a
+// future cookie-name rotation self-heals instead of zeroing the source.
+const interstitialCookie = (html) => {
+  const m = html.match(/document\.cookie\s*=\s*"([A-Za-z0-9_]+)=([^";]+)/);
+  return m ? `${m[1]}=${m[2]}` : 'hv=1';
+};
 
 export class PrimeShows extends Source {
   constructor(fetcher) {
@@ -27,6 +80,23 @@ export class PrimeShows extends Source {
     this.fetcher = fetcher;
   }
 
+  async fetchWatchPage(ctx, watchUrl) {
+    const url = new URL(watchUrl, this.baseUrl);
+    let html = await this.fetcher.text(ctx, url, {
+      headers: { ...BROWSER_HEADERS, Cookie: 'hv=1' },
+      timeout: 8000,
+    });
+    if (isInterstitial(html)) {
+      // Cookie gate rotated or pre-set cookie rejected — parse what the page
+      // wants and retry once.
+      html = await this.fetcher.text(ctx, url, {
+        headers: { ...BROWSER_HEADERS, Cookie: interstitialCookie(html) },
+        timeout: 8000,
+      });
+    }
+    return html;
+  }
+
   async handleInternal(ctx, _type, id) {
     const tmdbId = await getTmdbId(this.fetcher, ctx, id);
     const [name, year] = await getTmdbNameAndYear(this.fetcher, ctx, tmdbId);
@@ -34,7 +104,8 @@ export class PrimeShows extends Source {
     const mediaType = tmdbId.season ? 'tv' : 'movie';
     const title = name + (tmdbId.season ? ` ${TmdbId.formatSeasonAndEpisode(tmdbId)}` : ` (${year})`);
 
-    // Build watch URLs for each server
+    // The site's own watch path (TV flattened-season form is generated by the
+    // site itself; it rewrites /season/S/episode/E pages to /tv/{id}/0/{ep}).
     const watchPath = mediaType === 'tv'
       ? `/watch/tv/${tmdbId.id}/season/${tmdbId.season || 1}/episode/${tmdbId.episode || 1}`
       : `/watch/movie/${tmdbId.id}`;
@@ -42,35 +113,58 @@ export class PrimeShows extends Source {
     const results = [];
     const vidkingMeta = tmdbId.season ? null : { name, year, tmdbId: tmdbId.id };
 
-    // Fetch all servers in parallel for speed
-    const serverResults = await Promise.allSettled(
-      SERVERS.map(async (server) => {
-        const watchUrl = new URL(`${watchPath}?server=${server.key}`, this.baseUrl);
-        const html = await this.fetcher.text(ctx, watchUrl, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-          timeout: 8000,
-        });
-        const iframeMatch = html.match(/<iframe[^>]*id="playerFrame"[^>]*src="([^"]+)"/i);
-        if (iframeMatch && iframeMatch[1]) {
-          return { server, url: new URL(iframeMatch[1].replace(/&amp;/g, '&')) };
-        }
-        return null;
-      })
-    );
+    const html = await this.fetchWatchPage(ctx, watchPath);
 
-    for (const r of serverResults) {
-      if (r.status === 'fulfilled' && r.value) {
-        results.push({
-          url: r.value.url,
-          meta: {
-            countryCodes: [CountryCode.multi],
-            title: `${title} (${r.value.server.label})`,
-            sourceId: this.id,
-            sourceLabel: this.label,
-            ...(vidkingMeta && { vidking: vidkingMeta }),
-          },
-        });
+    // Collect {key, url} pairs — SRV_MAP first (single fetch, all servers).
+    const servers = [];
+    const mapMatch = html.match(/SRV_MAP\s*=\s*(\{[^}]+\})/);
+    if (mapMatch) {
+      try {
+        const map = JSON.parse(mapMatch[1].replace(/\\u0026/g, '&').replace(/&amp;/g, '&'));
+        for (const [key, href] of Object.entries(map)) {
+          if (typeof href === 'string' && /^https?:\/\//.test(href)) {
+            servers.push({ key, label: SERVER_LABELS[key] || key, url: new URL(href) });
+          }
+        }
+      } catch {}
+    }
+
+    // Legacy fallback: per-server playerFrame scrape (pre-migration scheme).
+    if (!servers.length) {
+      const legacyResults = await Promise.allSettled(
+        LEGACY_SERVERS.map(async (key) => {
+          const html2 = await this.fetchWatchPage(ctx, `${watchPath}?server=${key}`);
+          const m = html2.match(/<iframe[^>]*id="playerFrame"[^>]*src="([^"]+)"/i);
+          return m?.[1]
+            ? { key, label: SERVER_LABELS[key] || key, url: new URL(m[1].replace(/&amp;/g, '&')) }
+            : null;
+        })
+      );
+      for (const r of legacyResults) {
+        if (r.status === 'fulfilled' && r.value) servers.push(r.value);
       }
+    }
+
+    // Default-server fallback: real page loaded but no map and no per-server
+    // iframes matched — still ship the page's own playerFrame if present.
+    if (!servers.length) {
+      const m = html.match(/<iframe[^>]*id="playerFrame"[^>]*src="([^"]+)"/i);
+      if (m?.[1]) {
+        servers.push({ key: 'vidsrcto', label: SERVER_LABELS.vidsrcto, url: new URL(m[1].replace(/&amp;/g, '&')) });
+      }
+    }
+
+    for (const server of servers) {
+      results.push({
+        url: server.url,
+        meta: {
+          countryCodes: [CountryCode.multi],
+          title: `${title} (${server.label})`,
+          sourceId: this.id,
+          sourceLabel: this.label,
+          ...(vidkingMeta && { vidking: vidkingMeta }),
+        },
+      });
     }
 
     return results;
