@@ -37,25 +37,56 @@ async function fetchText(url, options = {}) {
     // whole multi-hop chain with no retry). HTTP-status errors keep caller
     // semantics (404 = no match, 403 = gated). Both attempts share the one
     // AbortController budget so the total stays bounded.
+    //
+    // Task 57 (2026-09-19): BARE UNDICI FETCH IS THE MERGED-RESOLVE KILLER.
+    // Production evidence (/debug/stream Inception): 4khdhub + fourkhdhubone
+    // TIMEOUT at the flat 35s cap on EVERY merged resolve while isolated
+    // /debug/source returns 6 cards @0.8s. Root cause = the Task 55
+    // DNS-stall class: during a 15-concurrent-source resolve, bare undici
+    // fetch stalls in DNS past AbortSignal deadlines (abort does not cancel
+    // in-flight lookups; the instance's IPv6/AAAA path makes it worse).
+    // Fix (atlantic.cjs Task 55 pattern): when the caller provides the addon
+    // Fetcher (https.request, family:4 forced, node-level timeout, got-scraping
+    // CF fallback) all GETs route through it. Bare fetch remains the fallback
+    // (local tooling / no-fetcher callers).
+    const doFetch = async () => {
+      if (options.fetcher && options.ctx) {
+        try {
+          const data = await options.fetcher.text(options.ctx, new URL(url), {
+            headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*', ...options.headers },
+            timeout: options.timeout || 15000,
+          });
+          return { ok: true, status: 200, text: data };
+        } catch (e) {
+          // Normalize Fetcher errors to bare-fetch semantics so every caller's
+          // existing status handling (404 = no match, 403 = gated) is intact.
+          const status = e?.statusCode || e?.status || 0;
+          if (status >= 400) return { ok: false, status, text: '' };
+          throw e; // network-level → retry below
+        }
+      }
+      const r = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*', ...options.headers },
+      });
+      return { ok: r.ok, status: r.status, text: r.ok ? await r.text() : '' };
+    };
     let r;
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) await new Promise(res => setTimeout(res, 400));
       try {
-        r = await fetch(url, {
-          signal: controller.signal,
-          headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*', ...options.headers },
-        });
+        r = await doFetch();
         break;
       } catch (e) {
         if (attempt === 1) throw e;
       }
     }
     if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + url);
-    return await r.text();
+    return r.text;
   } finally { clearTimeout(timer); }
 }
 
-async function getTMDBInfo(tmdbId, mediaType) {
+async function getTMDBInfo(tmdbId, mediaType, fetcher, ctx) {
   const type = mediaType === 'tv' ? 'tv' : 'movie';
   try {
     // Task 49: this fetch previously had NO timeout — an unbounded TMDB call
@@ -65,13 +96,14 @@ async function getTMDBInfo(tmdbId, mediaType) {
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) await new Promise(res => setTimeout(res, 400));
       try {
-        r = await fetch('https://api.themoviedb.org/3/' + type + '/' + tmdbId + '?api_key=' + TMDB_API_KEY, { signal: AbortSignal.timeout(8000) });
+        r = await fetchText('https://api.themoviedb.org/3/' + type + '/' + tmdbId + '?api_key=' + TMDB_API_KEY, { timeout: 8000, fetcher, ctx });
         break;
       } catch (e) {
         if (attempt === 1) throw e;
       }
     }
-    const d = await r.json();
+    // Task 57: fetchText returns the BODY STRING (not a Response) — parse it.
+    const d = JSON.parse(r);
     return {
       title: type === 'tv' ? d.name : d.title,
       year: ((d.first_air_date || d.release_date || '') + '').split('-')[0],
@@ -87,10 +119,10 @@ function normalize(s) {
 }
 
 // Search 4khdhub.one via HTML search page
-async function search(title) {
+async function search(title, fetcher, ctx) {
   const searchUrl = BASE_URL + '/?s=' + encodeURIComponent(title);
   console.log('[4KHDHubOne] Searching: ' + searchUrl);
-  const html = await fetchText(searchUrl);
+  const html = await fetchText(searchUrl, { fetcher, ctx });
   const $ = cheerio.load(html);
   const results = [];
   const nameNorm = normalize(title);
@@ -140,7 +172,7 @@ async function search(title) {
 //   This prevents "Moana 2026" from matching the 2016 Moana page.
 //
 //   When TMDB has no year, we fall back to title-score-only matching.
-async function findBestMatch(results, tmdbTitle, tmdbYear, isMovie) {
+async function findBestMatch(results, tmdbTitle, tmdbYear, isMovie, fetcher, ctx) {
   if (!results.length) return null;
   const nameNorm = normalize(tmdbTitle);
   const yearNum = tmdbYear ? parseInt(String(tmdbYear), 10) : null;
@@ -156,7 +188,7 @@ async function findBestMatch(results, tmdbTitle, tmdbYear, isMovie) {
   if (isMovie && yearNum) {
     const withPageYear = await Promise.all(filtered.map(async (r) => {
       try {
-        const html = await fetchText(r.url, { timeout: 8000 });
+        const html = await fetchText(r.url, { timeout: 8000, fetcher, ctx });
         // Extract year from <title> or <h1>
         //   "Moana (2016) - 4K-HDHub" → 2016
         //   "Moana 2 (2024) - 4K-HDHub" → 2024
@@ -271,9 +303,9 @@ function b64decode(s) {
 }
 
 // Resolve one greenmotors URL → { url, host } or null
-async function resolveGreenmotors(href) {
+async function resolveGreenmotors(href, fetcher, ctx) {
   try {
-    const html = await fetchText(href, { timeout: 12000, headers: { Referer: BASE_URL + '/' } });
+    const html = await fetchText(href, { timeout: 12000, headers: { Referer: BASE_URL + '/' }, fetcher, ctx });
     const tokenMatch = html.match(/s\(\s*['"]o['"]\s*,\s*['"]([A-Za-z0-9+/=]+)['"]/);
     if (!tokenMatch) { console.log('[4KHDHubOne] greenmotors: no token on ' + href.slice(0, 60)); return null; }
     let s = b64decode(tokenMatch[1]);
@@ -295,7 +327,7 @@ async function resolveGreenmotors(href) {
 // 30-min in-module cache — the decoded URL is stable per 4khdhub post link
 const _gmCache = new Map();
 const GM_CACHE_TTL = 30 * 60 * 1000;
-async function resolveGreenmotorsCached(href) {
+async function resolveGreenmotorsCached(href, fetcher, ctx) {
   const hit = _gmCache.get(href);
   if (hit && Date.now() - hit.ts < GM_CACHE_TTL) return hit.val;
   const val = await resolveGreenmotors(href);
@@ -481,7 +513,7 @@ function parseHeight(quality) {
 // PERF: greenmotors decodes are ~0.5-2s each; decoding ALL blocks (14+ for a
 // season episode) took 20s+ and blew the resolver budget. Batches of 8 with
 // early-exit once `limit` unique URLs are in hand keep this at ~1 round.
-async function resolveBlocks(blocks, limit) {
+async function resolveBlocks(blocks, limit, fetcher, ctx) {
   const out = [];
   const seenUrls = new Set();
   const seenQualities = new Set();
@@ -505,7 +537,7 @@ async function resolveBlocks(blocks, limit) {
   for (let i = 0; i < jobs.length && out.length < limit; i += CAP) {
     const batch = jobs.slice(i, i + CAP);
     const vals = await Promise.all(batch.map(j =>
-      (j.via === 'greenmotors' ? resolveGreenmotorsCached(j.href) : Promise.resolve({ url: j.href, host: new URL(j.href).hostname }))
+      (j.via === 'greenmotors' ? resolveGreenmotorsCached(j.href, fetcher, ctx) : Promise.resolve({ url: j.href, host: new URL(j.href).hostname }))
         .catch(() => null)
     ));
     for (let k = 0; k < vals.length && out.length < limit; k++) {
@@ -527,18 +559,25 @@ async function resolveBlocks(blocks, limit) {
 }
 
 // Main: getStreams
-async function getStreams(tmdbId, type, season, episode) {
+// Task 57: optional 5th param `preloaded` ({fetcher, ctx}) — when provided,
+// ALL upstream GETs route through the addon Fetcher (family:4, node-level
+// timeout, got-scraping CF fallback). Fixes the merged-resolve 35s timeout:
+// bare undici fetch stalls in DNS under 15-source contention (isolated 0.8s
+// vs merged 35s+ — /debug/stream evidence, Task 55 DNS-stall class).
+async function getStreams(tmdbId, type, season, episode, preloaded) {
+  const fetcher = preloaded?.fetcher || null;
+  const ctx = preloaded?.ctx || null;
   const isMovie = type !== 'tv';
-  console.log('[4KHDHubOne] Request: tmdb=' + tmdbId + ' type=' + type);
+  console.log('[4KHDHubOne] Request: tmdb=' + tmdbId + ' type=' + type + (fetcher ? ' (Fetcher transport)' : ' (bare fetch)'));
 
-  const info = await getTMDBInfo(tmdbId, type);
+  const info = await getTMDBInfo(tmdbId, type, fetcher, ctx);
   if (!info.title) return [];
   console.log('[4KHDHubOne] TMDB: ' + info.title + ' (' + info.year + ')');
 
-  const results = await search(info.title);
+  const results = await search(info.title, fetcher, ctx);
   if (!results.length) return [];
 
-  const match = await findBestMatch(results, info.title, info.year, isMovie);
+  const match = await findBestMatch(results, info.title, info.year, isMovie, fetcher, ctx);
   if (!match) return [];
 
   // If findBestMatch already fetched the page HTML (for year matching),
@@ -548,7 +587,7 @@ async function getStreams(tmdbId, type, season, episode) {
     html = match._html;
     console.log('[4KHDHubOne] Reusing cached post page (' + html.length + ' chars)');
   } else {
-    html = await fetchText(match.url);
+    html = await fetchText(match.url, { fetcher, ctx });
     console.log('[4KHDHubOne] Post page: ' + match.url + ' (' + html.length + ' chars)');
   }
 
@@ -570,7 +609,7 @@ async function getStreams(tmdbId, type, season, episode) {
   // until I refresh 4-5 times"). 4 blocks (4K-first order preserved by
   // resolveBlocks' qRank sort) cuts the fetch count ~1/3 so the chain
   // completes in ~25-35s and caches (15min TTL) for refresh 2-3.
-  const resolved = await resolveBlocks(blocks, isMovie ? 6 : 4);
+  const resolved = await resolveBlocks(blocks, isMovie ? 6 : 4, fetcher, ctx);
   console.log('[4KHDHubOne] Resolved ' + resolved.length + ' file URLs');
 
   const epSuffix = isMovie ? '' : ' S' + String(season || 1).padStart(2, '0') + 'E' + String(episode || 1).padStart(2, '0');

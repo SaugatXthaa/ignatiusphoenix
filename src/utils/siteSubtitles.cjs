@@ -10,7 +10,7 @@
 //              VTT, header-free (UA-only verified 200). "Hi"/"HiN" label
 //              suffix = hearing-impaired (site convention). Trailing digits
 //              are distinct site variants ("Arabic2" ≠ "Arabic").
-//   natsuki  — GET https://natsuki.maybeoneday.ch/subs?tmdbId=&[season&episode]
+//   natsuki  — GET https://natsuki.hls.lol/subs?tmdbId=&[season&episode]
 //              → {subtitles:[{sid,language,langCode,url,fileName,hearingImpaired}]}
 //              SRT files — Origin/Referer GATED (403 UA-only) → sub URLs are
 //              wrapped through the addon's own /proxy (referer+origin params)
@@ -30,7 +30,10 @@
 'use strict';
 
 const GRANITE_API = 'https://sub.vdrk.site/v1';
-const NATSUKI_API = 'https://natsuki.maybeoneday.ch/subs';
+// Task 57 (2026-09-19): natsuki migrated natsuki.maybeoneday.ch → natsuki.hls.lol
+// (the maybeoneday.ch infra died site-wide; the live atlantic.st bundle points
+// at natsuki.hls.lol/subs). Same API shape.
+const NATSUKI_API = 'https://natsuki.hls.lol/subs';
 const ATLANTIC_ORIGIN = 'https://atlantic.st';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 

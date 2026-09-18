@@ -88,7 +88,10 @@ export class FourKHDHub extends Source {
       // SOURCE_TIMEOUT bounds delivery (Task 36 partial contract); the
       // un-capped handle promise completes in background and caches —
       // Task 48 fix6 pattern (atlantic), production-proven.
-      streams = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode);
+      // Task 57: pass fetcher+ctx — the scraper's bare undici fetch stalled
+      // in DNS under merged 15-source contention (35s timeouts on every
+      // merged resolve; isolated 0.8s). Fetcher transport fixes it.
+      streams = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode, { fetcher: this.fetcher, ctx });
     } catch (e) {
       console.error(`[4khdhub] getStreams error: ${e?.message || e}`);
       return [];

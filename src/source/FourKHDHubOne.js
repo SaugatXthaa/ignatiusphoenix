@@ -95,7 +95,9 @@ export class FourKHDHubOne extends Source {
       // Task 49: NO internal race — same fix as FourKHDHub (Task 48 fix6
       // pattern): a fired race discards the eventual result and keeps the
       // 15min cache empty, forcing full-cold re-runs on every refresh.
-      streams = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode);
+      // Task 57: fetcher+ctx threading (merged-resolve DNS-stall fix — see
+      // FourKHDHub / 4khdhub_one.cjs).
+      streams = await mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode, { fetcher: this.fetcher, ctx });
     } catch (e) {
       console.error(`[4khdhubone] getStreams error: ${e?.message || e}`);
       return [];

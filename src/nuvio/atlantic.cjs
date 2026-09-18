@@ -5,15 +5,15 @@
 //                                     Player code lives in assets/index-BWLBkgfa.js;
 //                                     request signing in assets/aphrodite-gate-*.js.
 //   Stream servers (2, verbatim from the bundle):
-//     Artemis   — GET https://stellar.maybeoneday.ch/resolve
+//     Artemis   — GET https://stellar.hls.lol/resolve
 //                   ?tmdbId=<tmdb>&type=movie|tv[&season=&episode=]
 //                 → {found, format:"hls", source:"Orbit"|"Nova", url}
 //                 NO signing. The server picks the source itself (the
 //                 availableSources array is informational; a &source= param is
 //                 ignored — verified). Orbit = movies/TV fMP4 up to 2160p with
 //                 separate audio groups; Nova = anime/TV muxed up to 1080p.
-//     Aphrodite — GET https://cdn.maybeoneday.ch/content/movie/<tmdb>
-//                             https://cdn.maybeoneday.ch/content/tv/<tmdb>/<s>/<e>
+//     Aphrodite — GET https://cdn.hls.lol/content/movie/<tmdb>
+//                             https://cdn.hls.lol/content/tv/<tmdb>/<s>/<e>
 //                 → {found, type:"hls", hls?|url, title, renew?}
 //                 CURATED content (spotty coverage — Dune2/BB yes, Inception no)
 //                 single 4K variant master. SIGNED — aphrodite.a.v1 gate:
@@ -60,8 +60,15 @@
 const crypto = require('crypto');
 
 const ATLANTIC_ORIGIN = 'https://atlantic.st';
-const CDN = 'https://cdn.maybeoneday.ch';
-const ARTEMIS = 'https://stellar.maybeoneday.ch/resolve';
+// Task 57 (2026-09-19): the whole Atlantic backend family migrated hosts —
+// maybeoneday.ch is DOWN site-wide (stellar: connection timeout; natsuki/cdn:
+// connection refused — DNS resolves, servers dead). The live site bundle
+// (assets/index-ZCPe39OT.js + aphrodite-gate-BsVicaYl.js) now points at the
+// hls.lol family: cdn.hls.lol (Aphrodite), stellar.hls.lol/resolve (Artemis,
+// verified 200 live with sources Orbit/Nova/Astra). Gate scheme unchanged —
+// same aphrodite.a.v1 HMAC/AES-GCM bootstrap, verified against the new host.
+const CDN = 'https://cdn.hls.lol';
+const ARTEMIS = 'https://stellar.hls.lol/resolve';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 const HEADERS = {

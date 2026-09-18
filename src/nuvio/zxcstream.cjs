@@ -62,7 +62,9 @@ var FIELD_MAP = {
 
 function generateFrontendToken(tmdbId) {
   var ts = Date.now();
-  var input = ts + ":" + SECRET + ":" + tmdbId;
+  // Task 57: hash the id as STRING — byte-identical to the site frontend
+  // (route params are strings; `${i}:${r}:${t}` string-concatenates them).
+  var input = ts + ":" + SECRET + ":" + String(tmdbId);
   var xt = crypto.createHash("sha512").update(input).digest("hex").slice(0, 64);
   return { xt: xt, rt: ts };
 }
@@ -92,22 +94,24 @@ function tryGetEmbedUrl(tmdbId, type, season, episode, imdbId) {
   if (!idNum) return Promise.resolve(null);
   var tokenData = generateFrontendToken(idNum);
   var isTv = type === "tv";
-  // VERIFIED LIVE: the backend's `path` field wants the RELATIVE page path
-  // ("/embed/movie/265712" → 200); the absolute URL → 404. Referer stays absolute.
-  var relPath = "/embed/" + (isTv ? "tv" : "movie") + "/" + idNum +
-    (isTv && season ? "/" + season + (episode ? "/" + episode : "") : "");
-  var pagePath = BASE_URL + relPath;
+  // Task 57 (2026-09-19): site redeployed — token route /backend/a1b2c3 is GONE
+  // (404); new route /backend/abaygagoka. The new frontend POSTs ONLY
+  // {id, fToken, ts} — the previously-required path/mediaType fields are no
+  // longer sent (bundle emb_12.-a.xn1yxai.js + module 55790 extracted live).
+  // SECRET + FIELD_MAP are UNCHANGED ("23423653" + same hex field names).
+  // Referer/Origin headers kept — harmless and matches the site's axios call.
+  var pagePath = BASE_URL + "/embed/" + (isTv ? "tv" : "movie") + "/" + idNum;
 
-  // Numeric id verified live (string id → 404; number → 200).
+  // Task 57: the new frontend sends the id as a STRING (route params are
+  // strings) and generateFrontendToken hashes the same string — captured from
+  // a live browser session (agent-browser). Byte-identical to the site.
   var tokenBody = {
-    [FIELD_MAP.id]: idNum,
+    [FIELD_MAP.id]: String(idNum),
     [FIELD_MAP.fToken]: tokenData.xt,
     [FIELD_MAP.ts]: tokenData.rt,
-    [FIELD_MAP.path]: relPath,
-    [FIELD_MAP.mediaType]: isTv ? "tv" : "movie",
   };
 
-  return fetch(BASE_URL + "/backend/a1b2c3", {
+  return fetch(BASE_URL + "/backend/abaygagoka", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
