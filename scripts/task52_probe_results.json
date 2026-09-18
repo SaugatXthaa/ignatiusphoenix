@@ -1,0 +1,890 @@
+{
+  "ts": "2026-09-18T00:37:20.530Z",
+  "pass1": [
+    {
+      "source": "moviebox",
+      "spec": "movie",
+      "count": 0,
+      "ms": 3511,
+      "error": "RequestError"
+    },
+    {
+      "source": "4khdhub",
+      "spec": "movie",
+      "count": 6,
+      "ms": 4019,
+      "error": null
+    },
+    {
+      "source": "watchseries",
+      "spec": "movie",
+      "count": 11,
+      "ms": 212,
+      "error": null
+    },
+    {
+      "source": "necro",
+      "spec": "movie",
+      "count": 5,
+      "ms": 213,
+      "error": null
+    },
+    {
+      "source": "vidsrcsbs",
+      "spec": "movie",
+      "count": 3,
+      "ms": 210,
+      "error": null
+    },
+    {
+      "source": "cinewave",
+      "spec": "movie",
+      "count": 44,
+      "ms": 1340,
+      "error": null
+    },
+    {
+      "source": "vidking",
+      "spec": "movie",
+      "count": 1,
+      "ms": 190,
+      "error": null
+    },
+    {
+      "source": "vidfast",
+      "spec": "movie",
+      "count": 1,
+      "ms": 182,
+      "error": null
+    },
+    {
+      "source": "vegamovies",
+      "spec": "movie",
+      "count": 1,
+      "ms": 183,
+      "error": null
+    },
+    {
+      "source": "vidlink2",
+      "spec": "movie",
+      "count": 3,
+      "ms": 1240,
+      "error": null
+    },
+    {
+      "source": "cinefreak",
+      "spec": "movie",
+      "count": 3,
+      "ms": 6172,
+      "error": null
+    },
+    {
+      "source": "netlio",
+      "spec": "movie",
+      "count": 0,
+      "ms": 347,
+      "error": null
+    },
+    {
+      "source": "anineko",
+      "spec": "movie",
+      "count": 0,
+      "ms": 184,
+      "error": null
+    },
+    {
+      "source": "primeshows",
+      "spec": "movie",
+      "count": 6,
+      "ms": 1119,
+      "error": null
+    },
+    {
+      "source": "verhdlink",
+      "spec": "movie",
+      "count": 4,
+      "ms": 569,
+      "error": null
+    },
+    {
+      "source": "meinecloud",
+      "spec": "movie",
+      "count": 4,
+      "ms": 586,
+      "error": null
+    },
+    {
+      "source": "animeflix",
+      "spec": "movie",
+      "count": 0,
+      "ms": 2220,
+      "error": null
+    },
+    {
+      "source": "anikoto",
+      "spec": "movie",
+      "count": 0,
+      "ms": 1508,
+      "error": null
+    },
+    {
+      "source": "anikage",
+      "spec": "movie",
+      "count": 0,
+      "ms": 862,
+      "error": null
+    },
+    {
+      "source": "anibd",
+      "spec": "movie",
+      "count": 0,
+      "ms": 743,
+      "error": null
+    },
+    {
+      "source": "2dhive",
+      "spec": "movie",
+      "count": 0,
+      "ms": 586,
+      "error": null
+    },
+    {
+      "source": "anidoor",
+      "spec": "movie",
+      "count": 0,
+      "ms": 999,
+      "error": null
+    },
+    {
+      "source": "acermovies",
+      "spec": "movie",
+      "count": 3,
+      "ms": 6367,
+      "error": null
+    },
+    {
+      "source": "nowhdtime",
+      "spec": "movie",
+      "count": 1,
+      "ms": 3427,
+      "error": null
+    },
+    {
+      "source": "animegg",
+      "spec": "movie",
+      "count": 0,
+      "ms": 1356,
+      "error": null
+    },
+    {
+      "source": "streamxtv",
+      "spec": "movie",
+      "count": 8,
+      "ms": 21506,
+      "error": null
+    },
+    {
+      "source": "peckle",
+      "spec": "movie",
+      "count": 9,
+      "ms": 16336,
+      "error": null
+    },
+    {
+      "source": "hianime",
+      "spec": "movie",
+      "count": 0,
+      "ms": 10091,
+      "error": null
+    },
+    {
+      "source": "pantyflix",
+      "spec": "movie",
+      "count": 7,
+      "ms": 25914,
+      "error": null
+    },
+    {
+      "source": "animekai",
+      "spec": "movie",
+      "count": 0,
+      "ms": 6186,
+      "error": null
+    },
+    {
+      "source": "playimdb",
+      "spec": "movie",
+      "count": 3,
+      "ms": 689,
+      "error": null
+    },
+    {
+      "source": "zxcstream",
+      "spec": "movie",
+      "count": 1,
+      "ms": 286,
+      "error": null
+    },
+    {
+      "source": "animezey",
+      "spec": "movie",
+      "count": 0,
+      "ms": 178,
+      "error": null
+    },
+    {
+      "source": "uhdmovies",
+      "spec": "movie",
+      "count": 1,
+      "ms": 4147,
+      "error": null
+    },
+    {
+      "source": "cineby",
+      "spec": "movie",
+      "count": 11,
+      "ms": 7447,
+      "error": null
+    },
+    {
+      "source": "anikototv",
+      "spec": "movie",
+      "count": 0,
+      "ms": 189,
+      "error": null
+    },
+    {
+      "source": "animeworldindia",
+      "spec": "movie",
+      "count": 0,
+      "ms": 266,
+      "error": null
+    },
+    {
+      "source": "animesdigital",
+      "spec": "movie",
+      "count": 0,
+      "ms": 213,
+      "error": null
+    },
+    {
+      "source": "itachi",
+      "spec": "movie",
+      "count": 0,
+      "ms": 199,
+      "error": null
+    },
+    {
+      "source": "imdbplay",
+      "spec": "movie",
+      "count": 1,
+      "ms": 4263,
+      "error": null
+    },
+    {
+      "source": "raflix",
+      "spec": "movie",
+      "count": 7,
+      "ms": 485,
+      "error": null
+    },
+    {
+      "source": "hindmovie",
+      "spec": "movie",
+      "count": 1,
+      "ms": 4750,
+      "error": null
+    },
+    {
+      "source": "videasy",
+      "spec": "movie",
+      "count": 6,
+      "ms": 10831,
+      "error": null
+    },
+    {
+      "source": "hindmoviez",
+      "spec": "movie",
+      "count": 0,
+      "ms": 17266,
+      "error": null
+    },
+    {
+      "source": "reanime",
+      "spec": "movie",
+      "count": 0,
+      "ms": 888,
+      "error": null
+    },
+    {
+      "source": "persianstremio",
+      "spec": "movie",
+      "count": 0,
+      "ms": 1656,
+      "error": null
+    },
+    {
+      "source": "anichan",
+      "spec": "movie",
+      "count": 0,
+      "ms": 834,
+      "error": null
+    },
+    {
+      "source": "animesuge",
+      "spec": "movie",
+      "count": 0,
+      "ms": 1110,
+      "error": null
+    },
+    {
+      "source": "animotvslash",
+      "spec": "movie",
+      "count": 0,
+      "ms": 829,
+      "error": null
+    },
+    {
+      "source": "bollyflix",
+      "spec": "movie",
+      "count": 5,
+      "ms": 6697,
+      "error": null
+    },
+    {
+      "source": "fourkhdhubone",
+      "spec": "movie",
+      "count": 6,
+      "ms": 1372,
+      "error": null
+    },
+    {
+      "source": "desiflix",
+      "spec": "movie",
+      "count": 5,
+      "ms": 20858,
+      "error": null
+    },
+    {
+      "source": "cinejoyaio",
+      "spec": "movie",
+      "count": 3,
+      "ms": 1312,
+      "error": null
+    },
+    {
+      "source": "nikastream",
+      "spec": "movie",
+      "count": 0,
+      "ms": 1694,
+      "error": null
+    },
+    {
+      "source": "rivestream",
+      "spec": "movie",
+      "count": 14,
+      "ms": 24293,
+      "error": null
+    },
+    {
+      "source": "framextv",
+      "spec": "movie",
+      "count": 0,
+      "ms": 31900,
+      "error": null
+    },
+    {
+      "source": "cinebyrocks",
+      "spec": "movie",
+      "count": 3,
+      "ms": 21411,
+      "error": null
+    },
+    {
+      "source": "stellarrip",
+      "spec": "movie",
+      "count": 0,
+      "ms": 23495,
+      "error": null
+    },
+    {
+      "source": "stellar",
+      "spec": "movie",
+      "count": 2,
+      "ms": 12629,
+      "error": null
+    },
+    {
+      "source": "hdhub4uv2",
+      "spec": "movie",
+      "count": 5,
+      "ms": 13710,
+      "error": null
+    },
+    {
+      "source": "movieshuntv2",
+      "spec": "movie",
+      "count": 5,
+      "ms": 12337,
+      "error": null
+    },
+    {
+      "source": "cinehdplus",
+      "spec": "movie",
+      "count": 0,
+      "ms": 1976,
+      "error": null
+    },
+    {
+      "source": "vidzee",
+      "spec": "movie",
+      "count": 2,
+      "ms": 187,
+      "error": null
+    },
+    {
+      "source": "vixsrc",
+      "spec": "movie",
+      "count": 1,
+      "ms": 190,
+      "error": null
+    },
+    {
+      "source": "vegamovies2",
+      "spec": "movie",
+      "count": 2,
+      "ms": 4388,
+      "error": null
+    },
+    {
+      "source": "allwish",
+      "spec": "movie",
+      "count": 0,
+      "ms": 2010,
+      "error": null
+    },
+    {
+      "source": "kmmovies",
+      "spec": "movie",
+      "count": 0,
+      "ms": 7004,
+      "error": null
+    },
+    {
+      "source": "videasyto",
+      "spec": "movie",
+      "count": 6,
+      "ms": 9802,
+      "error": null
+    },
+    {
+      "source": "atlantic",
+      "spec": "movie",
+      "count": 1,
+      "ms": 2600,
+      "error": null
+    },
+    {
+      "source": "moviesdrivev2",
+      "spec": "movie",
+      "count": 4,
+      "ms": 16375,
+      "error": null
+    }
+  ],
+  "pass2": [
+    {
+      "source": "anineko",
+      "spec": "series",
+      "count": 0,
+      "ms": 382,
+      "error": null
+    },
+    {
+      "source": "netlio",
+      "spec": "series",
+      "count": 0,
+      "ms": 576,
+      "error": null
+    },
+    {
+      "source": "anikoto",
+      "spec": "series",
+      "count": 0,
+      "ms": 704,
+      "error": null
+    },
+    {
+      "source": "animeflix",
+      "spec": "series",
+      "count": 0,
+      "ms": 2509,
+      "error": null
+    },
+    {
+      "source": "anikage",
+      "spec": "series",
+      "count": 0,
+      "ms": 1818,
+      "error": null
+    },
+    {
+      "source": "2dhive",
+      "spec": "series",
+      "count": 0,
+      "ms": 563,
+      "error": null
+    },
+    {
+      "source": "anibd",
+      "spec": "series",
+      "count": 0,
+      "ms": 838,
+      "error": null
+    },
+    {
+      "source": "anidoor",
+      "spec": "series",
+      "count": 0,
+      "ms": 988,
+      "error": null
+    },
+    {
+      "source": "animegg",
+      "spec": "series",
+      "count": 0,
+      "ms": 1179,
+      "error": null
+    },
+    {
+      "source": "hianime",
+      "spec": "series",
+      "count": 0,
+      "ms": 1643,
+      "error": null
+    },
+    {
+      "source": "moviebox",
+      "spec": "series",
+      "count": 4,
+      "ms": 6477,
+      "error": null
+    },
+    {
+      "source": "anikototv",
+      "spec": "series",
+      "count": 0,
+      "ms": 232,
+      "error": null
+    },
+    {
+      "source": "animeworldindia",
+      "spec": "series",
+      "count": 0,
+      "ms": 366,
+      "error": null
+    },
+    {
+      "source": "animezey",
+      "spec": "series",
+      "count": 2,
+      "ms": 1802,
+      "error": null
+    },
+    {
+      "source": "animesdigital",
+      "spec": "series",
+      "count": 0,
+      "ms": 1049,
+      "error": null
+    },
+    {
+      "source": "itachi",
+      "spec": "series",
+      "count": 0,
+      "ms": 215,
+      "error": null
+    },
+    {
+      "source": "animekai",
+      "spec": "series",
+      "count": 0,
+      "ms": 4384,
+      "error": null
+    },
+    {
+      "source": "reanime",
+      "spec": "series",
+      "count": 0,
+      "ms": 1082,
+      "error": null
+    },
+    {
+      "source": "anichan",
+      "spec": "series",
+      "count": 0,
+      "ms": 1314,
+      "error": null
+    },
+    {
+      "source": "persianstremio",
+      "spec": "series",
+      "count": 0,
+      "ms": 1593,
+      "error": null
+    },
+    {
+      "source": "animesuge",
+      "spec": "series",
+      "count": 0,
+      "ms": 1111,
+      "error": null
+    },
+    {
+      "source": "animotvslash",
+      "spec": "series",
+      "count": 0,
+      "ms": 1292,
+      "error": null
+    },
+    {
+      "source": "nikastream",
+      "spec": "series",
+      "count": 0,
+      "ms": 969,
+      "error": null
+    },
+    {
+      "source": "framextv",
+      "spec": "series",
+      "count": 3,
+      "ms": 23103,
+      "error": null
+    },
+    {
+      "source": "stellarrip",
+      "spec": "series",
+      "count": 0,
+      "ms": 23577,
+      "error": null
+    },
+    {
+      "source": "cinehdplus",
+      "spec": "series",
+      "count": 1,
+      "ms": 1756,
+      "error": null
+    },
+    {
+      "source": "allwish",
+      "spec": "series",
+      "count": 0,
+      "ms": 1533,
+      "error": null
+    },
+    {
+      "source": "hindmoviez",
+      "spec": "series",
+      "count": 0,
+      "ms": 30209,
+      "error": null
+    },
+    {
+      "source": "kmmovies",
+      "spec": "series",
+      "count": 0,
+      "ms": 2636,
+      "error": null
+    }
+  ],
+  "pass3": [
+    {
+      "source": "netlio",
+      "spec": "series",
+      "count": 0,
+      "ms": 1420,
+      "error": null
+    },
+    {
+      "source": "anikoto",
+      "spec": "series",
+      "count": 6,
+      "ms": 2102,
+      "error": null
+    },
+    {
+      "source": "anineko",
+      "spec": "series",
+      "count": 0,
+      "ms": 2215,
+      "error": null
+    },
+    {
+      "source": "2dhive",
+      "spec": "series",
+      "count": 0,
+      "ms": 802,
+      "error": null
+    },
+    {
+      "source": "anibd",
+      "spec": "series",
+      "count": 1,
+      "ms": 2104,
+      "error": null
+    },
+    {
+      "source": "anikage",
+      "spec": "series",
+      "count": 5,
+      "ms": 3237,
+      "error": null
+    },
+    {
+      "source": "animeflix",
+      "spec": "series",
+      "count": 2,
+      "ms": 4203,
+      "error": null
+    },
+    {
+      "source": "anidoor",
+      "spec": "series",
+      "count": 4,
+      "ms": 741,
+      "error": null
+    },
+    {
+      "source": "hianime",
+      "spec": "series",
+      "count": 2,
+      "ms": 2718,
+      "error": null
+    },
+    {
+      "source": "animeworldindia",
+      "spec": "series",
+      "count": 0,
+      "ms": 307,
+      "error": null
+    },
+    {
+      "source": "animegg",
+      "spec": "series",
+      "count": 8,
+      "ms": 3378,
+      "error": null
+    },
+    {
+      "source": "anikototv",
+      "spec": "series",
+      "count": 1,
+      "ms": 2897,
+      "error": null
+    },
+    {
+      "source": "itachi",
+      "spec": "series",
+      "count": 14,
+      "ms": 2797,
+      "error": null
+    },
+    {
+      "source": "animekai",
+      "spec": "series",
+      "count": 0,
+      "ms": 5384,
+      "error": null
+    },
+    {
+      "source": "anichan",
+      "spec": "series",
+      "count": 4,
+      "ms": 1693,
+      "error": null
+    },
+    {
+      "source": "reanime",
+      "spec": "series",
+      "count": 3,
+      "ms": 4928,
+      "error": null
+    },
+    {
+      "source": "animesdigital",
+      "spec": "series",
+      "count": 2,
+      "ms": 8579,
+      "error": null
+    },
+    {
+      "source": "animesuge",
+      "spec": "series",
+      "count": 2,
+      "ms": 1938,
+      "error": null
+    },
+    {
+      "source": "animotvslash",
+      "spec": "series",
+      "count": 0,
+      "ms": 3071,
+      "error": null
+    },
+    {
+      "source": "persianstremio",
+      "spec": "series",
+      "count": 0,
+      "ms": 4894,
+      "error": null
+    },
+    {
+      "source": "stellarrip",
+      "spec": "series",
+      "count": 0,
+      "ms": 25312,
+      "error": null
+    },
+    {
+      "source": "allwish",
+      "spec": "series",
+      "count": 2,
+      "ms": 27171,
+      "error": null
+    },
+    {
+      "source": "nikastream",
+      "spec": "series",
+      "count": -1,
+      "timedOut": true,
+      "ms": 35426
+    },
+    {
+      "source": "kmmovies",
+      "spec": "series",
+      "count": 0,
+      "ms": 6818,
+      "error": null
+    },
+    {
+      "source": "hindmoviez",
+      "spec": "series",
+      "count": -1,
+      "timedOut": true,
+      "ms": 35211
+    }
+  ],
+  "dead": [
+    "netlio",
+    "anineko",
+    "2dhive",
+    "animekai",
+    "animeworldindia",
+    "hindmoviez",
+    "persianstremio",
+    "animotvslash",
+    "nikastream",
+    "stellarrip",
+    "kmmovies"
+  ]
+}
