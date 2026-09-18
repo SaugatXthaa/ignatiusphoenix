@@ -318,6 +318,41 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
       if (r.master) push({ url: r.master, quality: 'Auto' }, r.serverName, r.subtitles, true);
     }
 
+    // Task 54 — pre-flight liveness for the hdmovie CDN family. The
+    // speedracelight hdmovie endpoint hands out i-cdn-*.salsa436jam.com paths
+    // that are frequently DEAD upstream (production evidence, Oak Street +
+    // Breaking Bad: ALL language variants of a title shared ONE 404 path —
+    // "Vyse (English)", Bengali, Tamil, Telugu, "Hindi Subbed" all 404). A
+    // dead card is the player's eternal loading screen. Validate salsa-host
+    // URLs with a ranged GET (4s cap, parallel) and drop definitive 404/410.
+    // Anything else (403/429/5xx/timeout) KEEPS the card — no drops on
+    // uncertainty, matching the repo-wide probe convention.
+    const SALSA_RE = /(^|\.)salsa\d*jam\.com$/i;
+    const salsaAlive = async (u) => {
+      try {
+        const res = await fetch(u, {
+          headers: { ...HEADERS, Range: 'bytes=0-255' },
+          redirect: 'follow',
+          signal: AbortSignal.timeout(4000),
+        });
+        try { await res.body?.cancel(); } catch { /* body already consumed */ }
+        return !(res.status === 404 || res.status === 410);
+      } catch { return true; /* probe failure = keep (best-effort) */ }
+    };
+    const salsaIdx = [];
+    streams.forEach((s, i) => {
+      try { if (SALSA_RE.test(new URL(s.url).hostname)) salsaIdx.push(i); } catch { /* keep */ }
+    });
+    if (salsaIdx.length) {
+      const verdicts = await Promise.all(salsaIdx.map(i => salsaAlive(streams[i].url)));
+      for (let k = salsaIdx.length - 1; k >= 0; k--) {
+        if (!verdicts[k]) {
+          console.log(`[Cineby] dropping dead salsa URL (${streams[salsaIdx[k]].quality} · ${streams[salsaIdx[k]].title})`);
+          streams.splice(salsaIdx[k], 1);
+        }
+      }
+    }
+
     // 4K first — Stremio renders cards top-down
     streams.sort((a, b) => qualityRank(b.quality) - qualityRank(a.quality));
     return streams;

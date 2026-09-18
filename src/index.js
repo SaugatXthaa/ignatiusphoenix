@@ -14,7 +14,9 @@ import { createRequire } from 'module';
 // Task 49: shared subtitle module — used by the /debug/subs diagnostic.
 const { fetchUnifiedSubs } = createRequire(import.meta.url)('./utils/siteSubtitles.cjs');
 import { reanimeSegmentKey } from './utils/site-secrets.cjs';
-import { startWarmup } from './utils/warmup.js';
+// Task 54: playback-priority gate — /proxy + /range-proxy raise it while
+// serving so the resolver's post-budget background work can yield to playback.
+import playbackGate from './utils/playbackGate.cjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -171,6 +173,10 @@ app.get('/extract', async (req, res) => {
 // relative URLs against the proxy URL itself (phoenix-hgs3.onrender.com)
 // and gets 404s.
 app.get('/proxy', async (req, res) => {
+  // Task 54: mark playback traffic — background source starts wait for quiet.
+  // res 'close' fires on BOTH normal finish and client abort → gate always released.
+  playbackGate.begin();
+  res.on('close', () => playbackGate.end());
   const rawUrl = req.query.url;
   const rawReferer = req.query.referer;
   // origin=: optional Origin header forwarded upstream (Stellar's workers CDNs
@@ -591,6 +597,9 @@ app.get('/proxy', async (req, res) => {
 // better than no seeking at all. Most playback starts from byte 0 (fast).
 // ============================================================================
 app.get('/range-proxy', async (req, res) => {
+  // Task 54: same playback-priority marking as /proxy above.
+  playbackGate.begin();
+  res.on('close', () => playbackGate.end());
   const rawUrl = req.query.url;
   if (!rawUrl) {
     return res.status(400).send('Missing url parameter');
@@ -1122,7 +1131,7 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
-    version: 'task53b-true-original-timeouts',
+    version: 'task54-playback-priority-gate',
     startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,
@@ -1465,12 +1474,11 @@ app.listen(PORT, HOST, () => {
   logger.log(`[${ADDON_NAME}] manifest: http://${HOST}:${PORT}/manifest.json`);
   logger.log(`[${ADDON_NAME}] Sources: ${sources.length} (${sources.map(s => s.id).join(', ')})`);
   logger.log(`[${ADDON_NAME}] Extractors: ${extractors.length} (${extractors.map(e => e.id).join(', ')})`);
-  // Boot-time warmup — background only, never blocks or alters request handling.
-  // (DNS/TLS + got-scraping preload only — NO stream resolves. The Task 45
-  // idle-time prewarm loop was REMOVED (user request): on the 0.1-CPU free
-  // tier its trending-title resolves competed with live user requests and
-  // degraded the whole instance — Task 48 fix2 documented the storm class.)
-  startWarmup({ sources, fetcher, logger });
+  // Task 54: boot-time warmup REMOVED (user request, standing): the original
+  // PhoeniX repo has no pre-warm. On the 0.1-CPU free tier the 50+ origin TLS
+  // handshakes raced exactly the requests that follow a scale-from-zero boot
+  // (first /stream + playback) and contributed to the degraded-instance class.
+  // The Task 45 idle-time prewarm loop was already removed earlier.
 });
 
 process.on('SIGTERM', () => process.exit(0));

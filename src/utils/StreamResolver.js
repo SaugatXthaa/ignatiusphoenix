@@ -6,6 +6,9 @@ import { getClosestResolution } from './resolution.js';
 import { flagFromCountryCode, languageFromCountryCode } from './language.js';
 import { SubtitleFetcher } from './SubtitleFetcher.js';
 import streamGate from './streamGate.cjs';
+// Task 54: playback-priority — background (post-budget) source starts yield
+// to /proxy + /range-proxy traffic so players never queue behind scraping.
+import playbackGate from './playbackGate.cjs';
 import { createRequire } from 'module';
 
 // Task 49: unified subtitle providers — the atlantic.st site stack (granite
@@ -584,6 +587,28 @@ export class StreamResolver {
     let activeCount = 0;
     const waitQueue = [];
 
+    // ─── Task 54: PLAYBACK PRIORITY for the background tail ───
+    // When the client budget expires, sources that missed it keep resolving
+    // in the background and cache for the next request. On the 0.1-CPU Render
+    // instance that tail previously ran at the SAME concurrency as the
+    // in-budget race (10 chains) and monopolized the event loop for
+    // minutes-class chains — the player's /proxy playlist/segment requests
+    // then queued behind scraping and EVERY source appeared "stuck on the
+    // loading screen" (Task 54 production proof: /proxy 0 bytes in 20s during
+    // churn vs 200 + 653KB in 1.08s once idle). Fix, two parts:
+    //   1. After the budget, background starts wait for a QUIET playback gate
+    //      (no in-flight /proxy or /range-proxy request) before beginning new
+    //      upstream work — bounded so long playback sessions still let the
+    //      tail progress at reduced concurrency instead of starving forever.
+    //   2. The effective concurrency cap drops once the budget expires —
+    //      in-flight sources finish naturally (no cancellation), only NEW
+    //      starts are held back.
+    // In-budget (client-facing) resolves are NEVER gated.
+    let budgetExpired = false;
+    const BACKGROUND_MAX_CONCURRENT = Math.max(1, parseInt(process.env.STREAM_BACKGROUND_MAX_CONCURRENT, 10) || 2);
+    const BACKGROUND_PLAYBACK_MAX_WAIT_MS = Math.max(10000, parseInt(process.env.STREAM_BACKGROUND_PLAYBACK_MAX_WAIT_MS, 10) || 45000);
+    const effectiveCap = () => (budgetExpired ? Math.min(BACKGROUND_MAX_CONCURRENT, MAX_CONCURRENT_SOURCES) : MAX_CONCURRENT_SOURCES);
+
     const withTimeout = (promise, ms, sourceId) => {
       let timer;
       const timeout = new Promise((_resolve, reject) => {
@@ -595,8 +620,15 @@ export class StreamResolver {
     const handleSource = async (source) => {
       // Concurrency gate: wait if too many sources are already running
       const queueStart = Date.now();
-      if (activeCount >= MAX_CONCURRENT_SOURCES) {
+      if (activeCount >= effectiveCap()) {
         await new Promise(resolve => waitQueue.push(resolve));
+      }
+      // Task 54: post-budget starts additionally wait out active playback
+      // (bounded). Holding this AFTER the slot wait keeps queue order stable:
+      // the released slot is taken by this source, which then yields the CPU
+      // to playback before firing its first upstream fetch.
+      if (budgetExpired) {
+        await playbackGate.quiet(BACKGROUND_PLAYBACK_MAX_WAIT_MS);
       }
       const queueTime = Date.now() - queueStart;
       activeCount++;
@@ -685,6 +717,11 @@ export class StreamResolver {
       Promise.all(allSourcePromises).then(() => true),
       new Promise(resolve => setTimeout(() => resolve(false), CLIENT_BUDGET_MS)),
     ]);
+
+    // Task 54: flip the background-tail switch the moment the budget expires —
+    // queued sources now start at BACKGROUND_MAX_CONCURRENT and only between
+    // quiet playback-gate windows (see handleSource above).
+    if (!allSettled) budgetExpired = true;
 
     // When the budget expired first, the remaining allSourcePromises are
     // deliberately NOT awaited here — they keep executing (node does not

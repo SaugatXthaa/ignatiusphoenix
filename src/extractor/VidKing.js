@@ -300,15 +300,31 @@ export class VidKing extends Extractor {
 
         const format = formatFromUrl(streamUrl);
 
-        // Route through /proxy so the m3u8 URL rewriting handles variant
-        // playlists and segments with the correct Referer.
-        // Stremio's proxyHeaders only applies to the main URL's host —
-        // segments on other hosts (primecrown.top) don't get the Referer,
-        // causing 403 errors. The /proxy endpoint rewrites all URLs in the
-        // m3u8 to absolute /proxy URLs with the correct Referer.
-        const proxyUrl = new URL('/proxy', ctx.hostUrl);
-        proxyUrl.searchParams.set('url', streamUrl.href);
-        proxyUrl.searchParams.set('referer', 'https://www.vidking.net/');
+        // Task 54 — per-host routing policy. The speedracelight family returns
+        // URLs from DIFFERENT CDN hosts with OPPOSITE referer requirements:
+        //   peakstorm.top (Yoru)   — hotlink-gate INVERTED: 403 WITHOUT the
+        //     vidking.net referer, 200 WITH it → must ride /proxy + referer.
+        //   vimeos.(zip|net) (Omen) — the OPPOSITE: 403 html WITH the vidking
+        //     referer, full tree 200/206 WITHOUT any referer (Task 54 matrix:
+        //     master 200 → variant 200 → .ts segment 206, MPEG-TS sync bytes).
+        //     Wrapping these with the vidking referer (old behavior) shipped
+        //     guaranteed-403 cards — the user's "stuck on loading screen".
+        //     Ship vimeos DIRECT, unwrapped, like the site's own player does.
+        const isVimeosHost = /^vimeos\.(zip|net)$/i.test(streamUrl.hostname);
+        const cardUrl = isVimeosHost
+          ? streamUrl
+          : (() => {
+              // Route through /proxy so the m3u8 URL rewriting handles variant
+              // playlists and segments with the correct Referer.
+              // Stremio's proxyHeaders only applies to the main URL's host —
+              // segments on other hosts (primecrown.top) don't get the Referer,
+              // causing 403 errors. The /proxy endpoint rewrites all URLs in the
+              // m3u8 to absolute /proxy URLs with the correct Referer.
+              const proxyUrl = new URL('/proxy', ctx.hostUrl);
+              proxyUrl.searchParams.set('url', streamUrl.href);
+              proxyUrl.searchParams.set('referer', 'https://www.vidking.net/');
+              return proxyUrl;
+            })();
 
         const titleBits = [];
         if (meta2.title) titleBits.push(meta2.title);
@@ -317,7 +333,7 @@ export class VidKing extends Extractor {
         const streamTitle = titleBits.join(' — ');
 
         streams.push({
-          url: proxyUrl,
+          url: cardUrl,
           format,
           label: `${provider.name}`,
           meta: {
