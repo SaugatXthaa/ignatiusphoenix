@@ -128,9 +128,14 @@ export class Source {
     // map, and prewarm-relevant titles stay valid between 10min rotations).
     const isEmpty = !Array.isArray(results) || results.length === 0;
     // Short TTL for empty results (15s) — retry quickly after transient failures.
-    // Non-empty results (15min) — warm re-opens well beyond the old 5min window.
-    // Was 12h once — way too long, causes OOM on Render's 512MB free tier.
-    const effectiveTtl = isEmpty ? 15_000 : 15 * 60 * 1000;
+    // Non-empty results: 15min cap — BUT a source may declare a SHORTER this.ttl
+    // when its stream URLs die faster (AniKage 3min, the 5min token families,
+    // MovieLinkBD ~5min CDN token rotation — Task 58). The hardcoded 15min
+    // previously IGNORED this.ttl, so those sources served dead tokens from
+    // cache for up to 15min (measured live: movielinkbd "FILE DELETED" 403s on
+    // cards older than the rotation window). Math.min keeps every source with
+    // ttl >= 15min exactly as before.
+    const effectiveTtl = isEmpty ? 15_000 : Math.min(this.ttl || 15 * 60 * 1000, 15 * 60 * 1000);
     sourceResultCache.set(cacheKey, { data: results, ts: Date.now(), ttl: effectiveTtl });
     return results;
   }

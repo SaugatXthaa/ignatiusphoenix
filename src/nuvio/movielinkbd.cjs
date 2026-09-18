@@ -64,7 +64,12 @@ const BASE_CANDIDATES = [
   'https://ssged4.movielinkbd.li',   // CF-gated (user-provided URL)
   'https://movielinkbd.one',         // CF-gated official alternative
 ];
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+// Page-fetch UA: the TRUNCATED UA (cf-fetch.cjs §4.2 precedent) — the site
+// poisons /p/ tokens for page fetches that claim a full Chrome build while
+// presenting non-Chrome TLS (measured live: full-UA Fetcher fetches returned
+// blobs whose tokens 403 "FILE DELETED" instantly, short-UA fetches return
+// tokens that stream 206 for the whole rotation window).
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
 const SEARCH_TIMEOUT = 12000;
 const PAGE_TIMEOUT = 12000;
@@ -92,6 +97,32 @@ function errBrief(e) {
 
 async function fetchText(url, options = {}) {
   const { fetcher, ctx, timeout = 15000, headers = {} } = options;
+  // PRIMARY: got-scraping (HTTP/2 + browser TLS fingerprint). The site arms/
+  // disarms /p/ tokens based on HOW the page was fetched — tokens from pages
+  // delivered to Node's HTTP/1.1 https.request come back "FILE DELETED" (403)
+  // even though the token STRING is identical, while pages fetched via
+  // browser-like h2 clients (curl, got-scraping) yield tokens that stream 206
+  // for the whole rotation window (measured live, Task 58 v2). The addon
+  // Fetcher stays the CF-fallback for hosts that need its cookie jar.
+  const isSite = /movielinkbd\.(pw|one|li)/.test(String(url));
+  if (isSite) {
+    try {
+      const { gotScraping } = await import('got-scraping');
+      const resp = await gotScraping.get(url, {
+        headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', ...headers },
+        timeout: { request: timeout },
+        throwHttpErrors: false,
+        followRedirect: true,
+      });
+      if (resp.statusCode === 404) return '';
+      if (resp.statusCode >= 200 && resp.statusCode < 400) return resp.body;
+      if (resp.statusCode === 403 || resp.statusCode === 503) {
+        // fall through to the Fetcher (its got-scraping path has the cookie jar)
+      } else {
+        return '';
+      }
+    } catch { /* fall through to Fetcher */ }
+  }
   if (fetcher && ctx) {
     try {
       return await fetcher.text(ctx, new URL(url), {

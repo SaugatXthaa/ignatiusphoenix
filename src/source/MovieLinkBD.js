@@ -68,7 +68,11 @@ export class MovieLinkBD extends Source {
     this.countryCodes = [CountryCode.multi, CountryCode.hi, CountryCode.en];
     this.baseUrl = 'https://movielinkbd.one';
     this.fetcher = fetcher;
-    this.ttl = 30 * 60 * 1000; // 30min
+    // The site rotates /p/ CDN tokens roughly every ~5 minutes (measured live:
+    // 4.5-6min, old token → 403 "FILE DELETED"). 3min cache keeps every served
+    // card well inside the validity window (Source.js now respects shorter
+    // per-source ttl); re-opens beyond it re-resolve fresh tokens in ~1.5-3s.
+    this.ttl = 3 * 60 * 1000;
   }
 
   async handleInternal(ctx, _type, id) {
