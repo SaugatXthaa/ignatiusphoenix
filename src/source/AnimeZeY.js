@@ -44,7 +44,7 @@ export class AnimeZeY extends Source {
       timeoutMs: 25000,
     });
 
-    return buildStreamResults({
+    const results = buildStreamResults({
       streams,
       title,
       sourceId: this.id,
@@ -52,5 +52,34 @@ export class AnimeZeY extends Source {
       countryCodes: this.countryCodes,
       ctx,
     });
+
+    // Task 62: animezey's worker (animezey16082023.workers.dev) changed its
+    // blob crypto — freshly minted download.aspx URLs answer 500
+    // "OperationError: Decryption failed" (upstream-side; the obfuscated
+    // provider cannot be re-keyed). Liveness gate: probe each card with its
+    // own headers (6s cap, headers-only — body cancelled) and ship only
+    // responsive URLs, so the source degrades to an HONEST ZERO instead of
+    // listing dead cards ("can't play" class). Self-heals when the worker
+    // rotates its crypto back.
+    if (results.length > 0) {
+      const alive = await Promise.all(results.map(async (r) => {
+        try {
+          const headers = {};
+          if (r.meta?.nuvioUserAgent) headers['User-Agent'] = r.meta.nuvioUserAgent;
+          if (r.meta?.nuvioReferer) headers['Referer'] = r.meta.nuvioReferer;
+          if (r.meta?.nuvioOrigin) headers['Origin'] = r.meta.nuvioOrigin;
+          const res = await fetch(r.url, { headers, redirect: 'follow', signal: AbortSignal.timeout(6000) });
+          const ok = res.status < 400 || res.status === 416;
+          try { res.body?.cancel?.(); } catch {}
+          if (!ok) console.log(`[animezey] probe drop (${res.status}): ${String(r.url).slice(0, 90)}`);
+          return ok;
+        } catch (e) {
+          console.log(`[animezey] probe error drop: ${e?.message || e}`);
+          return false;
+        }
+      }));
+      return results.filter((_, i) => alive[i]);
+    }
+    return results;
   }
 }
