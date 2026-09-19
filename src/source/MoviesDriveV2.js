@@ -108,6 +108,11 @@ export class MoviesDriveV2 extends Source {
     const mod = getScraperModule();
     if (!mod || typeof mod.getStreams !== 'function') return [];
 
+    // Task 59: inject the addon Fetcher as primary transport (Task 57
+    // hdhub4u_v2 pattern) — https.request family:4 with built-in got-scraping
+    // fallback on 403/CF; cuts chain CPU cost on Render 0.1 CPU.
+    if (typeof mod.setTransport === 'function') mod.setTransport(this.fetcher);
+
     const mediaType = tmdbId.season ? 'tv' : 'movie';
     // Task 34: deadline-aware partial top-up. Re-sweeps are cheap now that
     // the scraper caches discovery and continues its quality pool (Task 34

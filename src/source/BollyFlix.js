@@ -93,6 +93,11 @@ export class BollyFlix extends Source {
     const mod = getScraperModule();
     if (!mod || typeof mod.getStreams !== 'function') return [];
 
+    // Task 59: inject the addon Fetcher as primary transport (Task 57
+    // hdhub4u_v2 pattern) — https.request family:4 with built-in got-scraping
+    // fallback on 403/CF; cuts the chain's CPU cost on Render 0.1 CPU.
+    if (typeof mod.setTransport === 'function') mod.setTransport(this.fetcher);
+
     const mediaType = tmdbId.season ? 'tv' : 'movie';
     let streams;
     try {

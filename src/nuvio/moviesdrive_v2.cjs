@@ -69,6 +69,27 @@ async function getGotScraping() {
   return _gotScraping;
 }
 
+// Task 59: Fetcher transport injection (Task 57 hdhub4u_v2 pattern). The
+// addon Fetcher is https.request family:4 with a built-in got-scraping
+// fallback on 403/CF — plain hops skip got-scraping's browser-TLS CPU cost,
+// which on a true-cold 0.1-CPU boot made the 8-hop chain run 27-31s (cut at
+// the 35s cap → zero cards).
+let _fetcher = null;
+function setTransport(fetcher) { _fetcher = fetcher || null; }
+const NEUTRAL_CTX = { config: {} };
+
+async function fetchViaFetcher(url, headers, timeoutMs) {
+  if (!_fetcher) return null;
+  try {
+    const t = await _fetcher.text(NEUTRAL_CTX, new URL(url), { timeout: timeoutMs || 15000, headers });
+    return { kind: 'text', text: t };
+  } catch (e) {
+    const status = e?.statusCode || e?.status || 0;
+    if (status >= 400) return { kind: 'error', status };
+    return null; // network-level → caller fallback path
+  }
+}
+
 // ─── HTTP helpers (got-scraping — bypasses Cloudflare) ─────────────────────
 async function fetchText(url, opts) {
   opts = opts || {};
@@ -79,8 +100,6 @@ async function fetchText(url, opts) {
   // __deadline__ budget below + the resolver's 45s source ceiling, so a dead
   // hop can no longer starve the pool. Env-tunable for ops without a redeploy.
   const timeout = opts.timeout || (parseInt(process.env.MDV2_FETCH_TIMEOUT_MS, 10) || 15000);
-  const gotScraping = await getGotScraping();
-  if (!gotScraping) throw new Error('got-scraping unavailable');
   const headers = {
     'User-Agent': UA,
     'Accept': opts.accept || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -88,6 +107,14 @@ async function fetchText(url, opts) {
   };
   if (opts.referer) headers['Referer'] = opts.referer;
   if (opts.origin) headers['Origin'] = opts.origin;
+  // Task 59: Fetcher first (family:4 + built-in got-scraping fallback on 403/CF)
+  const fRes = await fetchViaFetcher(url, headers, timeout);
+  if (fRes) {
+    if (fRes.kind === 'text') return fRes.text;
+    if (fRes.kind === 'error') throw new Error(`HTTP ${fRes.status} for ${url.slice(0, 80)}`);
+  }
+  const gotScraping = await getGotScraping();
+  if (!gotScraping) throw new Error('got-scraping unavailable');
   const res = await gotScraping(url, {
     headers,
     timeout: { request: timeout },
@@ -1339,6 +1366,7 @@ async function getStreams(tmdbId, type, season, episode) {
 module.exports = {
   getStreams,
   getTMDBInfo,
+  setTransport,
   searchMoviesdrive,
   getDownloadLinks,
   getFromAcToken,

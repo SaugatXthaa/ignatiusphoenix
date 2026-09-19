@@ -30,16 +30,42 @@ var DEFAULT_HEADERS = {
 
 var domainCache = { url: FALLBACK_BASE_URL, ts: 0 };
 
+// Task 59: Fetcher transport injection (Task 57 hdhub4u_v2 pattern — the
+// addon Fetcher is https.request family:4 with a got-scraping fallback ON
+// 403/CF-challenge built in, so CF pages still pass while plain pages skip
+// got-scraping's browser-TLS CPU cost entirely). Production evidence: on a
+// true-cold 0.1-CPU boot the got-scraping-always path made the bollyflix
+// chain run 30-36s (cut at the 35s source cap → zero cards); with Fetcher
+// first, sibling hdhub4uv2 lands its comparable chain cold in 34s.
+let _fetcher = null;
+function setTransport(fetcher) { _fetcher = fetcher || null; }
+var NEUTRAL_CTX = { config: {} };
+
+function fetchViaFetcher(url, headers, timeoutMs) {
+  if (!_fetcher) return Promise.resolve(null);
+  return _fetcher.text(NEUTRAL_CTX, new URL(url), { timeout: timeoutMs || 20000, headers: headers })
+    .then(function (t) { return { kind: "text", text: t }; })
+    .catch(function (e) {
+      var status = e && (e.statusCode || e.status) || 0;
+      if (status >= 400) return { kind: "error", status: status };
+      return null; // network-level → caller fallback (got-scraping/native)
+    });
+}
+
 function getBaseUrl() {
   var now = Date.now();
   if (now - domainCache.ts < 3600000) {
     // Less than 1 hour old - reuse cache.
     return Promise.resolve(domainCache.url);
   }
-  return fetch(DOMAINS_URL, { headers: DEFAULT_HEADERS })
-    .then(function (r) {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
+  return fetchViaFetcher(DOMAINS_URL, DEFAULT_HEADERS, 12000)
+    .then(function (fRes) {
+      if (fRes && fRes.kind === "text") return JSON.parse(fRes.text);
+      return fetch(DOMAINS_URL, { headers: DEFAULT_HEADERS })
+        .then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        });
     })
     .then(function (data) {
       var hit = data && (data.bollyflix || data["bollyflix"]);
@@ -78,7 +104,13 @@ async function getGotScraping() {
 function fetchText(url, extraHeaders) {
   var headers = Object.assign({}, DEFAULT_HEADERS, extraHeaders || {});
 
-  return getGotScraping().then(function (gotScraping) {
+  // Task 59: Fetcher first (family:4 + built-in got-scraping fallback on
+  // 403/CF — see setTransport comment above).
+  return fetchViaFetcher(url, headers, 20000).then(function (fRes) {
+    if (fRes && fRes.kind === "text") return fRes.text;
+    if (fRes && fRes.kind === "error") throw new Error("HTTP " + fRes.status + " for " + url);
+
+    return getGotScraping().then(function (gotScraping) {
     if (!gotScraping) {
       // Fallback: plain fetch (will likely get CF-challenged, but try)
       return fetch(url, { headers: headers, redirect: "follow" }).then(function (res) {
@@ -98,6 +130,7 @@ function fetchText(url, extraHeaders) {
       }
       return response.body;
     });
+    });
   });
 }
 
@@ -110,9 +143,11 @@ function getTMDBInfo(tmdbId, mediaType) {
     tmdbId +
     "?api_key=" +
     TMDB_API_KEY;
-  return fetch(url, { headers: DEFAULT_HEADERS })
-    .then(function (r) {
-      return r.json();
+  // Task 59: Fetcher first (merged-resolve DNS-stall + CPU class)
+  return fetchViaFetcher(url, DEFAULT_HEADERS, 10000)
+    .then(function (fRes) {
+      if (fRes && fRes.kind === "text") return JSON.parse(fRes.text);
+      return fetch(url, { headers: DEFAULT_HEADERS }).then(function (r) { return r.json(); });
     })
     .then(function (data) {
       if (!data || (data.success === false)) {
@@ -683,4 +718,4 @@ function getStreams(tmdbId, mediaType, season, episode) {
     });
 }
 
-module.exports = { getStreams: getStreams };
+module.exports = { getStreams: getStreams, setTransport: setTransport };

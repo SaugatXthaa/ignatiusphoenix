@@ -36,10 +36,37 @@ async function loadGotScraping() {
   return _gotScraping;
 }
 
+// Task 59: Fetcher transport injection (Task 57 hdhub4u_v2 pattern). The
+// addon Fetcher is https.request family:4 with a built-in got-scraping
+// fallback on 403/CF-challenge — plain pages skip got-scraping's browser-TLS
+// CPU cost, which on Render 0.1 CPU made the abhilinks→hubcloud chain run
+// 33-39s under true-cold contention (cut at the 35s cap → zero cards).
+let _fetcher = null;
+function setTransport(fetcher) { _fetcher = fetcher || null; }
+const NEUTRAL_CTX = { config: {} };
+
+async function fetchViaFetcher(url, headers, timeoutMs) {
+  if (!_fetcher) return null;
+  try {
+    const t = await _fetcher.text(NEUTRAL_CTX, new URL(url), { timeout: timeoutMs || 15000, headers });
+    return { kind: 'text', text: t };
+  } catch (e) {
+    const status = e?.statusCode || e?.status || 0;
+    if (status >= 400) return { kind: 'error', status };
+    return null; // network-level → caller fallback path
+  }
+}
+
 // ---------------------------------------------------------------------------
 async function fetchText(url, referer, timeout) {
   const headers = { 'User-Agent': UA, 'Accept': 'text/html,application/json,*/*' };
   if (referer) headers['Referer'] = referer;
+  // Task 59: Fetcher first
+  const fRes = await fetchViaFetcher(url, headers, timeout || 15000);
+  if (fRes) {
+    if (fRes.kind === 'text') return fRes.text;
+    if (fRes.kind === 'error') throw new Error('HTTP ' + fRes.status);
+  }
   // Try got-scraping first (Chrome TLS fingerprint)
   const gs = await loadGotScraping();
   if (gs) {
@@ -60,6 +87,12 @@ async function fetchText(url, referer, timeout) {
 // ---------------------------------------------------------------------------
 async function getTMDBInfo(tmdbId, type) {
   const url = 'https://api.themoviedb.org/3/' + (type === 'tv' ? 'tv' : 'movie') + '/' + tmdbId + '?api_key=' + TMDB_API_KEY;
+  // Task 59: Fetcher first
+  const fRes = await fetchViaFetcher(url, { 'User-Agent': UA }, 10000);
+  if (fRes && fRes.kind === 'text') {
+    const j = JSON.parse(fRes.text);
+    return { title: j.name || j.title || 'Unknown', year: (j.first_air_date || j.release_date || '').slice(0, 4), type, tmdbId: String(tmdbId) };
+  }
   const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error('TMDB HTTP ' + res.status);
   const j = await res.json();
@@ -632,7 +665,7 @@ async function getStreams(tmdbId, type, season, episode) {
 }
 
 module.exports = {
-  getStreams, getTMDBInfo, searchSite, parseDownloadLinks,
+  getStreams, getTMDBInfo, searchSite, parseDownloadLinks, setTransport,
   parseSizeToken, parseCodecToken, parseSourceTypeToken, parseAudioToken,
   resolveAbhilinks, resolveHubcloudDrive, resolveGdflix,
 };
