@@ -771,34 +771,15 @@ app.get('/range-proxy', async (req, res) => {
     const { gotScraping } = await import('got-scraping');
     const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-    // Step 1: HEAD request to get Content-Length + Content-Type
-    // Google returns 200 + full Content-Length for HEAD (even with Range).
+    // Task 62: the HEAD is GONE — under google's flaky windows it burned up
+    // to 10s of TTFB (or poisoned the request) on every player open/seek, and
+    // Task 60 fix4 already made the upstream GET the single source of truth
+    // (it carries the player's Range and its Content-Length/Content-Type/
+    // Content-Disposition are adopted below). One flaky roundtrip removed.
     let totalSize = 0;
     let contentType = 'application/octet-stream';
     let contentDisposition = null;
-    try {
-      const headRes = await gotScraping.head(targetUrl.href, {
-        headers: { 'User-Agent': UA, 'Accept': '*/*' },
-        timeout: { request: 10000 },
-        throwHttpErrors: false,
-        followRedirect: true,
-        http2: true,
-      });
-      if (headRes.statusCode < 400) {
-        totalSize = parseInt(headRes.headers['content-length'] || '0', 10);
-        contentType = headRes.headers['content-type'] || contentType;
-        contentDisposition = headRes.headers['content-disposition'];
-      }
-    } catch (e) {
-      logger.error(`[${ADDON_NAME}] range-proxy HEAD failed: ${e.message}`);
-    }
 
-    // Task 60 fix4: HEAD is best-effort ONLY — googleusercontent HEADs flap
-    // (10s timeouts under load), and the old code BYPASSED all range handling
-    // when HEAD failed (→ 502/200-no-size on the exact 4K cards this proxy
-    // exists for). The single upstream GET below is now the source of truth:
-    // it carries the player's Range, and if HEAD failed we adopt the GET's
-    // own Content-Length as totalSize. No more separate un-range-aware path.
     const rangeHeader = req.headers.range;
 
     // Step 2: Parse Range header from Stremio (bounds finalized once size is known)
@@ -838,34 +819,56 @@ app.get('/range-proxy', async (req, res) => {
     //   a) upstream HONORS Range (206) → transparent pipe (true fast seeking);
     //   b) upstream ignores Range (200) and the skip is SMALL (≤ budget) →
     //      byte-skip transform as before (reuses the in-flight stream);
-    //   c) upstream ignores Range and the skip is LARGE → 416 immediately.
-    // Case (c) is the fix: mpv/ffmpeg treats the failed seek exactly like the
-    // google-DIRECT case (which historically played) — it marks the stream
-    // non-seekable, skips Matroska cue preloading and plays linearly. The fake
-    // 206-with-epic-skip previously shipped instead HANGS the player.
+    //   c) upstream ignores Range and the skip is LARGE → connection RESET
+    //      (Task 62 — see below; a 4xx status response KILLS libavformat).
+    // Task 62: bounded RETRY on the upstream GET header phase. google flaps
+    // (measured live: same URL+token 200 in 2.4s through us, 30s timeout
+    // direct, intermittent 5xx) — a single blip used to surface as a 5XX to
+    // the player = dead card. Retries are SAFE here: no client bytes have
+    // flowed before the response headers are adopted.
     const RANGE_SKIP_BUDGET = Math.max(0, parseInt(process.env.RANGE_PROXY_SKIP_BUDGET_MB, 10) || 24) * 1048576;
     const upstreamReqHeaders = { 'User-Agent': UA, 'Accept': '*/*' };
     if (rangeHeader) upstreamReqHeaders['Range'] = String(rangeHeader);
-    const upstreamStream = gotScraping.stream(targetUrl.href, {
-      headers: upstreamReqHeaders,
-      timeout: { request: 60000 },
-      throwHttpErrors: false,
-      followRedirect: true,
-      isStream: true,
-      http2: false,  // HTTP/1.1 for better streaming compatibility
-    });
 
-    // Wait for upstream response headers
-    let upstreamResp;
-    try {
-      upstreamResp = await new Promise((resolve, reject) => {
-        upstreamStream.on('response', (resp) => resolve(resp));
-        upstreamStream.on('error', (err) => reject(err));
-        setTimeout(() => reject(new Error('range-proxy upstream timeout')), 15000);
+    let upstreamStream = null;
+    let upstreamResp = null;
+    const UPSTREAM_ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= UPSTREAM_ATTEMPTS; attempt++) {
+      const stream = gotScraping.stream(targetUrl.href, {
+        headers: upstreamReqHeaders,
+        timeout: { request: 60000 },
+        throwHttpErrors: false,
+        followRedirect: true,
+        isStream: true,
+        http2: false,  // HTTP/1.1 for better streaming compatibility
       });
-    } catch (e) {
-      logger.error(`[${ADDON_NAME}] range-proxy upstream connection failed: ${e.message}`);
-      try { upstreamStream.destroy(); } catch {}
+      try {
+        const resp = await new Promise((resolve, reject) => {
+          stream.on('response', (r) => resolve(r));
+          stream.on('error', (err) => reject(err));
+          setTimeout(() => reject(new Error('range-proxy upstream timeout')), 15000);
+        });
+        if (resp.statusCode >= 500 && attempt < UPSTREAM_ATTEMPTS) {
+          logger.error(`[${ADDON_NAME}] range-proxy upstream ${resp.statusCode} (attempt ${attempt}/${UPSTREAM_ATTEMPTS}), retrying`);
+          try { stream.destroy(); } catch {}
+          await new Promise(r => setTimeout(r, 800));
+          continue;
+        }
+        upstreamStream = stream;
+        upstreamResp = resp;
+        break;
+      } catch (e) {
+        try { stream.destroy(); } catch {}
+        if (attempt < UPSTREAM_ATTEMPTS) {
+          logger.error(`[${ADDON_NAME}] range-proxy upstream connect failed (attempt ${attempt}/${UPSTREAM_ATTEMPTS}): ${e.message}, retrying`);
+          await new Promise(r => setTimeout(r, 800));
+          continue;
+        }
+        logger.error(`[${ADDON_NAME}] range-proxy upstream connection failed: ${e.message}`);
+        return res.status(502).send('Upstream connection failed');
+      }
+    }
+    if (!upstreamStream || !upstreamResp) {
       return res.status(502).send('Upstream connection failed');
     }
 
@@ -973,13 +976,18 @@ app.get('/range-proxy', async (req, res) => {
     if (contentLength > 0) res.setHeader('Content-Length', contentLength);
     if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition);
 
-    // Step 5: Byte-range translation using a Transform stream
-    // - Skip bytes 0 to rangeStart-1
-    // - Pipe bytes rangeStart to rangeEnd
-    // - Stop after contentLength bytes piped
+    // Step 5 (Task 62 rework): Byte-range translation with ONE mid-stream
+    // resume. google blips mid-stream used to end the response after N bytes
+    // (player stalls at N). A Range-ignoring upstream always re-sends from
+    // byte 0, so a resume re-GETs and discards everything already delivered
+    // (rangeStart + bytesPiped) — only attempted while that skip stays inside
+    // the same 24MB budget as a fresh shallow seek, at most once.
     let bytesSkipped = 0;
     let bytesPiped = 0;
     let aborted = false;
+    let skipTarget = rangeStart;      // absolute offset the current upstream must reach
+    let resumedOnce = false;
+    let activeUpstream = upstreamStream;
 
     const { Transform } = await import('stream');
     const rangeTransform = new Transform({
@@ -989,11 +997,11 @@ app.get('/range-proxy', async (req, res) => {
         let offset = 0;
         let chunkLen = chunk.length;
 
-        // Skip bytes before rangeStart
-        if (bytesSkipped < rangeStart) {
-          const need = rangeStart - bytesSkipped;
+        // Skip bytes before skipTarget
+        if (bytesSkipped < skipTarget) {
+          const need = skipTarget - bytesSkipped;
           if (chunkLen <= need) {
-            // Entire chunk is before rangeStart — skip it all
+            // Entire chunk is before skipTarget — skip it all
             bytesSkipped += chunkLen;
             return callback();
           }
@@ -1017,10 +1025,10 @@ app.get('/range-proxy', async (req, res) => {
         this.push(chunk.slice(offset, offset + chunkLen));
 
         // If we've piped all requested bytes, end the stream
-        if (bytesPiped >= contentLength) {
+        if (bytesPiped >= contentLength && contentLength > 0) {
           aborted = true;
           this.push(null);
-          try { upstreamStream.destroy(); } catch {}
+          try { activeUpstream.destroy(); } catch {}
         }
 
         callback();
@@ -1034,26 +1042,73 @@ app.get('/range-proxy', async (req, res) => {
       },
     });
 
-    // Pipe: upstream → rangeTransform → response
-    upstreamStream.pipe(rangeTransform).pipe(res);
+    const destroyActive = () => { try { activeUpstream.destroy(); } catch {} };
 
-    // Handle errors
-    upstreamStream.on('error', (err) => {
-      logger.error(`[${ADDON_NAME}] range-proxy upstream stream error: ${err.message}`);
-      rangeTransform.destroy();
-      try { res.end(); } catch {}
+    // Handle client disconnect
+    req.on('close', () => {
+      aborted = true;
+      destroyActive();
+      try { rangeTransform.destroy(); } catch {}
     });
+
     rangeTransform.on('error', (err) => {
       logger.error(`[${ADDON_NAME}] range-proxy transform error: ${err.message}`);
       try { res.end(); } catch {}
     });
 
-    // Handle client disconnect
-    req.on('close', () => {
+    // Mid-stream error → ONE bounded resume, else end the response.
+    const onUpstreamError = (err) => {
+      logger.error(`[${ADDON_NAME}] range-proxy upstream stream error: ${err.message}`);
+      if (aborted) { try { res.end(); } catch {} return; }
+      if (!resumedOnce && bytesPiped < contentLength && (rangeStart + bytesPiped) <= RANGE_SKIP_BUDGET) {
+        resumedOnce = true;
+        skipTarget = rangeStart + bytesPiped;
+        bytesSkipped = 0;
+        logger.log(`[${ADDON_NAME}] range-proxy: mid-stream resume from byte ${skipTarget}`);
+        (async () => {
+          try {
+            const retryStream = gotScraping.stream(targetUrl.href, {
+              headers: upstreamReqHeaders,
+              timeout: { request: 60000 },
+              throwHttpErrors: false,
+              followRedirect: true,
+              isStream: true,
+              http2: false,
+            });
+            const resp = await new Promise((resolve, reject) => {
+              retryStream.on('response', (r) => resolve(r));
+              retryStream.on('error', (e2) => reject(e2));
+              setTimeout(() => reject(new Error('resume header timeout')), 15000);
+            });
+            if (resp.statusCode >= 400) {
+              try { retryStream.destroy(); } catch {}
+              aborted = true;
+              try { res.end(); } catch {}
+              return;
+            }
+            activeUpstream = retryStream;
+            retryStream.pipe(rangeTransform);
+            retryStream.on('error', (e2) => {
+              logger.error(`[${ADDON_NAME}] range-proxy resume stream error: ${e2.message}`);
+              aborted = true;
+              try { res.end(); } catch {}
+            });
+            return;
+          } catch (e2) {
+            logger.error(`[${ADDON_NAME}] range-proxy resume failed: ${e2.message}`);
+          }
+          aborted = true;
+          try { res.end(); } catch {}
+        })();
+        return;
+      }
       aborted = true;
-      try { upstreamStream.destroy(); } catch {}
-      try { rangeTransform.destroy(); } catch {}
-    });
+      try { res.end(); } catch {}
+    };
+    upstreamStream.on('error', onUpstreamError);
+
+    // Pipe: upstream → rangeTransform → response
+    upstreamStream.pipe(rangeTransform).pipe(res);
   } catch (err) {
     logger.error(`[${ADDON_NAME}] range-proxy error: ${err.message}`);
     if (!res.headersSent) res.status(502).send('Range proxy error');
