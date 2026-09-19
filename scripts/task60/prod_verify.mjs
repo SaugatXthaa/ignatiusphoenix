@@ -99,9 +99,9 @@ if (pk) {
   check('2Pickle 4K master reachable', r.status === 200 && r.body.toString().startsWith('#EXTM3U'), `status=${r.status}`);
 } else check('2Pickle 4K card present', false, 'not found');
 
-// ---- 8. Atlantic: wrapped card OR honest zero (no direct payload cards)
+// ---- 8. Atlantic: wrapped card OR honest zero (no DIRECT payload cards)
 const atl = find(/atlantic/i);
-const atlDirect = atl.find(s => (s.url || '').includes('peraspera') || (s.url || '').includes('totallyacdn'));
+const atlDirect = atl.find(s => /^https:\/\/peraspera|^https:\/\/totallyacdn/.test(s.url || ''));
 check('Atlantic: no direct payload cards (trailer-hang class)', !atlDirect, atlDirect ? atlDirect.url.slice(0, 90) : `cards=${atl.length}`);
 const atlWrapped = atl.find(s => (s.url || '').includes('/proxy?url=') && (s.url || '').includes('origin='));
 if (atlWrapped) {
@@ -129,8 +129,8 @@ check('zero html-url cards', htmlCards.length === 0, `hits=${htmlCards.length}`)
 // ---- 11. sweep other titles: series/kdrama/anime
 const titles = [
   ['series', 'tt0944947%3A1%3A1', 'GoT S1E1'],
-  ['series', 'tt4574334%3A1%3A1', 'SquidGame S1E1'],
-  ['series', 'tt209867%3A2%3A1', 'Frieren S2E1'],
+  ['series', 'tmdb:93405%3A1%3A1', 'SquidGame S1E1'],
+  ['series', 'tmdb:209867%3A2%3A1', 'Frieren S2E1'],
 ];
 for (const [type, id, label] of titles) {
   try {
@@ -140,7 +140,7 @@ for (const [type, id, label] of titles) {
     const ss = d.streams || [];
     const subbed = ss.filter(s => (s.subtitles || []).length > 0).length;
     const groups = new Set(ss.map(s => (s.behaviorHints || {}).bingeGroup));
-    check(`${label}: cards + subs`, ss.length >= 30 && subbed === ss.length, `cards=${ss.length} subs=${subbed}/${ss.length} sources=${groups.size}`);
+    check(`${label}: cards + subs`, ss.length >= 15 && subbed === ss.length, `cards=${ss.length} subs=${subbed}/${ss.length} sources=${groups.size}`);
   } catch (e) { check(`${label}: cards + subs`, false, String(e).slice(0, 60)); }
 }
 

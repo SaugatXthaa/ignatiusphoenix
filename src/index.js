@@ -380,6 +380,12 @@ app.get('/proxy', async (req, res) => {
               throwHttpErrors: false,
               followRedirect: true,
               http2: false,
+              // Task 60: got's built-in retry (default 2× on 429/network errors)
+              // stacks 30s timeouts into 45s+ hangs on CF-gated payload workers
+              // (Atlantic peraspera class) — the handler's own fallbacks
+              // (GOAWAY retry below + fingerprint fetch + 5xx retry on streams)
+              // cover transients with bounded latency instead.
+              retry: { limit: 0 },
             });
             break;
           } catch (e) {
@@ -1334,7 +1340,7 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
-    version: 'task60-fix4-range-head-fallback',
+    version: 'task60-fix5-cinejoy-retry-got-noretry',
     startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,

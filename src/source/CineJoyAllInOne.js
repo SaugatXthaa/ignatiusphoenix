@@ -124,7 +124,17 @@ export class CineJoyAllInOne extends Source {
       // under Render contention) and DISCARDED the eventual result, keeping
       // the 15min cache empty. Scraper internals are bounded (8s/12s/20s
       // stage timeouts), so the uncapped await settles on its own.
-      streams = await mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null);
+      // Task 60: ONE empty-retry when the first attempt came back fast (<8s)
+      // — the cold-boot crush.wasm download window (2×12s under contention)
+      // produced empty results that then poisoned this source's 10min cache
+      // ("CineJoy missing on refresh"). Atlantic.js EMPTY_RETRY pattern.
+      const t0 = Date.now();
+      let out = await mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null);
+      if (Array.isArray(out) && out.length === 0 && Date.now() - t0 < 8000) {
+        await new Promise(r => setTimeout(r, 1500));
+        out = await mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null);
+      }
+      streams = out;
     } catch (e) {
       console.error(`[cinejoy-aio] getStreams error: ${e?.message || e}`);
       return [];
