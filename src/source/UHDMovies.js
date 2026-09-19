@@ -116,7 +116,10 @@ export class UHDMovies extends Source {
       // Task 49: NO internal race (Task 48 fix6 pattern) — the old 40s race
       // discarded the eventual DriveSeed-resolved result under contention,
       // keeping the 15min cache empty and forcing full-cold re-runs.
-      streams = await withRetryOnEmpty(() => mod.getStreams(tmdbId.id, 'movie', null, null), { maxTotalMs: 12000, tag: 'uhdmovies' });
+      // Task 59: retry budget 12s → 30s — the DriveSeed multi-hop chain needs
+      // 16-22s under merged contention (measured /debug/stream); 12s returned
+      // empty mid-chain and the empty result won the race every cold round.
+      streams = await withRetryOnEmpty(() => mod.getStreams(tmdbId.id, 'movie', null, null), { maxTotalMs: 30000, tag: 'uhdmovies' });
     } catch (e) {
       console.error(`[uhdmovies] getStreams error: ${e?.message || e}`);
       return [];

@@ -69,6 +69,10 @@ export class NowHDTime extends Source {
     // backed by nhdapi's own upstream. When that upstream dies the API still
     // issues tokens and the card ships born-dead (JSON error body instead of
     // HLS). Only ship when the playlist is actually being served.
+    // Task 59: the API now also returns kind:"mp4" responses (playUrl proxies
+    // a progressive download instead of HLS) — accept video/* and audio/*
+    // content types, not just #EXTM3U, so a recovered upstream doesn't ship
+    // as a false-born-dead zero. JSON error bodies still drop the card.
     let height;
     let playable = false;
     try {
@@ -79,10 +83,14 @@ export class NowHDTime extends Source {
       });
       if (r.statusCode === 200) {
         const body = typeof r.body === 'string' ? r.body : r.body.toString();
+        const ct = (r.headers['content-type'] || '').toString().toLowerCase();
         if (/#EXTM3U/.test(body)) {
           playable = true;
           const resMatch = body.match(/RESOLUTION=\d+x(\d+)/i);
           if (resMatch) height = parseInt(resMatch[1]);
+        } else if (/^(video|audio)\//.test(ct)) {
+          // Progressive (mp4/mkv) served through their proxy — playable as-is
+          playable = true;
         }
       }
     } catch { /* probe failed — treat as not playable */ }

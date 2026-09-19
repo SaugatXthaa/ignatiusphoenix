@@ -540,6 +540,12 @@ export class StreamResolver {
       // user-reported missing; see WAVE1_SOURCE_ORDER)
       'streamxtv',     // 4-5
       'stellar', 'vegamovies2',   // uhdmovies: promoted (6.7s+ multi-hop, 4K group)
+      // Task 59: desiflix promoted BACKGROUND_ONLY → wave 2 (medium). Its
+      // manifest.desitvhub aggregation chain measures 23-32s — the restored
+      // 40s client budget (Task 56) means it now lands IN-request on cold
+      // resolves instead of only via the background tail (whose per-instance
+      // cache a multi-instance Render deployment often never sees again).
+      'desiflix',
       'hindmoviez', 'cinebyrocks', 'nowhdtime', 'zxcstream',
       'imdbplay', 'framextv',
       'vixsrc', 'kmmovies', 'vidzee', 'pantyflix', 'peckle',
@@ -551,7 +557,8 @@ export class StreamResolver {
       'stellarrip',     // PoW 22.8s + upstream content drought
       // cinejoyaio REMOVED Task 47: fixed upstream migration (api.wing.st),
       // measured ~2s cold with 2160p — promoted to wave-0 (WAVE1_SOURCE_ORDER)
-      'desiflix',       // 23.5s aggregation chain
+      // desiflix REMOVED Task 59: promoted to wave-2 (measured 23-32s, lands
+      // in-request under the 40s client budget)
       'videasyto',      // Playwright headless 30-60s
       'verhdlink', 'movix', 'persianstremio',
     ]);

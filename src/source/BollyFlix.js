@@ -100,8 +100,14 @@ export class BollyFlix extends Source {
         // Task 38: bounded retry-on-empty — gdflix/gateway windows transiently
         // fail the whole resolve; without retry the 60s negative cache hides
         // the recovery from users.
-        withRetryOnEmpty(() => mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode), { maxTotalMs: 20000, tag: 'bollyflix' }),
-        new Promise(r => setTimeout(() => r(null), 25000)),
+        // Task 59: budgets raised 20s/25s → 30s/32s. Production evidence
+        // (merged /debug/stream Inception): the multi-quality gdflix mfile
+        // chain needs 26-28s under 70-source contention on Render 0.1 CPU —
+        // the old 25s outer race fired FIRST, returning null → zero cards
+        // on first open (isolated runs land 5 cards in 3-7s). 32s still sits
+        // under the resolver's 35s per-source cap / 40s client budget.
+        withRetryOnEmpty(() => mod.getStreams(tmdbId.id, mediaType, tmdbId.season, tmdbId.episode), { maxTotalMs: 30000, tag: 'bollyflix' }),
+        new Promise(r => setTimeout(() => r(null), 32000)),
       ]);
     } catch (e) {
       console.error(`[bollyflix] getStreams error: ${e?.message || e}`);

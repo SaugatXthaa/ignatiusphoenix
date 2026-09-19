@@ -30,7 +30,11 @@
 'use strict';
 
 const PROVIDER_NAME = 'HDHub4u';
-const ORIGIN = 'https://new5.hdhub4u.cl';
+// Task 59 (2026-09-19): site migrated new5 → new6 (verified: new5 302→new6,
+// new6 sitemap + posts live). The sitemap <loc> regex below now DERIVES from
+// ORIGIN so a future new7 migration is a one-line change here.
+const ORIGIN = 'https://new6.hdhub4u.cl';
+const ORIGIN_URL_RE_SOURCE = '(https:\\/\\/' + ORIGIN.replace('https://', '').replace(/\./g, '\\.') + '\\/([a-z0-9-]+)\\/?)';
 const TMDB_API_KEY = '8476a7ab80ad76f0936744df0430e67c';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -146,7 +150,7 @@ async function searchSite(title, year) {
   const scanSitemap = async (n) => {
     try {
       const xml = await fetchText(ORIGIN + '/post-sitemap' + n + '.xml', null, 6000);
-      const urls = [...xml.matchAll(/<loc>(https:\/\/new5\.hdhub4u\.cl\/([a-z0-9-]+)\/?)<\/loc>/g)];
+      const urls = [...xml.matchAll(new RegExp('<loc>' + ORIGIN_URL_RE_SOURCE + '<\\/loc>', 'g'))];
       const found = [];
       for (const m of urls) {
         const slug = m[2];

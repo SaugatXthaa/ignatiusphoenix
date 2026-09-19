@@ -117,8 +117,12 @@ export class RiveStream extends Source {
     let streams;
     try {
       streams = await Promise.race([
+        // Task 59: outer budget 30s → 32s — the 14-card aggregation chain
+        // measured 27.2s isolated / 30.5s under contention (old 30s cap cut
+        // it mid-flight → zero cards on the merged path); 32s stays under the
+        // resolver's 35s per-source cap / 40s client budget.
         mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null),
-        new Promise(r => setTimeout(() => r(null), 30000)),
+        new Promise(r => setTimeout(() => r(null), 32000)),
       ]);
     } catch (e) {
       console.error(`[rivestream] error: ${e?.message || e}`);

@@ -111,8 +111,11 @@ export class Stellar extends Source {
       streams = await Promise.race([
         // Task 38: bounded retry-on-empty — api.stellar.gdn PoW/resolve
         // transiently fails (HTTP 429 windows); retry absorbs it.
-        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 14000, tag: 'stellar' }),
-        new Promise(r => setTimeout(() => r(null), 25000)),
+        // Task 59: budgets 14s/25s → 30s/32s — the PoW resolve chain measured
+        // 27s in merged r1 (25s outer race fired first → zero cards); 32s
+        // stays under the resolver's 35s per-source cap.
+        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 30000, tag: 'stellar' }),
+        new Promise(r => setTimeout(() => r(null), 32000)),
       ]);
     } catch (e) {
       console.error(`[stellar] getStreams error: ${e?.message || e}`);
