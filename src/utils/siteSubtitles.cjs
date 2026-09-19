@@ -171,6 +171,16 @@ async function fetchNatsukiSubs(tmdbId, imdbId, type, season, episode, hostUrl, 
       if (!r.ok) return [];
       let j;
       try { j = JSON.parse(r.data); } catch { return []; }
+      // Task 62 wrong-content guard: natsuki's SERIES path now answers with an
+      // arbitrary cached title (measured live: GoT S1E1 (tmdb 1396) → Breaking
+      // Bad S1E1 files echoing imdbId tt0959621; movies still match). When we
+      // know the requested imdb id and the response echoes a DIFFERENT one,
+      // the whole set is WRONG-CONTENT — shipping it would put another show's
+      // subtitles on the card. Drop the set (granite still covers languages).
+      if (imdbId && j?.imdbId && String(j.imdbId).toLowerCase() !== String(imdbId).toLowerCase()) {
+        console.log(`[UnifiedSubs] natsuki wrong-content (asked ${imdbId}, got ${j.imdbId}) — dropped`);
+        return [];
+      }
       const subs = Array.isArray(j?.subtitles) ? j.subtitles : [];
       const out = [];
       const seenLangs = new Set();
@@ -251,13 +261,15 @@ function mergeSubs(granite, natsuki) {
  * @param {object} p
  * @param {string|number} p.tmdbId  TMDB id (granite + natsuki are TMDB-keyed —
  *                                   same ids work for movies, series, kdramas, animes)
+ * @param {string} [p.imdbId]       IMDb id ("tt...") — enables the natsuki
+ *                                   wrong-content guard (response imdbId must match)
  * @param {string} p.type           'movie' | 'series' | 'tv'
  * @param {number} [p.season]
  * @param {number} [p.episode]
  * @param {string|URL} [p.hostUrl]  addon origin for /proxy-wrapped natsuki URLs
  * @returns {Promise<Array<{id,url,lang}>>}
  */
-async function fetchUnifiedSubs({ tmdbId, type, season, episode, hostUrl, fetcher, ctx }) {
+async function fetchUnifiedSubs({ tmdbId, imdbId, type, season, episode, hostUrl, fetcher, ctx }) {
   const tv = (type === 'tv' || type === 'series');
   const s = tv ? (season || 1) : 0;
   const e = tv ? (episode || 1) : 0;
@@ -276,10 +288,15 @@ async function fetchUnifiedSubs({ tmdbId, type, season, episode, hostUrl, fetche
   const p = (async () => {
     const [granite, natsuki] = await Promise.all([
       fetchGraniteSubs(tmdbId, tv ? 'tv' : 'movie', s, e, fetcher, ctx),
-      fetchNatsukiSubs(tmdbId, null, tv ? 'tv' : 'movie', s, e, hostUrl, fetcher, ctx),
+      fetchNatsukiSubs(tmdbId, imdbId, tv ? 'tv' : 'movie', s, e, hostUrl, fetcher, ctx),
     ]);
     const merged = mergeSubs(granite, natsuki);
-    subsCache.set(key, { ts: Date.now(), value: merged });
+    // Task 62: cache only GUARDED fetches (imdbId present). An unguarded
+    // fetch (tmdb:-keyed debug calls) cannot wrong-content-check natsuki,
+    // and its cached tracks would bypass the guard for every later tt-
+    // request of the same title for the full 6h TTL (observed locally:
+    // /debug/subs poisoned the shared cache with another show's tracks).
+    if (imdbId) subsCache.set(key, { ts: Date.now(), value: merged });
     // Hard cap to prevent unbounded growth on long-lived instances.
     if (subsCache.size > 300) {
       const entries = [...subsCache.entries()].sort((a, b) => a[1].ts - b[1].ts);

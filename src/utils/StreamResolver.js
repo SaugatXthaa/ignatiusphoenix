@@ -382,9 +382,27 @@ export class StreamResolver {
     // settle (or the budget expires) the set is usually already resolved and
     // cached (6h in-module cache), so EVERY response path — full, partial,
     // cold, warm — attaches the same subtitle providers to every card.
+    // Task 62: granite+natsuki are TMDB-NUMERIC keyed. The raw Stremio id is
+    // IMDb ("tt...") and granite answers tt-strings with an empty set
+    // (verified live: /v1/tv/tt0903747/1/1 → 200 [], /v1/tv/1396/1/1 → 48
+    // tracks) — every Stremio-requested title silently lost its universal
+    // subs once natsuki's series path degraded. Convert the IMDb id to the
+    // numeric TMDB id once here (module-level cache shared with the source
+    // resolves) and pass BOTH ids: numeric for granite, imdb for the natsuki
+    // wrong-content guard.
+    let subsTmdbId = typeof id === 'object' ? id.id : id;
+    const subsImdbId = (typeof id === 'object' && /^tt\d+$/i.test(String(id.id || ''))) ? id.id : null;
+    if (subsImdbId) {
+      try {
+        const { getTmdbIdFromImdbId } = await import('./tmdb.js');
+        const converted = await getTmdbIdFromImdbId(this.fetcher, ctx, { id: subsImdbId, season: id.season, episode: id.episode });
+        if (converted && converted.id) subsTmdbId = converted.id;
+      } catch { /* no TMDB mapping — granite returns [] then; natsuki still queried with the imdb id */ }
+    }
     const subsState = { settled: false, value: [] };
     const unifiedSubsP = fetchUnifiedSubs({
-      tmdbId: typeof id === 'object' ? id.id : id,
+      tmdbId: subsTmdbId,
+      imdbId: subsImdbId,
       type,
       season: typeof id === 'object' ? id.season : undefined,
       episode: typeof id === 'object' ? id.episode : undefined,
