@@ -114,8 +114,8 @@ export class Stellar extends Source {
         // Task 59: budgets 14s/25s → 30s/32s — the PoW resolve chain measured
         // 27s in merged r1 (25s outer race fired first → zero cards); 32s
         // stays under the resolver's 35s per-source cap.
-        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 30000, tag: 'stellar' }),
-        new Promise(r => setTimeout(() => r(null), 32000)),
+        withRetryOnEmpty(() => mod.getStreams(String(tmdbId.id), mediaType, tmdbId.season || null, tmdbId.episode || null), { maxTotalMs: 34000, tag: 'stellar' }),
+        new Promise(r => setTimeout(() => r(null), 34500)),
       ]);
     } catch (e) {
       console.error(`[stellar] getStreams error: ${e?.message || e}`);

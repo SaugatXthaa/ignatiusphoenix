@@ -122,7 +122,7 @@ export class MoviesDriveV2 extends Source {
     // 30s race cap on re-discovery, and shipped 0 cards on Render's 0.1-CPU
     // instances (production /debug/stream: count=0-1 at durationMs≈23s while
     // the same title resolved 4 streams in 3-6s from sandbox).
-    const RACE_MS = 30000;        // keep under the resolver's 35s cutoff
+    const RACE_MS = 32000;        // 32s + ~1-2s TMDB pre-phase stays ≤35s resolver cap
     const TOPUP_MAX = 2;          // bounded extra sweeps
     const TOPUP_BELOW = 4;        // full quality ladder (2160/1080/720/480) —
                                   // a partial sweep gets topped up; the extra
