@@ -767,6 +767,24 @@ app.get('/range-proxy', async (req, res) => {
 
   logger.log(`[${ADDON_NAME}] range-proxy ${targetUrl.hostname}${targetUrl.pathname.slice(0, 50)}`);
 
+  // Task 62: google-family targets are REDIRECTED, not proxied. Measured live
+  // (production evidence across 3 rounds x 16 card classes): google serves the
+  // proxy request headers + first bytes, then HARD-STALLS the body forever
+  // when the client is a datacenter IP (Render) — an escalation of the
+  // 0.3-3.5Mbps throttle documented in Task 60. Every google card proxied
+  // through Render died at frame 0-1. The SAME token fetched directly from a
+  // non-datacenter IP (the user's device) streams at full speed — that is the
+  // historic google-direct behavior that played 4K. Redirect the player to
+  // the target URL: zero Render exposure (CPU/bandwidth/egress-IP), playback
+  // via the user's own connection. google responds 200-no-range to the player
+  // → libavformat marks the stream non-seekable and plays linearly (exactly
+  // the historic working case); the /range-proxy Range-translation machinery
+  // below remains for every OTHER Range-ignoring host.
+  if (/(^|\.)google(usercontent)?\.com$/i.test(targetUrl.hostname)) {
+    logger.log(`[${ADDON_NAME}] range-proxy: google-family target — 302 to direct (datacenter stall bypass)`);
+    return res.redirect(302, targetUrl.href);
+  }
+
   try {
     const { gotScraping } = await import('got-scraping');
     const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
