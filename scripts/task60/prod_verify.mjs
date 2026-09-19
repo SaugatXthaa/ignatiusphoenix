@@ -18,16 +18,14 @@ const get = (u, headers = {}, timeout = 30000, onHeaders = null) => new Promise(
 });
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
-// ---- 1. fresh /stream for Obsession — TWICE (r1 warms a cold instance, r2 fills)
+// ---- 1. fresh /stream for Obsession — two rounds (r2 fills background sources)
 let sr = await (await fetch(`${BASE}/stream/movie/tt37287335.json`, { signal: AbortSignal.timeout(90000) })).json();
 let streams = sr.streams || [];
 console.log(`Obsession r1 count=${streams.length}`);
-if (streams.length < 100) {
-  await wait(3000);
-  sr = await (await fetch(`${BASE}/stream/movie/tt37287335.json`, { signal: AbortSignal.timeout(90000) })).json();
-  streams = sr.streams || [];
-  console.log(`Obsession r2 count=${streams.length}`);
-}
+await wait(40000);
+sr = await (await fetch(`${BASE}/stream/movie/tt37287335.json`, { signal: AbortSignal.timeout(90000) })).json();
+streams = sr.streams || [];
+console.log(`Obsession r2 count=${streams.length}`);
 const find = (re) => streams.filter(s => re.test((s.name || '') + ' ' + (s.title || '') + ' ' + ((s.behaviorHints || {}).bingeGroup || '')));
 
 // ---- 2. CineFreak 4K via range-proxy: big Range → fast 416; bytes=0- → 206
@@ -136,7 +134,9 @@ const titles = [
 ];
 for (const [type, id, label] of titles) {
   try {
-    const d = await (await fetch(`${BASE}/stream/${type}/${id}.json`, { signal: AbortSignal.timeout(90000) })).json();
+    let d = await (await fetch(`${BASE}/stream/${type}/${id}.json`, { signal: AbortSignal.timeout(90000) })).json();
+    await wait(40000);
+    d = await (await fetch(`${BASE}/stream/${type}/${id}.json`, { signal: AbortSignal.timeout(90000) })).json();
     const ss = d.streams || [];
     const subbed = ss.filter(s => (s.subtitles || []).length > 0).length;
     const groups = new Set(ss.map(s => (s.behaviorHints || {}).bingeGroup));

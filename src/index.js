@@ -787,53 +787,17 @@ app.get('/range-proxy', async (req, res) => {
       logger.error(`[${ADDON_NAME}] range-proxy HEAD failed: ${e.message}`);
     }
 
-    if (!totalSize) {
-      // Can't determine size — fall back to direct stream without Range
-      // translation. Task 41: upstream errors must NOT masquerade as 200.
-      // The old code piped the upstream body blind with res.status(200), so
-      // an expired googleusercontent URL (403/502 at HEAD+GET time) shipped
-      // its HTML error page as a "video" — players hung on loading or threw
-      // "[mpv] unrecognized file format". Wait for the response event and
-      // pass the real upstream status through (same contract as the main
-      // byte-range path below).
-      logger.log(`[${ADDON_NAME}] range-proxy: no Content-Length, streaming direct`);
-      const stream = gotScraping.stream(targetUrl.href, {
-        headers: { 'User-Agent': UA, 'Accept': '*/*' },
-        timeout: { request: 60000 },
-        throwHttpErrors: false,
-        followRedirect: true,
-        isStream: true,
-        http2: false,
-      });
-      let upstreamStatus = null;
-      try {
-        upstreamStatus = await new Promise((resolve, reject) => {
-          stream.on('response', (resp) => resolve(resp.statusCode));
-          stream.on('error', (err) => reject(err));
-          setTimeout(() => reject(new Error('range-proxy upstream timeout')), 15000);
-        });
-      } catch (e) {
-        logger.error(`[${ADDON_NAME}] range-proxy direct stream failed: ${e.message}`);
-        try { stream.destroy(); } catch {}
-        return res.status(502).send('Upstream connection failed');
-      }
-      if (upstreamStatus >= 400) {
-        logger.error(`[${ADDON_NAME}] range-proxy upstream ${upstreamStatus} (direct path)`);
-        stream.destroy();
-        return res.status(upstreamStatus).send(`Upstream error: ${upstreamStatus}`);
-      }
-      res.status(200);
-      res.setHeader('Content-Type', contentType);
-      if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition);
-      stream.pipe(res);
-      stream.on('error', () => { try { res.end(); } catch {} });
-      return;
-    }
-
-    // Step 2: Parse Range header from Stremio
+    // Task 60 fix4: HEAD is best-effort ONLY — googleusercontent HEADs flap
+    // (10s timeouts under load), and the old code BYPASSED all range handling
+    // when HEAD failed (→ 502/200-no-size on the exact 4K cards this proxy
+    // exists for). The single upstream GET below is now the source of truth:
+    // it carries the player's Range, and if HEAD failed we adopt the GET's
+    // own Content-Length as totalSize. No more separate un-range-aware path.
     const rangeHeader = req.headers.range;
+
+    // Step 2: Parse Range header from Stremio (bounds finalized once size is known)
     let rangeStart = 0;
-    let rangeEnd = totalSize - 1;
+    let rangeEnd = totalSize > 0 ? totalSize - 1 : Number.MAX_SAFE_INTEGER;
     let hasRange = false;
 
     if (rangeHeader) {
@@ -841,30 +805,30 @@ app.get('/range-proxy', async (req, res) => {
       if (m) {
         hasRange = true;
         if (m[1]) rangeStart = parseInt(m[1], 10);
-        if (m[2]) rangeEnd = parseInt(m[2], 10);
-        // If start is empty but end is set: suffix range (last N bytes)
-        if (!m[1] && m[2]) {
+        if (m[2] && totalSize > 0) rangeEnd = parseInt(m[2], 10);
+        // If start is empty but end is set: suffix range (last N bytes) —
+        // only resolvable with a known size; deferred below otherwise.
+        if (!m[1] && m[2] && totalSize > 0) {
           rangeStart = Math.max(0, totalSize - parseInt(m[2], 10));
           rangeEnd = totalSize - 1;
         }
-        // Clamp to file bounds
-        if (rangeStart >= totalSize) {
-          res.status(416);
-          res.setHeader('Content-Range', `bytes */${totalSize}`);
-          return res.end();
+        if (totalSize > 0) {
+          if (rangeStart >= totalSize) {
+            res.status(416);
+            res.setHeader('Content-Range', `bytes */${totalSize}`);
+            return res.end();
+          }
+          if (rangeEnd >= totalSize) rangeEnd = totalSize - 1;
         }
-        if (rangeEnd >= totalSize) rangeEnd = totalSize - 1;
       }
     }
-
-    const contentLength = rangeEnd - rangeStart + 1;
 
     // Step 3: Fetch from upstream — WITH the player's Range header first.
     // Task 60: the old code always fetched the full file and byte-skipped, so
     // ANY seek deep into a huge file (mpv preloading Matroska Cues near the
     // end of a 21GB 4K MKV) meant streaming+discarding tens of GB → the player
     // waited forever = "stuck on loading" for CineFreak/Pantyflix/MoviesDrive
-    // 4K cards. Three cases now:
+    // 4K cards. Cases:
     //   a) upstream HONORS Range (206) → transparent pipe (true fast seeking);
     //   b) upstream ignores Range (200) and the skip is SMALL (≤ budget) →
     //      byte-skip transform as before (reuses the in-flight stream);
@@ -886,17 +850,50 @@ app.get('/range-proxy', async (req, res) => {
     });
 
     // Wait for upstream response headers
-    const upstreamResp = await new Promise((resolve, reject) => {
-      upstreamStream.on('response', (resp) => resolve(resp));
-      upstreamStream.on('error', (err) => reject(err));
-      setTimeout(() => reject(new Error('range-proxy upstream timeout')), 15000);
-    });
+    let upstreamResp;
+    try {
+      upstreamResp = await new Promise((resolve, reject) => {
+        upstreamStream.on('response', (resp) => resolve(resp));
+        upstreamStream.on('error', (err) => reject(err));
+        setTimeout(() => reject(new Error('range-proxy upstream timeout')), 15000);
+      });
+    } catch (e) {
+      logger.error(`[${ADDON_NAME}] range-proxy upstream connection failed: ${e.message}`);
+      try { upstreamStream.destroy(); } catch {}
+      return res.status(502).send('Upstream connection failed');
+    }
 
     if (upstreamResp.statusCode >= 400) {
       logger.error(`[${ADDON_NAME}] range-proxy upstream ${upstreamResp.statusCode}`);
       upstreamStream.destroy();
       return res.status(upstreamResp.statusCode).send(`Upstream error: ${upstreamResp.statusCode}`);
     }
+
+    // Adopt size/type from the GET when HEAD failed (or disagreed)
+    const upstreamCL = parseInt(upstreamResp.headers['content-length'] || '0', 10);
+    if (upstreamCL > 0 && (totalSize <= 0 || !hasRange)) totalSize = upstreamCL;
+    if (totalSize > 0 && hasRange) {
+      // Finalize bounds now that size is known (covers deferred suffix ranges
+      // and the rangeEnd=MAX_SAFE_INTEGER default)
+      const m = String(rangeHeader || '').match(/bytes=(\d*)-(\d*)/);
+      if (m) {
+        rangeStart = m[1] ? parseInt(m[1], 10) : (totalSize - parseInt(m[2] || '0', 10));
+        if (!m[1] && m[2]) {
+          rangeStart = Math.max(0, totalSize - parseInt(m[2], 10));
+          rangeEnd = totalSize - 1;
+        } else {
+          rangeEnd = m[2] ? parseInt(m[2], 10) : totalSize - 1;
+        }
+        if (rangeStart >= totalSize) {
+          upstreamStream.destroy();
+          res.status(416);
+          res.setHeader('Content-Range', `bytes */${totalSize}`);
+          return res.end();
+        }
+        if (rangeEnd >= totalSize) rangeEnd = totalSize - 1;
+      }
+    }
+    const contentLength = totalSize > 0 ? (rangeEnd - rangeStart + 1) : 0;
 
     // Case (a): upstream honored the Range → transparent partial-content pipe.
     if (hasRange && upstreamResp.statusCode === 206) {
@@ -918,15 +915,28 @@ app.get('/range-proxy', async (req, res) => {
     // Case (c): upstream ignored the Range (streaming from byte 0) and the
     // requested offset is beyond what we can cheaply discard → honest 416 so
     // the player falls back to linear playback instead of hanging.
-    if (hasRange && rangeStart > RANGE_SKIP_BUDGET) {
+    if (hasRange && totalSize > 0 && rangeStart > RANGE_SKIP_BUDGET) {
       logger.log(`[${ADDON_NAME}] range-proxy: upstream ignores Range, skip ${rangeStart} > budget — 416 (linear-play fallback)`);
       upstreamStream.destroy();
       res.status(416);
       res.setHeader('Content-Range', `bytes */${totalSize}`);
       return res.end();
     }
-    // Case (b): falls through to the byte-skip transform below, reusing the
-    // already-open upstream stream (which is streaming from byte 0).
+
+    // Unknown size + ranged request: honest 200 passthrough of the in-flight
+    // upstream stream (old direct-path semantics — never fake a 206).
+    if (hasRange && totalSize <= 0) {
+      logger.log(`[${ADDON_NAME}] range-proxy: no size known, honest 200 passthrough`);
+      res.status(200);
+      const ct2 = upstreamResp.headers['content-type'];
+      if (ct2) contentType = ct2;
+      res.setHeader('Content-Type', contentType);
+      if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition);
+      upstreamStream.pipe(res);
+      upstreamStream.on('error', () => { try { res.end(); } catch {} });
+      req.on('close', () => { try { upstreamStream.destroy(); } catch {} });
+      return;
+    }
 
     // Use the upstream Content-Type if our HEAD didn't get it
     if (upstreamResp.headers['content-type']) {
@@ -942,7 +952,7 @@ app.get('/range-proxy', async (req, res) => {
     }
     res.setHeader('Content-Type', contentType);
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Content-Length', contentLength);
+    if (contentLength > 0) res.setHeader('Content-Length', contentLength);
     if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition);
 
     // Step 5: Byte-range translation using a Transform stream
@@ -1324,7 +1334,7 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
-    version: 'task60-fix3-subs-fallback-chain',
+    version: 'task60-fix4-range-head-fallback',
     startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,
