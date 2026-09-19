@@ -1340,7 +1340,7 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
-    version: 'task60-fix5-cinejoy-retry-got-noretry',
+    version: 'task61-persianstremio-wave2-budget-echo',
     startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,
@@ -1435,8 +1435,11 @@ app.get('/debug/stream', async (req, res) => {
       // Client-budget telemetry — partial=true means the response was cut at
       // STREAM_CLIENT_BUDGET_MS with sources still resolving in background
       // (their results cache for the next request).
+      // Task 61: report the RESOLVER's actual budget (stashed at resolve
+      // time), not a stale local fallback — the old `|| 13000` echo lied
+      // whenever the env var was unset (real budget 40s since Task 56).
       partial: streamResolver._lastResolveWasPartial === true,
-      clientBudgetMs: parseInt(process.env.STREAM_CLIENT_BUDGET_MS, 10) || 13000,
+      clientBudgetMs: streamResolver._clientBudgetMs || 40000,
       // Per-source timing (slowest first)
       sources: sortedTimings.map(t => ({
         id: t.id,

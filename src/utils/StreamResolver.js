@@ -557,6 +557,15 @@ export class StreamResolver {
       'imdbplay', 'framextv',
       'vixsrc', 'kmmovies', 'vidzee', 'pantyflix', 'peckle',
       'netlio', 'rivestream', 'cinehdplus',
+      // Task 61: persianstremio promoted BACKGROUND_ONLY → wave 2 — same
+      // class and same evidence standard as desiflix above. Isolated fresh
+      // measurement: 21 cards @11.3s for Inception (persianstremio.vercel.app
+      // aggregation chain) — comfortably inside the 40s client budget, but as
+      // a background-only source it ran AFTER the budget expired, so on the
+      // multi-instance Render deployment its background cache was routinely
+      // invisible to the next request → registered yet never visible. Wave-2
+      // start (~13s queue) + 11.3s chain lands it IN-request.
+      'persianstremio',
     ]);
     const BACKGROUND_ONLY_SOURCE_IDS = new Set([
       // never land within the 15s budget (measured) or known-dead upstreams;
@@ -566,8 +575,10 @@ export class StreamResolver {
       // measured ~2s cold with 2160p — promoted to wave-0 (WAVE1_SOURCE_ORDER)
       // desiflix REMOVED Task 59: promoted to wave-2 (measured 23-32s, lands
       // in-request under the 40s client budget)
+      // persianstremio REMOVED Task 61: promoted to wave-2 (measured 21 cards
+      // @11.3s isolated — inside the 40s budget, was invisible as background-only)
       'videasyto',      // Playwright headless 30-60s
-      'verhdlink', 'movix', 'persianstremio',
+      'verhdlink', 'movix',
     ]);
     const ANIME_ONLY_SOURCE_IDS = new Set([
       'animeflix', 'anineko', 'anikoto', 'anikage', 'anibd', '2dhive',
@@ -744,6 +755,7 @@ export class StreamResolver {
     // (Not returned in the normal /stream response to avoid breaking Stremio.)
     this._lastSourceTimings = sourceTimings;
     this._lastResolveWasPartial = !allSettled;
+    this._clientBudgetMs = CLIENT_BUDGET_MS;
     if (!allSettled) {
       this.logger.info(`StreamResolver: client budget ${CLIENT_BUDGET_MS}ms hit (${settledCount}/${sortedSources.length} sources settled, ${urlResults.length} urlResults) — returning partial results; remaining sources complete in background and will be cached for the next request`);
     }
