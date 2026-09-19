@@ -163,11 +163,12 @@ export class Atlantic extends Source {
       ctx,
     });
 
-    // ipGated mapping (Task 48): peraspera workers.dev 429-blocks our
-    // datacenter IP — /proxy cannot fetch it, but the PLAYER's residential IP
-    // with Origin/Referer passes (exactly what the real site's browser sends).
-    // NuvioDirectWithHeaders ships those cards DIRECT with requestHeaders
-    // (Stremio proxyHeaders) instead of routing through /proxy.
+    // Task 60: artemis/aphrodite payload cards are /proxy-wrapped INSIDE the
+    // scraper (wrapArtemis) and validate strictly from our IP before shipping
+    // — the old ipGated → nuvioDirectWithHeaders direct-shipping hung on iOS
+    // (payload workers trailer-redirect headerless requests). The mapping
+    // below can no longer match (raw streams carry no ipGated flag) and is
+    // kept only as a no-op safeguard.
     const rawByHref = new Map(streams.map(s => [s.url, s]));
     for (const r of results) {
       const raw = r?.url ? rawByHref.get(r.url.href) : null;
