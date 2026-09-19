@@ -541,6 +541,13 @@ app.get('/proxy', async (req, res) => {
     const subPath = targetUrl.pathname.toLowerCase();
     if (subPath.endsWith('.srt') || subPath.endsWith('.vtt')) {
       try { stream.destroy(); } catch {} // release the passthrough connection
+      // Fetch+convert, with two fallbacks (Task 60 production evidence: natsuki
+      // hls.lol 403s headerless requests, and CF sometimes KILLS got-scraping's
+      // browser-TLS fingerprint mid-flight from Render — the Task 54 fix3
+      // salsa class). Order: got-scraping (CF bypass) → plain fetch → raw
+      // stream passthrough (pre-Task-60 behavior; a working subtitle served
+      // raw beats a 502).
+      let subText = null;
       try {
         const subRes = await gotScraping.get(targetUrl.href, {
           headers: proxyHeaders,
@@ -550,18 +557,62 @@ app.get('/proxy', async (req, res) => {
           http2: false,
           responseType: 'buffer',
         });
-        if (subRes.statusCode >= 400) {
-          return res.status(subRes.statusCode).send(`Upstream error: ${subRes.statusCode}`);
+        if (subRes.statusCode < 400) subText = subRes.body.toString('utf8');
+      } catch { /* fall through to plain fetch */ }
+      if (subText === null) {
+        try {
+          const alt = await fetch(targetUrl.href, {
+            headers: proxyHeaders,
+            redirect: 'follow',
+            signal: AbortSignal.timeout(15000),
+          });
+          if (alt.ok) subText = await alt.text();
+        } catch { /* fall through to raw passthrough */ }
+      }
+      if (subText !== null) {
+        try {
+          const { toWebVtt } = await import('./utils/subtitle-normalize.cjs');
+          const vtt = toWebVtt(subText);
+          res.status(200);
+          res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Content-Length', Buffer.byteLength(vtt));
+          return res.send(vtt);
+        } catch (e) {
+          logger.error(`[${ADDON_NAME}] proxy subtitle normalize failed: ${e.message}`);
+          if (!res.headersSent) return res.status(502).send('Subtitle proxy error');
+          return;
         }
-        const { toWebVtt } = await import('./utils/subtitle-normalize.cjs');
-        const vtt = toWebVtt(subRes.body.toString('utf8'));
-        res.status(200);
-        res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Content-Length', Buffer.byteLength(vtt));
-        return res.send(vtt);
+      }
+      // Raw passthrough fallback — fetch failed both ways; stream the body
+      // unconverted (old behavior) so the track at least loads where possible.
+      logger.log(`[${ADDON_NAME}] proxy subtitle: both fetches failed — raw passthrough for ${targetUrl.hostname}`);
+      const rawStream = gotScraping.stream(targetUrl.href, {
+        headers: proxyHeaders,
+        timeout: { request: 30000 },
+        throwHttpErrors: false,
+        followRedirect: true,
+        isStream: true,
+        http2: false,
+      });
+      try {
+        const rawResp = await new Promise((resolve, reject) => {
+          rawStream.on('response', (resp) => resolve(resp));
+          rawStream.on('error', (err) => reject(err));
+          setTimeout(() => reject(new Error('subtitle raw passthrough timeout')), 15000);
+        });
+        if (rawResp.statusCode >= 400) {
+          try { rawStream.destroy(); } catch {}
+          return res.status(rawResp.statusCode).send(`Upstream error: ${rawResp.statusCode}`);
+        }
+        res.status(rawResp.statusCode);
+        const rawCt = rawResp.headers['content-type'];
+        if (rawCt) res.setHeader('Content-Type', rawCt);
+        rawStream.pipe(res);
+        rawStream.on('error', () => { try { res.end(); } catch {} });
+        return;
       } catch (e) {
-        logger.error(`[${ADDON_NAME}] proxy subtitle normalize failed: ${e.message}`);
+        try { rawStream.destroy(); } catch {}
         if (!res.headersSent) return res.status(502).send('Subtitle proxy error');
         return;
       }
@@ -1273,7 +1324,7 @@ app.get('/health', (req, res) => {
 // Returns which proxy env vars are SET (boolean only — never exposes values).
 app.get('/debug/env', (req, res) => {
   res.json({
-    version: 'task60-fix2-atlantic-no-advisory',
+    version: 'task60-fix3-subs-fallback-chain',
     startedAt: new Date(globalThis.__phoenixBootAt || Date.now()).toISOString(),
     ALL_PROXY: !!process.env.ALL_PROXY,
     HTTPS_PROXY: !!process.env.HTTPS_PROXY,
