@@ -919,14 +919,26 @@ app.get('/range-proxy', async (req, res) => {
     }
 
     // Case (c): upstream ignored the Range (streaming from byte 0) and the
-    // requested offset is beyond what we can cheaply discard → honest 416 so
-    // the player falls back to linear playback instead of hanging.
+    // requested offset is beyond what we can cheaply discard → destroy the
+    // connection WITHOUT any HTTP status. Task 62: the previous 416 response
+    // KILLED playback — libavformat/mpv treats an HTTP error status on a seek
+    // as clean EOF, so the Matroska demuxer saw an empty file after the header
+    // (duration shown, zero frames ever decoded = "can't play, seek, anything"
+    // for every google-card: MoviesDrive/CineFreak/AcerMovies/UHDMovies/Pantyflix).
+    // A hard connection RESET, by contrast, makes http_seek() fail at the
+    // network layer → ffmpeg restores its saved streaming connection and
+    // continues LINEAR playback (verified with a libavformat matrix: 416/403/502
+    // all die; connection-reset recovers; the historic google-direct 200-full
+    // case plays exactly this way). Shallow seeks (≤ budget) still get real
+    // byte-skipped 206s above.
     if (hasRange && totalSize > 0 && rangeStart > RANGE_SKIP_BUDGET) {
-      logger.log(`[${ADDON_NAME}] range-proxy: upstream ignores Range, skip ${rangeStart} > budget — 416 (linear-play fallback)`);
-      upstreamStream.destroy();
-      res.status(416);
-      res.setHeader('Content-Range', `bytes */${totalSize}`);
-      return res.end();
+      logger.log(`[${ADDON_NAME}] range-proxy: upstream ignores Range, skip ${rangeStart} > budget — connection reset (player falls back to linear playback)`);
+      try { upstreamStream.destroy(); } catch {}
+      // destroy the socket WITHOUT writing any HTTP status: an error STATUS
+      // (416/403/502) is consumed as clean EOF by libavformat and kills the
+      // demuxer; a network-level reset is recovered from gracefully.
+      res.destroy();
+      return;
     }
 
     // Unknown size + ranged request: honest 200 passthrough of the in-flight

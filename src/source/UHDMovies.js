@@ -119,7 +119,11 @@ export class UHDMovies extends Source {
       // Task 59: retry budget 12s → 30s — the DriveSeed multi-hop chain needs
       // 16-22s under merged contention (measured /debug/stream); 12s returned
       // empty mid-chain and the empty result won the race every cold round.
-      streams = await withRetryOnEmpty(() => mod.getStreams(tmdbId.id, 'movie', null, null), { maxTotalMs: 30000, tag: 'uhdmovies' });
+      // Task 62: attempts 2 → 3 — production caught the driveseed relay in a
+      // ~15s bad window where BOTH attempts failed → 0 cards → 60s negative
+      // cache amplified it (user-visible "uhdmovies not returning streams").
+      // A 3rd attempt inside the same 30s budget rides out the window.
+      streams = await withRetryOnEmpty(() => mod.getStreams(tmdbId.id, 'movie', null, null), { attempts: 3, maxTotalMs: 30000, tag: 'uhdmovies' });
     } catch (e) {
       console.error(`[uhdmovies] getStreams error: ${e?.message || e}`);
       return [];
