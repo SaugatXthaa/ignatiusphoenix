@@ -1,0 +1,43 @@
+{
+ "Obsession(movie)": {
+  "cards": 122,
+  "sources": 20,
+  "fourK": 27,
+  "subbed": 122,
+  "subbedPct": 100,
+  "html": 0,
+  "sourcesList": "cinewave:38 pantyflix:12 movielinkbd:10 peckle:9 hdhub4uv2:8 fourkhdhubone:6 cinefreak:6 framextv:4 desiflix:4 videasyto:3 bollyflix:3 cineby:3 hindmovie:3 moviesdrivev2:3 playimdb:3 vidlink2:2 videasy:2 stellar:1 vixsrc:1 netlio:1",
+  "play_google-4K": "OK",
+  "play_direct-file": "OK"
+ },
+ "GoT S1E1": {
+  "cards": 66,
+  "sources": 22,
+  "fourK": 9,
+  "subbed": 66,
+  "subbedPct": 100,
+  "html": 0,
+  "sourcesList": "peckle:9 fourkhdhubone:4 cinewave:4 cineby:4 moviebox:4 vidlink2:4 videasyto:3 vegamovies2:3 playimdb:3 hindmovie:3 cinefreak:3 moviesdrivev2:3 pantyflix:3 movielinkbd:3 animezey:2 atlantic:2 bollyflix:2 stellar:2 videasy:2 vixsrc:1 imdbplay:1 cinehdplus:1",
+  "play_direct-file": "FAIL"
+ },
+ "Frieren S2E1(anime)": {
+  "cards": 36,
+  "sources": 17,
+  "fourK": 1,
+  "subbed": 36,
+  "subbedPct": 100,
+  "html": 0,
+  "sourcesList": "framextv:5 peckle:4 moviebox:4 cinewave:3 playimdb:3 cinebyrocks:3 videasyto:2 stellar:2 videasy:2 desiflix:1 animezey:1 movieshuntv2:1 vixsrc:1 imdbplay:1 atlantic:1 pantyflix:1 movielinkbd:1",
+  "play_direct-file": "FAIL"
+ },
+ "SquidGame S1E1(kdrama)": {
+  "cards": 67,
+  "sources": 24,
+  "fourK": 13,
+  "subbed": 67,
+  "subbedPct": 100,
+  "html": 0,
+  "sourcesList": "framextv:7 cinefreak:6 hdhub4uv2:5 anichan:5 fourkhdhubone:4 cinewave:4 peckle:4 videasyto:3 moviebox:3 moviesdrivev2:3 playimdb:3 cinebyrocks:3 desiflix:2 hindmovie:2 stellar:2 videasy:2 vegamovies2:2 vixsrc:1 atlantic:1 netlio:1 cinejoyaio:1 cinehdplus:1 bollyflix:1 pantyflix:1",
+  "play_direct-file": "FAIL"
+ }
+}
