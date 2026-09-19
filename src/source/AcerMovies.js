@@ -22,6 +22,7 @@
 import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
+import { withRetryOnEmpty } from './nuvioHelpers.js';
 
 const API_BASE = 'https://api2.acermovies.fun';
 const ORIGIN = 'https://acermovies.fun';
@@ -70,6 +71,14 @@ export class AcerMovies extends Source {
   }
 
   async handleInternal(ctx, _type, id) {
+    // Task 63: the modpro.blog upstream rate-limits intermittently (production
+    // evidence: 1-of-3 probes delivered, failures @~700ms → silent [] and the
+    // 60s negative cache then hid the recovery). Bounded empty-retry rides out
+    // the bad windows like the stellarrip/uhdmovies wrappers.
+    return withRetryOnEmpty(() => this._resolve(ctx, id), { attempts: 3, maxTotalMs: 14000, tag: 'acermovies' });
+  }
+
+  async _resolve(ctx, id) {
     const tmdbId = await getTmdbId(this.fetcher, ctx, id);
     const [name, year] = await getTmdbNameAndYear(this.fetcher, ctx, tmdbId);
 

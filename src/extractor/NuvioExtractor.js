@@ -95,6 +95,12 @@ const NUVIO_SOURCE_IDS = new Set([
   // with whole-tree Referer rewriting; Raflix's raw embed results keep
   // flowing through the normal extractor registry as sourceId 'raflix')
   'raflixnuvio',
+  // raflixvidstorm — Task 63: Raflix's server-resolved vidstorm.ru streams
+  //   (AES-GCM token decrypt + playlist validation). Ships ALREADY self-proxied
+  //   /proxy URLs (origin=vidstorm.ru baked in) — the early passthrough below
+  //   ships them unchanged. Under the plain 'raflix' id they matched NO
+  //   extractor and were silently dropped (0 VidStorm cards in /stream).
+  'raflixvidstorm',
   // desiflix — movies/TV/anime via manifest.desitvhub.eu.org Stremio addon
   //   Streams are direct URLs (flixsix.com MP4, manifest proxy HLS/MP4) with
   //   no Referer needed — NuvioExtractor passes them through as direct URLs.

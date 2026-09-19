@@ -1445,10 +1445,26 @@ app.get('/debug/subs', async (req, res) => {
   try {
     const rawId = req.query.id || 'tmdb:1396';
     const type = req.query.type || 'series';
-    const m = rawId.match(/(\d+)(?::(\d+))?(?::(\d+))?/);
-    const tmdbId = m ? Number(m[1]) : 1396;
-    const season = m && m[2] ? Number(m[2]) : undefined;
-    const episode = m && m[3] ? Number(m[3]) : undefined;
+    // Task 63: accept tt ids the same way the real /stream path does — the old
+    // digit-extract mangled tt0944947:1:1 into tmdb 944947 (diagnostics lied
+    // about "no subs" for tt probes). Convert via the same module the resolver
+    // uses so tt and tmdb probes return identical sets.
+    let tmdbId = 1396, season, episode;
+    if (/^tt\d+/i.test(rawId)) {
+      const parts = rawId.split(':');
+      try {
+        const { getTmdbIdFromImdbId } = await import('./utils/tmdb.js');
+        const converted = await getTmdbIdFromImdbId(fetcher, { hostUrl: new URL(`https://${req.headers.host}`) }, { id: parts[0] });
+        if (converted?.id) tmdbId = converted.id;
+      } catch { /* keep default */ }
+      season = parts[1] ? Number(parts[1]) : undefined;
+      episode = parts[2] ? Number(parts[2]) : undefined;
+    } else {
+      const m = rawId.match(/(\d+)(?::(\d+))?(?::(\d+))?/);
+      tmdbId = m ? Number(m[1]) : 1396;
+      season = m && m[2] ? Number(m[2]) : undefined;
+      episode = m && m[3] ? Number(m[3]) : undefined;
+    }
     const t0 = Date.now();
     const subs = await Promise.race([
       fetchUnifiedSubs({ tmdbId, type, season, episode, hostUrl: new URL(`https://${req.headers.host}`), fetcher, ctx: { hostUrl: new URL(`https://${req.headers.host}`) } }),

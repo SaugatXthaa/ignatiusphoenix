@@ -33,6 +33,7 @@ import { CountryCode, Format } from '../types.js';
 import { getTmdbId, getTmdbNameAndYear, TmdbId } from '../utils/index.js';
 import { Source } from './Source.js';
 import { TMDB_PRIMARY } from '../utils/site-secrets.cjs'; // central site-secret registry (env-overridable)
+import { vidstormDecrypt } from '../utils/vidstorm-decrypt.cjs'; // Task 63: vidstorm.ru token crypto
 
 const BASE_URL = 'https://raflixx.vercel.app';
 const TMDB_API_KEY = TMDB_PRIMARY;
@@ -100,6 +101,98 @@ async function fetchMediaSources(type, tmdbId, season, episode) {
   return data?.ok ? (data.sources || []) : [];
 }
 
+// ─── VidStorm (vidstorm.ru) server-side resolution (Task 63) ───────────
+// raflixx's 7 raw embed sources (xpass/moviesapi/filesun/vidrift/apiplayer/
+// embedmaster + anicine) are CF-protected SPA shells that no extractor can
+// crack from a datacenter IP (5× 403, 2× JS-only pages) — and the CinePro
+// worker below is DNS-dead. The ONE upstream that still resolves server-side
+// is vidstorm.ru: its SPA player fetches
+//   GET https://vidstorm.ru/api/movie/{tmdb} | /api/tv/{tmdb}/{s}/{e}
+// → { carbon: {url: <AES-256-GCM token>, type: 'hls', language, flag}, … }
+// and decrypts the token client-side (AES-256-GCM, key derived by XOR-60 of
+// an embedded base64 constant — full scheme in src/utils/vidstorm-decrypt.cjs).
+// Decrypted URLs (workers.dev / *.lol / ngcorp.dad) REQUIRE Origin:
+// https://vidstorm.ru on every request (verified 200 #EXTM3U vs plain 403
+// "Forbidden"), so cards ship through our /proxy with origin=+referer= (the
+// /proxy propagates both across the whole rewritten HLS tree).
+// Each candidate is PLAYLIST-VALIDATED at resolve time (Task 60 Atlantic
+// pattern): only 200 + #EXTM3U masters ship, dead servers (ngcorp.dad 404,
+// CF-blocked *.lol) drop instead of becoming listed-but-unplayable cards.
+const VIDSTORM_API = 'https://vidstorm.ru/api';
+const VIDSTORM_ORIGIN = 'https://vidstorm.ru';
+
+async function resolveVidStorm(ctx, mediaType, tmdbId, season, episode) {
+  const out = [];
+  try {
+    const apiPath = mediaType === 'tv'
+      ? `${VIDSTORM_API}/tv/${tmdbId}/${season || 1}/${episode || 1}`
+      : `${VIDSTORM_API}/movie/${tmdbId}`;
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 12000);
+    let servers = null;
+    try {
+      const res = await fetch(apiPath, {
+        headers: { 'User-Agent': UA, Accept: 'application/json' },
+        signal: c.signal,
+      });
+      if (res.ok) servers = await res.json().catch(() => null);
+    } finally { clearTimeout(t); }
+    if (!servers || typeof servers !== 'object') return out;
+
+    for (const [name, srv] of Object.entries(servers)) {
+      if (!srv || typeof srv !== 'object' || !srv.url) continue;
+      if (srv.type && !/hls/i.test(String(srv.type))) continue; // mp4-class servers observed dead (ngcorp.dad 404)
+      const real = vidstormDecrypt(srv.url);
+      if (!real || !/^https?:\/\//i.test(real)) continue;
+
+      // Playlist validation from OUR egress — the exact request /proxy will
+      // make (Origin header). Dead/blocked servers drop here, honestly.
+      let height = 720;
+      let ok = false;
+      try {
+        const vc = new AbortController();
+        const vt = setTimeout(() => vc.abort(), 6000);
+        try {
+          const vr = await fetch(real, {
+            headers: { 'User-Agent': UA, Origin: VIDSTORM_ORIGIN },
+            signal: vc.signal,
+          });
+          if (vr.ok) {
+            const body = await vr.text();
+            if (body.includes('#EXTM3U')) {
+              ok = true;
+              // Max variant RESOLUTION=1920x1080 → honest card height
+              let maxH = 0;
+              for (const m of body.matchAll(/RESOLUTION=(\d+)x(\d+)/g)) maxH = Math.max(maxH, Number(m[2]));
+              if (maxH > 0) height = Math.min(2160, Math.max(360, maxH));
+            }
+          }
+        } finally { clearTimeout(vt); }
+      } catch { /* validation fetch failed → not ok */ }
+      if (!ok) continue;
+
+      const proxyUrl = ctx?.hostUrl ? new URL('/proxy', ctx.hostUrl) : null;
+      if (!proxyUrl) continue;
+      proxyUrl.searchParams.set('url', real);
+      proxyUrl.searchParams.set('origin', VIDSTORM_ORIGIN);
+      proxyUrl.searchParams.set('referer', `${VIDSTORM_ORIGIN}/`);
+      proxyUrl.searchParams.set('hls', '1');
+
+      const label = name.charAt(0).toUpperCase() + name.slice(1);
+      out.push({
+        url: proxyUrl,
+        format: Format.hls,
+        label: `VidStorm ${label}`,
+        audioLabel: srv.language || 'English',
+        height,
+      });
+    }
+  } catch (e) {
+    console.log(`[raflix] VidStorm resolution failed: ${e?.message?.slice(0, 80)}`);
+  }
+  return out;
+}
+
 // ─── CinePro (Anicine Embed worker) server-side resolution ─────────────
 // The "Anicine Embed" server URL (api.anicine-embed.workers.dev/movie/{id})
 // is an HTML SPA shell — UNPLAYABLE in mpv ("[mpv] unrecognized file format"
@@ -136,8 +229,15 @@ async function getCineproToken(force = false) {
 }
 
 // Resolve CinePro sources → [{ url, referer, userAgent, label }]
+// Task 63: api.anicine-embed.workers.dev is DNS-DEAD (ENOTFOUND verified from
+// sandbox AND Render, Sep 2026 — the worker was deleted). Each resolve paid
+// 2×12s timeouts before returning []. Memoize the network-dead verdict for
+// 10 minutes; self-heals if the worker ever comes back.
+let _cineproDeadUntil = 0;
+
 async function resolveCinePro(mediaType, tmdbId, season, episode) {
   const out = [];
+  if (Date.now() < _cineproDeadUntil) return out;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const token = await getCineproToken(attempt > 0);
@@ -178,7 +278,13 @@ async function resolveCinePro(mediaType, tmdbId, season, episode) {
       return out;
     } catch (e) {
       if (attempt === 1) {
-        console.log(`[raflix] CinePro resolution failed: ${e.message?.slice(0, 80)}`);
+        const msg = e?.message || String(e);
+        console.log(`[raflix] CinePro resolution failed: ${msg.slice(0, 80)}`);
+        // DNS/network-dead worker (fetch failed / ENOTFOUND / ECONNRESET):
+        // stop paying the 2×12s timeout on every resolve for 10 minutes.
+        if (/fetch failed|ENOTFOUND|ECONNRESET|EAI_AGAIN|timeout|abort/i.test(msg)) {
+          _cineproDeadUntil = Date.now() + 10 * 60 * 1000;
+        }
         return out;
       }
       // 401/expired-token path — retry once with a fresh token
@@ -333,6 +439,35 @@ export class Raflix extends Source {
       }
       if (cinepro.length > 0) {
         console.log(`[raflix] +${cinepro.length} CinePro stream(s) (server-resolved)`);
+      }
+
+      // VidStorm server-side resolution (Task 63) — the only raflixx upstream
+      // that still resolves from a datacenter IP. Playlist-validated cards
+      // through /proxy (origin-gated); dead servers drop honestly.
+      // sourceId 'raflixvidstorm' (dedicated pseudo-ID like 'raflixnuvio') so
+      // NuvioExtractor's already-proxied passthrough ships them unchanged —
+      // under the plain 'raflix' id they matched NO extractor and were
+      // silently dropped at the extraction stage (0 VidStorm cards in /stream).
+      const vidstorm = await resolveVidStorm(ctx, mediaType, tmdbId.id, season, episode);
+      for (const vs of vidstorm) {
+        results.push({
+          url: vs.url,
+          format: vs.format,
+          meta: {
+            countryCodes: [CountryCode.multi, CountryCode.en],
+            title: `${title} — [Raflix ${vs.label}]`,
+            sourceId: 'raflixvidstorm',
+            sourceLabel: this.label,
+            height: vs.height,
+            sourceType: 'WebDL',
+            codec: 'h264',
+            serverName: vs.label,
+            audioLabel: vs.audioLabel,
+          },
+        });
+      }
+      if (vidstorm.length > 0) {
+        console.log(`[raflix] +${vidstorm.length} VidStorm stream(s) (server-resolved)`);
       }
     }
 
