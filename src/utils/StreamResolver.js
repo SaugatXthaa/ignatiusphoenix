@@ -492,6 +492,14 @@ export class StreamResolver {
       'vidking',       // 4 @~2s
       'vidsrcsbs',     // 3 @~2s
       'vegamovies',    // 4 @~2s
+      // Task 59: bollyflix promoted (index 16 → 7). Measured fast + 4K-
+      // capable (5 cards @3.6-7.5s isolated incl 2160p), but its gdflix
+      // mfile chain runs 26-32s under merged contention — starting it
+      // behind 15 earlier wave-0 entries queued it 6.9s and pushed the
+      // chain past the 35s per-source cap on true-cold r1 (zero cards).
+      // Early start = full 35s headroom, and satisfies the up-to-4K
+      // start-priority requirement.
+      'bollyflix',     // 5-6 @3.6-7.5s fresh, chain 26-32s under load
       // Task 53: user-reported missing sources — promoted from wave-2 to the
       // FRONT of the medium group (right after the 0-3s embed/API sources so
       // their slots free immediately). Isolated fresh: moviesdrivev2 4 @6.5s,
@@ -511,9 +519,8 @@ export class StreamResolver {
       'hindmovie',     // 1 @4.4s
       // Task 46: 4K-capable cold landers (both ship 2160p; movies + series)
       // get wave-0 start priority per user requirement "prioritize up-to-4K
-      // sources" — measured fresh: bollyflix 6 @3.9s (2160p Direct),
-      // cinefreak 6 @3.3-4.6s (2160p after the 4K-first resolve fix)
-      'bollyflix',     // 6 @3.9s cold incl 2160p
+      // sources" — cinefreak measured fresh 6 @3.3-4.6s (2160p after the
+      // 4K-first resolve fix); bollyflix MOVED UP to index 7 (Task 59).
       'cinefreak',     // 6 @3.3-4.6s cold incl 2160p
       // Task 47: cinejoyaio FIXED (api.shegu.st→api.wing.st + rotated-wasm
       // refresh + payload contract) — now ~2s cold with Lisbon 2160p (4K) on
