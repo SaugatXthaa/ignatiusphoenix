@@ -1,0 +1,349 @@
+[
+ {
+  "id": "watchseries",
+  "title": "Inception",
+  "count": 11,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 29,
+  "sampleUrlHead": "https://vidsrc.mov/embed/movie/27205"
+ },
+ {
+  "id": "cinefreak",
+  "title": "Inception",
+  "count": 3,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 3103,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://video-downloads.googleusercontent.com/ADGPM2k_APb5JR"
+ },
+ {
+  "id": "acermovies",
+  "title": "Inception",
+  "count": 3,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 6251,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://video-downloads.googleusercontent.com/ADGPM2nPGUnogZ"
+ },
+ {
+  "id": "playimdb",
+  "title": "Inception",
+  "count": 3,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 568,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://onlinevisibilitysystem.site/qHjc679HE/pl/H4sIAAAAAAA"
+ },
+ {
+  "id": "raflix",
+  "title": "Inception",
+  "count": 7,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 220,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://play.xpass.top/e/movie/27205?autostart=true"
+ },
+ {
+  "id": "desiflix",
+  "title": "Inception",
+  "count": null,
+  "timedOut": true,
+  "error": null,
+  "durationMs": 35001,
+  "logTail": [
+   "[DesiFlix] timeout after 12000ms — retry 2/3 in 2000ms",
+   "[DesiFlix] timeout after 12000ms — retry 2/3 in 2000ms"
+  ]
+ },
+ {
+  "id": "bollyflix",
+  "title": "Inception",
+  "count": 5,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 5847,
+  "sampleUrlHead": "https://video-downloads.googleusercontent.com/ADGPM2mkwkdpfd"
+ },
+ {
+  "id": "movieshuntv2",
+  "title": "Inception",
+  "count": 5,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 4476,
+  "sampleFormat": "unknown",
+  "sampleUrlHead": "https://pixeldrain.dev/api/file/AfTp464t?download"
+ },
+ {
+  "id": "uhdmovies",
+  "title": "Inception",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 2326,
+  "sampleFormat": "unknown",
+  "sampleUrlHead": "https://video-downloads.googleusercontent.com/ADGPM2lWKkHBsD"
+ },
+ {
+  "id": "moviesdrivev2",
+  "title": "Inception",
+  "count": 4,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 5372,
+  "sampleFormat": "unknown",
+  "sampleUrlHead": "https://video-downloads.googleusercontent.com/ADGPM2nVekiPVw"
+ },
+ {
+  "id": "framextv",
+  "title": "Inception",
+  "count": 6,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 14918,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://ok.solarpanelcleaning.cc/playlist/PXDm-yFnQdxWAmmXj6"
+ },
+ {
+  "id": "cinebyrocks",
+  "title": "Inception",
+  "count": 3,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1836,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://scraper.vidbolt.xyz/proxy/m3u8/aHR0cHM6Ly9vbmxpbmV2a"
+ },
+ {
+  "id": "stellar",
+  "title": "Inception",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 7403,
+  "sampleFormat": "unknown",
+  "sampleUrlHead": "https://h.themepark.workers.dev/hls?t=IVoXFEhOCScSHx9QTExWPC"
+ },
+ {
+  "id": "vixsrc",
+  "title": "Inception",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 29,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://vixsrc.to/api/playlist/27205?token="
+ },
+ {
+  "id": "videasy",
+  "title": "Inception",
+  "count": 6,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 8426,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://moon.peakstorm.top/vd/czN4MEdZVFNJbldWTmlURTVPcmZmZz"
+ },
+ {
+  "id": "vidlink2",
+  "title": "Inception",
+  "count": 3,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1375,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://bcdn.hakunaymatata.com/tran-audio/20250609/1342d59d4"
+ },
+ {
+  "id": "moviebox",
+  "title": "Inception",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 3064,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://bcdnxw.hakunaymatata.com/tran-audio/20250609/1342d59"
+ },
+ {
+  "id": "cineby",
+  "title": "Inception",
+  "count": 11,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 6378,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://moon.peakstorm.top/vd/czN4MEdZVFNJbldWTmlURTVPcmZmZz"
+ },
+ {
+  "id": "peckle",
+  "title": "Inception",
+  "count": 9,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 2075,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://usa7-as11.shegu.net/vip/p1/org_movie/4/4/9/4059/movi"
+ },
+ {
+  "id": "pantyflix",
+  "title": "Inception",
+  "count": 6,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 27238,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://video-downloads.googleusercontent.com/ADGPM2lWKkHBsD"
+ },
+ {
+  "id": "streamxtv",
+  "title": "Inception",
+  "count": 6,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 18860,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://ok.solarpanelcleaning.cc/playlist/PXDm-yFnQdxWAmmXj6"
+ },
+ {
+  "id": "anichan",
+  "title": "FrierenS2E1",
+  "count": 5,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1457,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://anichan.to/api/watch/m3u8?sh=154587%2F1%2Fsub%2Fmast"
+ },
+ {
+  "id": "hianime",
+  "title": "FrierenS2E1",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 3671,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://hls.1embed.buzz/v/scxqicy/55ejtphmn9/e38a115ezb/dnfi"
+ },
+ {
+  "id": "anikage",
+  "title": "FrierenS2E1",
+  "count": 5,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 2886,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://prox.anicore.tv/m3u8/DB5BNEcPGmMcCUYvI2Q2IAwnFQ5aCBQ"
+ },
+ {
+  "id": "anibd",
+  "title": "FrierenS2E1",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 699,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://playeng.animeapps.top/r2/cachehd/20260827094030720p4"
+ },
+ {
+  "id": "netlio",
+  "title": "Inception",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 149
+ },
+ {
+  "id": "cineby",
+  "title": "Inception",
+  "count": 11,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 6845,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://moon.peakstorm.top/vd/czN4MEdZVFNJbldWTmlURTVPcmZmZz"
+ },
+ {
+  "id": "fourkhdhubone",
+  "title": "Inception",
+  "count": 6,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 2033,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://hubcloud.ist/drive/cdce53ddaelbqjj"
+ },
+ {
+  "id": "hdhub4uv2",
+  "title": "Inception",
+  "count": 6,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 2526,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://m5qqjwpatpzb.acek-cdn.com/hls2/01/03193/q01l0qwza8gd"
+ },
+ {
+  "id": "movielinkbd",
+  "title": "Inception",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 4355,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://cdn.dramalinkbd.tv/p/DUrGk6UgDUk45Bbj.Fk1gvcbSr1xbGa"
+ },
+ {
+  "id": "cineby",
+  "title": "Inception",
+  "count": 11,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 6432,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://moon.peakstorm.top/vd/czN4MEdZVFNJbldWTmlURTVPcmZmZz"
+ },
+ {
+  "id": "vegamovies2",
+  "title": "Inception",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 3574,
+  "sampleFormat": "unknown",
+  "sampleUrlHead": "https://video-downloads.googleusercontent.com/ADGPM2mXHqk90g"
+ },
+ {
+  "id": "imdbplay",
+  "title": "Inception",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 3065,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2"
+ },
+ {
+  "id": "hindmovie",
+  "title": "Inception",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 4030,
+  "sampleFormat": "unknown",
+  "sampleUrlHead": "https://share.gdthree.workers.dev/d/0j2g0cpzTQZnEvOgYtXNiJyS"
+ },
+ {
+  "id": "cinewave",
+  "title": "Inception",
+  "count": 44,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 657,
+  "sampleUrlHead": "https://hubdrive.pics/file/47594547667"
+ }
+]

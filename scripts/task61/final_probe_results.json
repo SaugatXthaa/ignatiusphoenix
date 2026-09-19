@@ -1,0 +1,356 @@
+[
+ {
+  "src": "acermovies",
+  "url": "https://ignatiusphoenix.onrender.com/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent",
+  "ok": true,
+  "detail": "ok status=206 ct=video/mkv"
+ },
+ {
+  "src": "acermovies",
+  "url": "https://ignatiusphoenix.onrender.com/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent",
+  "ok": true,
+  "detail": "ok status=206 ct=video/mkv"
+ },
+ {
+  "src": "anibd",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fplayeng.animeapps.top%2Fr2%2Fcachehd%2F",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "anibd",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fplayeng.animeapps.top%2Fr2%2Fcachehd%2F",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "anichan",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fc.toroplay.cymru%2Fapi%2Fwatch%2Fm3u8%3",
+  "ok": false,
+  "detail": "status=0 head= ct="
+ },
+ {
+  "src": "anichan",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fc.toroplay.cymru%2Fapi%2Fwatch%2Fm3u8%3",
+  "ok": false,
+  "detail": "status=0 head= ct="
+ },
+ {
+  "src": "animegg",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fwww.animegg.org%2Fplay%2F447563%2Fvideo",
+  "ok": false,
+  "detail": "status=206 head=\u0000\u0000\u0000 fty ct=video/mp4"
+ },
+ {
+  "src": "animegg",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fwww.animegg.org%2Fplay%2F447563%2Fvideo",
+  "ok": false,
+  "detail": "status=206 head=\u0000\u0000\u0000 fty ct=video/mp4"
+ },
+ {
+  "src": "animotvslash",
+  "url": "https://cdn.videas.fr/v-medias/s5/hlsv1/e6/33/e633ec8f-cd32-4505-9c95-9d1438797318/playlist.m3u8",
+  "ok": true,
+  "detail": "ok status=206 ct=application/vnd.apple.mpegurl"
+ },
+ {
+  "src": "atlantic",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fperaspera.nbsycfzrpa4.workers.dev%2Fm3u",
+  "ok": false,
+  "detail": "status=0 head= ct="
+ },
+ {
+  "src": "atlantic",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fperaspera.nbsycfzrpa4.workers.dev%2Fm3u",
+  "ok": false,
+  "detail": "status=0 head= ct="
+ },
+ {
+  "src": "cineby",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fi-arch-400.mendx437sim.com%2Fstream2%2F",
+  "ok": false,
+  "detail": "status=404 head=Upstrea ct=text/html; charset=utf-8"
+ },
+ {
+  "src": "cineby",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fi-arch-400.mendx437sim.com%2Fstream2%2F",
+  "ok": false,
+  "detail": "status=404 head=Upstrea ct=text/html; charset=utf-8"
+ },
+ {
+  "src": "cinebyrocks",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fscraper.vidbolt.xyz%2Fproxy%2Fm3u8%2FaH",
+  "ok": false,
+  "detail": "variant=0/"
+ },
+ {
+  "src": "cinebyrocks",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fscraper.vidbolt.xyz%2Fproxy%2Fm3u8%2FaH",
+  "ok": false,
+  "detail": "variant=0/"
+ },
+ {
+  "src": "cinehdplus",
+  "url": "https://p3.vimeos.zip/hls2/03/00004/wp57uobyxe02_,n,h,.urlset/master.m3u8?t=5b5vtD17xli1svDVIGiUwXHm",
+  "ok": false,
+  "detail": "status=403 ct=text/html; charset=utf-8 "
+ },
+ {
+  "src": "cinejoyaio",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fnebula.bright67.online%2Fhls%2F1daa855b",
+  "ok": true,
+  "detail": "chain-ok seg=206"
+ },
+ {
+  "src": "cinejoyaio",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fnebula.bright67.online%2Fhls%2F1daa855b",
+  "ok": true,
+  "detail": "chain-ok seg=206"
+ },
+ {
+  "src": "cinewave",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2Fd2QzLXRyOEhDM",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "cinewave",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2Fd2QzLXRyOEhDM",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "desiflix",
+  "url": "http://manifest.desitvhub.eu.org/api/stream?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2Fd2QzLXRyOEhD",
+  "ok": true,
+  "detail": "ok status=200 ct=application/vnd.apple.mpegurl; charset=utf-8"
+ },
+ {
+  "src": "fourkhdhubone",
+  "url": "https://pixeldrain.dev/api/file/2EV2VVER?download",
+  "ok": true,
+  "detail": "ok status=206 ct=video/matroska"
+ },
+ {
+  "src": "framextv",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJb",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "framextv",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FczN4MEdZVFNJb",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "hdhub4uv2",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fm5qqjwpatpzb.acek-cdn.com%2Fhls2%2F01%2",
+  "ok": true,
+  "detail": "chain-ok seg=206"
+ },
+ {
+  "src": "hdhub4uv2",
+  "url": "https://ignatiusphoenix.onrender.com/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent",
+  "ok": true,
+  "detail": "ok status=206 ct=video/mkv"
+ },
+ {
+  "src": "hianime",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fhls.1embed.buzz%2Fv%2Fscxqicy%2F55ejtph",
+  "ok": true,
+  "detail": "chain-ok seg=206"
+ },
+ {
+  "src": "hianime",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fhls.1embed.buzz%2Fv%2Fscxqicy%2F55ejtph",
+  "ok": true,
+  "detail": "chain-ok seg=206"
+ },
+ {
+  "src": "hindmovie",
+  "url": "https://nine.gdnine.workers.dev/d/qS9YOiwinUlPdzyhHK3IC1gsSo99MJlatkQvv6K9e2bJq7InZFyMKAwVRUWbcYvpM7",
+  "ok": true,
+  "detail": "ok status=206 ct=video/x-matroska"
+ },
+ {
+  "src": "hindmoviez",
+  "url": "https://my.mainone0hindmoviezday.workers.dev/0:/2010-2015/Inception.%282010%29.1080p.Dual.Audio.%28H",
+  "ok": true,
+  "detail": "ok status=206 ct=video/x-matroska"
+ },
+ {
+  "src": "imdbplay",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Floquaciouslexicon.website%2Fpl%2FH4sIAA",
+  "ok": true,
+  "detail": "chain-ok seg=200"
+ },
+ {
+  "src": "imdbplay",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Floquaciouslexicon.website%2Fpl%2FH4sIAA",
+  "ok": true,
+  "detail": "chain-ok seg=200"
+ },
+ {
+  "src": "moviebox",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fbcdnxw.hakunaymatata.com%2Ftran-audio%2",
+  "ok": false,
+  "detail": "status=426 head=Upstrea ct=text/html; charset=utf-8"
+ },
+ {
+  "src": "moviebox",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fbcdnxw.hakunaymatata.com%2Ftran-audio%2",
+  "ok": false,
+  "detail": "status=426 head=Upstrea ct=text/html; charset=utf-8"
+ },
+ {
+  "src": "movielinkbd",
+  "url": "https://cdn.dramalinkbd.tv/p/phe30dvbAZqyOEbz.GOGIBWd5Kekway8WbNSMYNz2DRhykoAbr9-77xL5YAMlW5KKuLo4jS",
+  "ok": true,
+  "detail": "ok status=206 ct=video/x-matroska"
+ },
+ {
+  "src": "moviesdrivev2",
+  "url": "https://ignatiusphoenix.onrender.com/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent",
+  "ok": true,
+  "detail": "ok status=206 ct=video/mkv"
+ },
+ {
+  "src": "moviesdrivev2",
+  "url": "https://ignatiusphoenix.onrender.com/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent",
+  "ok": true,
+  "detail": "ok status=206 ct=video/mkv"
+ },
+ {
+  "src": "movieshuntv2",
+  "url": "https://pixeldrain.dev/api/file/5aCZxqu5?download",
+  "ok": true,
+  "detail": "ok status=206 ct=video/matroska"
+ },
+ {
+  "src": "nikastream",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fwww.animegg.org%2Fembed%2F131519&refere",
+  "ok": false,
+  "detail": "status=0 head= ct="
+ },
+ {
+  "src": "nikastream",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fwww.animegg.org%2Fembed%2F131519&refere",
+  "ok": false,
+  "detail": "status=0 head= ct="
+ },
+ {
+  "src": "pantyflix",
+  "url": "https://ignatiusphoenix.onrender.com/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent",
+  "ok": true,
+  "detail": "ok status=206 ct=video/mkv"
+ },
+ {
+  "src": "pantyflix",
+  "url": "https://ignatiusphoenix.onrender.com/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent",
+  "ok": true,
+  "detail": "ok status=206 ct=video/mkv"
+ },
+ {
+  "src": "peckle",
+  "url": "https://usa7-nas29.shegu.net/vip/p1/org_tv/9/9/9/8/tv.9.S8E2.original.960106.20190611035939.mp4?KEY1",
+  "ok": true,
+  "detail": "ok status=206 ct=video/mp4"
+ },
+ {
+  "src": "playimdb",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fautomatedrevenuehub.site%2FwzprFJsxb%2F",
+  "ok": false,
+  "detail": "variant=0/"
+ },
+ {
+  "src": "playimdb",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fautomatedrevenuehub.site%2FwzprFJsxb%2F",
+  "ok": false,
+  "detail": "variant=0/"
+ },
+ {
+  "src": "raflix",
+  "url": "https://nhdapi.com/anime/154587/1",
+  "ok": false,
+  "detail": "status=200 ct=text/html; charset=utf-8 "
+ },
+ {
+  "src": "stellar",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fcdn.reallyfast.ch%2Fstream%2F13oe5jy6Hy",
+  "ok": true,
+  "detail": "chain-ok seg=206"
+ },
+ {
+  "src": "stellar",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fcdn.reallyfast.ch%2Fstream%2F13oe5jy6Hy",
+  "ok": true,
+  "detail": "chain-ok seg=206"
+ },
+ {
+  "src": "streamxtv",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FU2pISEFyMXRrW",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "streamxtv",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FU2pISEFyMXRrW",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "vegamovies",
+  "url": "https://pixeldrain.dev/api/file/Exf7yjUx?download",
+  "ok": true,
+  "detail": "ok status=206 ct=video/matroska"
+ },
+ {
+  "src": "vegamovies2",
+  "url": "https://ignatiusphoenix.onrender.com/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent",
+  "ok": true,
+  "detail": "ok status=206 ct=video/mkv"
+ },
+ {
+  "src": "vegamovies2",
+  "url": "https://ignatiusphoenix.onrender.com/range-proxy?url=https%3A%2F%2Fvideo-downloads.googleusercontent",
+  "ok": true,
+  "detail": "ok status=206 ct=video/mkv"
+ },
+ {
+  "src": "videasy",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2Fd2QzLXRyOEhDM",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "videasy",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2Fd2QzLXRyOEhDM",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "videasyto",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FU2pISEFyMXRrW",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "videasyto",
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FU2pISEFyMXRrW",
+  "ok": true,
+  "detail": "master-media-ok"
+ },
+ {
+  "src": "vidlink2",
+  "url": "https://bcdn.hakunaymatata.com/resource/a58dd00af907b9b8cc3b5c04b1a422c9.mp4?sign=730cb6c32c121d10fc",
+  "ok": false,
+  "detail": "status=428 ct=text/html "
+ },
+ {
+  "src": "vixsrc",
+  "url": "https://vixsrc.to/api/playlist/93405/1/1?token=",
+  "ok": false,
+  "detail": "status=403 ct=text/html; charset=UTF-8 "
+ }
+]

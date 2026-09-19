@@ -1,0 +1,209 @@
+[
+ {
+  "id": "4khdhub",
+  "title": "Inception",
+  "count": 6,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1563,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://hubcloud.ist/drive/cdce53ddaelbqjj"
+ },
+ {
+  "id": "primeshows",
+  "title": "Inception",
+  "count": 14,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 913,
+  "sampleUrlHead": "https://vidsrc.mov/embed/movie/27205"
+ },
+ {
+  "id": "necro",
+  "title": "Inception",
+  "count": 5,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 8,
+  "sampleUrlHead": "https://vidsrc.me/embed/movie?tmdb=27205"
+ },
+ {
+  "id": "vidking",
+  "title": "Inception",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 7,
+  "sampleUrlHead": "https://www.vidking.net/embed/movie/27205"
+ },
+ {
+  "id": "vidfast",
+  "title": "Inception",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 9,
+  "sampleUrlHead": "https://vidfast.vc/movie/27205"
+ },
+ {
+  "id": "vegamovies",
+  "title": "Inception",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 8,
+  "sampleUrlHead": "https://vegamovies.enterprises/movie/27205"
+ },
+ {
+  "id": "vidsrcsbs",
+  "title": "Inception",
+  "count": 3,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 8,
+  "sampleUrlHead": "https://web.nxsha.app/embed/movie/27205"
+ },
+ {
+  "id": "meinecloud",
+  "title": "Inception",
+  "count": 4,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 294,
+  "sampleUrlHead": "https://dr0pstream.com/e/wrw6cy7skm4f"
+ },
+ {
+  "id": "hindmoviez",
+  "title": "Inception",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 10266,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://my.mainone0hindmoviezday.workers.dev/0:/2010-2015/In"
+ },
+ {
+  "id": "rivestream",
+  "title": "Inception",
+  "count": 14,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 13118,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://proxy.valhallastream.com/m3u8-proxy?url=https%3A%2F%"
+ },
+ {
+  "id": "kmmovies",
+  "title": "Inception",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 6313,
+  "logTail": [
+   "[KMMovies]   4K 10BIT: no streams",
+   "[KMMovies] 0 stream(s) total (0 playable, 0 download-only)"
+  ]
+ },
+ {
+  "id": "vidzee",
+  "title": "Inception",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1,
+  "sampleUrlHead": "https://player.vidzee.wtf/v2/embed/movie/27205?sr=3"
+ },
+ {
+  "id": "cinejoyaio",
+  "title": "Inception",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 640,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://ok.solarpanelcleaning.cc/playlist/PXDm-yFnQdxWAmmXj6"
+ },
+ {
+  "id": "cinehdplus",
+  "title": "Inception",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1724
+ },
+ {
+  "id": "atlantic",
+  "title": "Inception",
+  "count": 1,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1124,
+  "sampleFormat": "unknown",
+  "sampleUrlHead": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2"
+ },
+ {
+  "id": "persianstremio",
+  "title": "Inception",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 2047,
+  "logTail": [
+   "[PersianStremio] Retrying with fallback endpoint: https://persianstremio.vercel.app/stream/movie/27205.json",
+   "[PersianStremio] No streams returned from PersianStremio"
+  ]
+ },
+ {
+  "id": "verhdlink",
+  "title": "Inception",
+  "count": null,
+  "timedOut": false,
+  "error": "Error",
+  "durationMs": 9
+ },
+ {
+  "id": "nowhdtime",
+  "title": "Inception",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 3594,
+  "logTail": [
+   "[nowhdtime] playUrl not serving HLS (expired token or upstream outage) — dropping card"
+  ]
+ },
+ {
+  "id": "zxcstream",
+  "title": "Inception",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 823,
+  "logTail": [
+   "[ZXCStream] token POST 404",
+   "[ZXCStream] No embed resolved — returning 0 streams (no broken cards)"
+  ]
+ },
+ {
+  "id": "stellarrip",
+  "title": "Inception",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 9719,
+  "logTail": [
+   "[Stellar]   s5: unavailable",
+   "[Stellar] 0 streams total"
+  ]
+ },
+ {
+  "id": "stellar",
+  "title": "Inception",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 12169,
+  "sampleFormat": "unknown",
+  "sampleUrlHead": "https://h.themepark.workers.dev/hls?t=IVoXFEhOCScSHx9QTExWPC"
+ }
+]

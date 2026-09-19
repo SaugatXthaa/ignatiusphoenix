@@ -1,0 +1,159 @@
+[
+ {
+  "id": "anineko",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 824,
+  "logTail": [
+   "[AniNeko] Searching: Frieren: Beyond Journey's End",
+   "[err] [AniNeko] Error: No search results found for: Frieren: Beyond Journey's End"
+  ]
+ },
+ {
+  "id": "anikoto",
+  "title": "FrierenS2E1",
+  "count": 6,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1972,
+  "sampleUrlHead": "https://megaplay.buzz/stream/s-2/107257/sub"
+ },
+ {
+  "id": "anikototv",
+  "title": "FrierenS2E1",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1124,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://fetch.nexabloom.top/anime/806c0bf65a5cc8e89564ac7391"
+ },
+ {
+  "id": "animekai",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 5703,
+  "logTail": [
+   "[AnimeKai] got(h2) 200 len=11623 for https://animekai.at/?s=Frieren%3A",
+   "[AnimeKai] search \"Frieren: Beyond Journey's End\" → candidate \"\" → 0 hits"
+  ]
+ },
+ {
+  "id": "animezey",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 4624
+ },
+ {
+  "id": "animesdigital",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 4924,
+  "logTail": [
+   "[AnimesDigital v1.2.0] tv Frieren e a Jornada para o Além (2023) S2E1",
+   "[AnimesDigital] no matching anime page found"
+  ]
+ },
+ {
+  "id": "animeworldindia",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 165
+ },
+ {
+  "id": "itachi",
+  "title": "FrierenS2E1",
+  "count": 14,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1049,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://proxy.vidhawk.buzz/hls.m3u8?t=DPc0JTIYX9gyV0HpVXGx_3"
+ },
+ {
+  "id": "anidoor",
+  "title": "FrierenS2E1",
+  "count": 4,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 124,
+  "sampleUrlHead": "https://megaplay.buzz/stream/ani/154587/1/sub"
+ },
+ {
+  "id": "2dhive",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 589
+ },
+ {
+  "id": "animegg",
+  "title": "FrierenS2E1",
+  "count": 8,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 1002,
+  "sampleFormat": "mp4",
+  "sampleUrlHead": "https://www.animegg.org/play/447569/video.mp4?for=1017898004"
+ },
+ {
+  "id": "allwish",
+  "title": "FrierenS2E1",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 2523,
+  "sampleUrlHead": "https://megaplay.buzz/stream/s-1/SUIzaHFJcDJZMWlqaVgxdnRKeFJ"
+ },
+ {
+  "id": "animesuge",
+  "title": "FrierenS2E1",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 2121,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://fetch.nexabloom.top/anime/f48c04ffab49ff0e5d1176244f"
+ },
+ {
+  "id": "animotvslash",
+  "title": "FrierenS2E1",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 5074,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://cdn.videas.fr/v-medias/s5/hlsv1/e6/33/e633ec8f-cd32-"
+ },
+ {
+  "id": "nikastream",
+  "title": "FrierenS2E1",
+  "count": 13,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 17841,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://fetch.nexabloom.top/anime/bb6d2babd7797d94d8f4a8600b"
+ },
+ {
+  "id": "reanime",
+  "title": "FrierenS2E1",
+  "count": 3,
+  "timedOut": false,
+  "error": null,
+  "durationMs": 3668,
+  "sampleFormat": "hls",
+  "sampleUrlHead": "https://ignatiusphoenix.onrender.com/reanime-proxy/playlist."
+ }
+]

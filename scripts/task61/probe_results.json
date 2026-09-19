@@ -1,0 +1,314 @@
+[
+ {
+  "src": "acermovies",
+  "kind": "range-proxy",
+  "ok": true,
+  "extra": "status=206 ct=video/mkv bytes=65536 "
+ },
+ {
+  "src": "anibd",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206"
+ },
+ {
+  "src": "anichan",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206 ttfb_ms=?"
+ },
+ {
+  "src": "anikage",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "master status=502"
+ },
+ {
+  "src": "animeflix",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "master status=403"
+ },
+ {
+  "src": "animeflix",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "master status=403"
+ },
+ {
+  "src": "atlantic",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "master status=0"
+ },
+ {
+  "src": "bollyflix",
+  "kind": "range-proxy",
+  "ok": true,
+  "extra": "status=206 ct=video/mkv bytes=65536 "
+ },
+ {
+  "src": "cineby",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=200"
+ },
+ {
+  "src": "cinebyrocks",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "variant status=0"
+ },
+ {
+  "src": "cinefreak",
+  "kind": "range-proxy",
+  "ok": true,
+  "extra": "status=206 ct=video/mkv bytes=65536 "
+ },
+ {
+  "src": "cinewave",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206"
+ },
+ {
+  "src": "cinewave",
+  "kind": "direct",
+  "ok": true,
+  "extra": "status=206 ct=video/matroska bytes=65536 "
+ },
+ {
+  "src": "desiflix",
+  "kind": "exception",
+  "ok": false,
+  "extra": "TypeError [ERR_INVALID_PROTOCOL]: Protocol \"http:\" not supported. Expected \"http"
+ },
+ {
+  "src": "desiflix",
+  "kind": "exception",
+  "ok": false,
+  "extra": "TypeError [ERR_INVALID_PROTOCOL]: Protocol \"http:\" not supported. Expected \"http"
+ },
+ {
+  "src": "fourkhdhubone",
+  "kind": "direct",
+  "ok": true,
+  "extra": "status=206 ct=video/x-matroska bytes=65536 "
+ },
+ {
+  "src": "fourkhdhubone",
+  "kind": "direct",
+  "ok": true,
+  "extra": "status=206 ct=video/x-matroska bytes=65536 "
+ },
+ {
+  "src": "framextv",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206"
+ },
+ {
+  "src": "hdhub4uv2",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "variant status=403"
+ },
+ {
+  "src": "hdhub4uv2",
+  "kind": "range-proxy",
+  "ok": true,
+  "extra": "status=206 ct=video/mkv bytes=65536 "
+ },
+ {
+  "src": "hianime",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206 ttfb_ms=?"
+ },
+ {
+  "src": "hindmovie",
+  "kind": "direct",
+  "ok": false,
+  "extra": "status=502 ct=text/html; charset=utf-8 bytes=3300 "
+ },
+ {
+  "src": "hindmovie",
+  "kind": "direct",
+  "ok": false,
+  "extra": "status=502 ct=text/html; charset=utf-8 bytes=3300 "
+ },
+ {
+  "src": "imdbplay",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=200 ttfb_ms=?"
+ },
+ {
+  "src": "moviebox",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "master status=426"
+ },
+ {
+  "src": "movielinkbd",
+  "kind": "direct",
+  "ok": true,
+  "extra": "status=206 ct=video/x-matroska bytes=65536 "
+ },
+ {
+  "src": "movielinkbd",
+  "kind": "direct",
+  "ok": true,
+  "extra": "status=206 ct=video/x-matroska bytes=65536 "
+ },
+ {
+  "src": "moviesdrivev2",
+  "kind": "range-proxy",
+  "ok": true,
+  "extra": "status=206 ct=video/mkv bytes=65536 "
+ },
+ {
+  "src": "moviesdrivev2",
+  "kind": "direct",
+  "ok": true,
+  "extra": "status=206 ct=video/matroska bytes=65536 "
+ },
+ {
+  "src": "movieshuntv2",
+  "kind": "direct",
+  "ok": true,
+  "extra": "status=206 ct=application/octet-stream bytes=65536 "
+ },
+ {
+  "src": "movieshuntv2",
+  "kind": "direct",
+  "ok": true,
+  "extra": "status=206 ct=application/octet-stream bytes=65536 "
+ },
+ {
+  "src": "netlio",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "master status=200"
+ },
+ {
+  "src": "pantyflix",
+  "kind": "range-proxy",
+  "ok": true,
+  "extra": "status=206 ct=video/mkv bytes=65536 "
+ },
+ {
+  "src": "pantyflix",
+  "kind": "direct",
+  "ok": false,
+  "extra": "status=404 ct=text/html; charset=UTF-8 bytes=0 "
+ },
+ {
+  "src": "peckle",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206 ttfb_ms=?"
+ },
+ {
+  "src": "peckle",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206 ttfb_ms=?"
+ },
+ {
+  "src": "playimdb",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "variant status=0"
+ },
+ {
+  "src": "raflix",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "master status=403"
+ },
+ {
+  "src": "raflix",
+  "kind": "proxy-hls-chain",
+  "ok": false,
+  "extra": "master status=403"
+ },
+ {
+  "src": "stellar",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206 ttfb_ms=?"
+ },
+ {
+  "src": "streamxtv",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206"
+ },
+ {
+  "src": "uhdmovies",
+  "kind": "range-proxy",
+  "ok": true,
+  "extra": "status=206 ct=video/mkv bytes=65536 "
+ },
+ {
+  "src": "uhdmovies",
+  "kind": "direct",
+  "ok": true,
+  "extra": "status=206 ct=video/x-matroska bytes=65536 "
+ },
+ {
+  "src": "videasy",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206"
+ },
+ {
+  "src": "videasy",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206 ttfb_ms=?"
+ },
+ {
+  "src": "vidlink2",
+  "kind": "direct",
+  "ok": false,
+  "extra": "status=428 ct=text/html bytes=14 "
+ },
+ {
+  "src": "vidlink2",
+  "kind": "direct",
+  "ok": false,
+  "extra": "status=428 ct=text/html bytes=14 "
+ },
+ {
+  "src": "vidsrcsbs",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206"
+ },
+ {
+  "src": "vidsrcsbs",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206 ttfb_ms=?"
+ },
+ {
+  "src": "vixsrc",
+  "kind": "direct",
+  "ok": false,
+  "extra": "status=403 ct=text/html; charset=UTF-8 bytes=4911 "
+ },
+ {
+  "src": "vixsrc",
+  "kind": "direct",
+  "ok": false,
+  "extra": "status=403 ct=text/html; charset=UTF-8 bytes=4911 "
+ },
+ {
+  "src": "watchseries",
+  "kind": "proxy-hls-chain",
+  "ok": true,
+  "extra": "seg status=206"
+ }
+]

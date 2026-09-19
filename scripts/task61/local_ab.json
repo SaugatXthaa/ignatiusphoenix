@@ -1,0 +1,93 @@
+[
+ {
+  "id": "kmmovies",
+  "title": "Inception",
+  "count": 7,
+  "timedOut": false,
+  "error": null,
+  "ms": 4855,
+  "logTail": [
+   "[KMMovies]   1080p: ✅ HubCloud → https://hubcloud.foo/drive/pwppgjixizq1zpx...",
+   "[KMMovies]   1080p: ✅ HubCloud → https://hubcloud.foo/drive/owbzwglcam5qa1z...",
+   "[KMMovies]   4K 10BIT: ✅ HubCloud → https://hubcloud.foo/drive/w66qaya6ixvux5x...",
+   "[KMMovies] 7 stream(s) total (7 playable, 0 download-only)"
+  ]
+ },
+ {
+  "id": "anineko",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "ms": 3317,
+  "logTail": [
+   "[AniNeko] tmdbId=209867 S2E1",
+   "[AniNeko] Searching: Frieren: Beyond Journey's End",
+   "[err] [AniNeko] Error: No search results found for: Frieren: Beyond Journey's End"
+  ]
+ },
+ {
+  "id": "animekai",
+  "title": "FrierenS2E1",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "ms": 4777,
+  "logTail": [
+   "[AnimeKai] matched \"frieren-beyond-journeys-end\" (score=100.0)",
+   "[AnimeKai] got(h2) 200 len=2287 for https://zokoanime.video/stream/mal/52991/1/sub",
+   "[AnimeKai] got(h2) 200 len=2287 for https://zokoanime.video/stream/mal/52991/1/dub",
+   "[AnimeKai] S2E1 mal=52991 → 2 stream(s) (sub+dub attempted)"
+  ]
+ },
+ {
+  "id": "animezey",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "ms": 5780
+ },
+ {
+  "id": "animesdigital",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "ms": 6536,
+  "logTail": [
+   "[AnimesDigital v1.2.0] tv Frieren e a Jornada para o Além (2023) S2E1",
+   "[AnimesDigital] no matching anime page found"
+  ]
+ },
+ {
+  "id": "animeworldindia",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "ms": 15528
+ },
+ {
+  "id": "2dhive",
+  "title": "FrierenS2E1",
+  "count": 0,
+  "timedOut": false,
+  "error": null,
+  "ms": 1901
+ },
+ {
+  "id": "cinejoyaio",
+  "title": "Inception",
+  "count": 2,
+  "timedOut": false,
+  "error": null,
+  "ms": 2607,
+  "logTail": [
+   "  Lisbon: 1 streams",
+   "  Nebula: 1 streams",
+   "  Solara: no proxy available: load balancer unreachable and no cached proxy",
+   "  Athens: Athens: empty mirror list for /e/movie/27205?autostart=true"
+  ]
+ }
+]

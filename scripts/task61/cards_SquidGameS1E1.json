@@ -1,0 +1,857 @@
+[
+ {
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FNWJneVBlaTRQYjZYLTZLcHJYa1lLQTpqMkJLQkVfRjVWeVpmVDBCb3hPZFNNaGNmYkVBaHN6U2xFZVgtVnJWLXhv%2Findex-s2160p-v1-a1.m3u8&referer=https%3A%2F%2Fwww.vidking.net%2F",
+  "name": "🐦‍🔥 PhoeniX · 4K · VidSrcSbs · Yoru",
+  "title": "Squid Game — S01E01 — 2160p\n2160p · HLS\n🔗 Yoru from VidSrcSbs",
+  "behaviorHints": {
+   "bingeGroup": "phoenix-vidsrcsbs-vidking_yoru",
+   "notWebReady": true
+  },
+  "subtitles": [
+   {
+    "id": "gr-ar-0",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Arabic.vtt",
+    "lang": "Arabic"
+   },
+   {
+    "id": "gr-Basq-1",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Basque.vtt",
+    "lang": "Basque"
+   },
+   {
+    "id": "gr-bn-2",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bengali.vtt",
+    "lang": "Bengali"
+   },
+   {
+    "id": "gr-bn-3",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bengali2.vtt",
+    "lang": "Bengali 2"
+   },
+   {
+    "id": "gr-bg-4",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian.vtt",
+    "lang": "Bulgarian"
+   },
+   {
+    "id": "gr-bg-5",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian2.vtt",
+    "lang": "Bulgarian 2"
+   },
+   {
+    "id": "gr-bg-6",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian3.vtt",
+    "lang": "Bulgarian 3"
+   },
+   {
+    "id": "gr-Cata-7",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan.vtt",
+    "lang": "Catalan"
+   },
+   {
+    "id": "gr-Cata-8",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan2.vtt",
+    "lang": "Catalan 2"
+   },
+   {
+    "id": "gr-Cata-9",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan3.vtt",
+    "lang": "Catalan 3"
+   },
+   {
+    "id": "gr-zh-cn-10",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Chinese (simplified).vtt",
+    "lang": "Chinese (simplified)"
+   },
+   {
+    "id": "gr-zh-tw-11",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Chinese (traditional).vtt",
+    "lang": "Chinese (traditional)"
+   },
+   {
+    "id": "gr-hr-12",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian.vtt",
+    "lang": "Croatian"
+   },
+   {
+    "id": "gr-hr-13",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian2.vtt",
+    "lang": "Croatian 2"
+   },
+   {
+    "id": "gr-hr-14",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian3.vtt",
+    "lang": "Croatian 3"
+   },
+   {
+    "id": "gr-cs-15",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech Hi.vtt",
+    "lang": "Czech (HI)"
+   },
+   {
+    "id": "gr-cs-16",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech.vtt",
+    "lang": "Czech"
+   },
+   {
+    "id": "gr-cs-17",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech2.vtt",
+    "lang": "Czech 2"
+   },
+   {
+    "id": "gr-da-18",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Danish.vtt",
+    "lang": "Danish"
+   },
+   {
+    "id": "gr-nl-19",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Dutch.vtt",
+    "lang": "Dutch"
+   },
+   {
+    "id": "gr-en-20",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English Hi.vtt",
+    "lang": "English (HI)"
+   },
+   {
+    "id": "gr-en-21",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English2.vtt",
+    "lang": "English 2"
+   },
+   {
+    "id": "gr-en-22",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English3.vtt",
+    "lang": "English 3"
+   },
+   {
+    "id": "gr-en-23",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English4.vtt",
+    "lang": "English 4"
+   },
+   {
+    "id": "gr-et-24",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Estonian.vtt",
+    "lang": "Estonian"
+   },
+   {
+    "id": "gr-et-25",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Estonian2.vtt",
+    "lang": "Estonian 2"
+   },
+   {
+    "id": "gr-fi-26",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Finnish.vtt",
+    "lang": "Finnish"
+   },
+   {
+    "id": "gr-fr-27",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/French Hi2.vtt",
+    "lang": "French (HI)"
+   },
+   {
+    "id": "gr-fr-28",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/French.vtt",
+    "lang": "French"
+   },
+   {
+    "id": "gr-Gali-29",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Galician.vtt",
+    "lang": "Galician"
+   },
+   {
+    "id": "gr-de-30",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/German Hi2.vtt",
+    "lang": "German (HI)"
+   },
+   {
+    "id": "gr-de-31",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/German.vtt",
+    "lang": "German"
+   }
+  ]
+ },
+ {
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FNWJneVBlaTRQYjZYLTZLcHJYa1lLQTpqMkJLQkVfRjVWeVpmVDBCb3hPZFNNaGNmYkVBaHN6U2xFZVgtVnJWLXhv%2Findex-s1080p-v1-a1.m3u8&referer=https%3A%2F%2Fwww.vidking.net%2F",
+  "name": "🐦‍🔥 PhoeniX · 1080p · VidSrcSbs · Yoru",
+  "title": "Squid Game — S01E01 — 1080p\n1080p · HLS\n🔗 Yoru from VidSrcSbs",
+  "behaviorHints": {
+   "bingeGroup": "phoenix-vidsrcsbs-vidking_yoru",
+   "notWebReady": true
+  },
+  "subtitles": [
+   {
+    "id": "gr-ar-0",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Arabic.vtt",
+    "lang": "Arabic"
+   },
+   {
+    "id": "gr-Basq-1",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Basque.vtt",
+    "lang": "Basque"
+   },
+   {
+    "id": "gr-bn-2",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bengali.vtt",
+    "lang": "Bengali"
+   },
+   {
+    "id": "gr-bn-3",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bengali2.vtt",
+    "lang": "Bengali 2"
+   },
+   {
+    "id": "gr-bg-4",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian.vtt",
+    "lang": "Bulgarian"
+   },
+   {
+    "id": "gr-bg-5",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian2.vtt",
+    "lang": "Bulgarian 2"
+   },
+   {
+    "id": "gr-bg-6",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian3.vtt",
+    "lang": "Bulgarian 3"
+   },
+   {
+    "id": "gr-Cata-7",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan.vtt",
+    "lang": "Catalan"
+   },
+   {
+    "id": "gr-Cata-8",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan2.vtt",
+    "lang": "Catalan 2"
+   },
+   {
+    "id": "gr-Cata-9",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan3.vtt",
+    "lang": "Catalan 3"
+   },
+   {
+    "id": "gr-zh-cn-10",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Chinese (simplified).vtt",
+    "lang": "Chinese (simplified)"
+   },
+   {
+    "id": "gr-zh-tw-11",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Chinese (traditional).vtt",
+    "lang": "Chinese (traditional)"
+   },
+   {
+    "id": "gr-hr-12",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian.vtt",
+    "lang": "Croatian"
+   },
+   {
+    "id": "gr-hr-13",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian2.vtt",
+    "lang": "Croatian 2"
+   },
+   {
+    "id": "gr-hr-14",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian3.vtt",
+    "lang": "Croatian 3"
+   },
+   {
+    "id": "gr-cs-15",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech Hi.vtt",
+    "lang": "Czech (HI)"
+   },
+   {
+    "id": "gr-cs-16",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech.vtt",
+    "lang": "Czech"
+   },
+   {
+    "id": "gr-cs-17",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech2.vtt",
+    "lang": "Czech 2"
+   },
+   {
+    "id": "gr-da-18",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Danish.vtt",
+    "lang": "Danish"
+   },
+   {
+    "id": "gr-nl-19",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Dutch.vtt",
+    "lang": "Dutch"
+   },
+   {
+    "id": "gr-en-20",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English Hi.vtt",
+    "lang": "English (HI)"
+   },
+   {
+    "id": "gr-en-21",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English2.vtt",
+    "lang": "English 2"
+   },
+   {
+    "id": "gr-en-22",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English3.vtt",
+    "lang": "English 3"
+   },
+   {
+    "id": "gr-en-23",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English4.vtt",
+    "lang": "English 4"
+   },
+   {
+    "id": "gr-et-24",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Estonian.vtt",
+    "lang": "Estonian"
+   },
+   {
+    "id": "gr-et-25",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Estonian2.vtt",
+    "lang": "Estonian 2"
+   },
+   {
+    "id": "gr-fi-26",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Finnish.vtt",
+    "lang": "Finnish"
+   },
+   {
+    "id": "gr-fr-27",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/French Hi2.vtt",
+    "lang": "French (HI)"
+   },
+   {
+    "id": "gr-fr-28",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/French.vtt",
+    "lang": "French"
+   },
+   {
+    "id": "gr-Gali-29",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Galician.vtt",
+    "lang": "Galician"
+   },
+   {
+    "id": "gr-de-30",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/German Hi2.vtt",
+    "lang": "German (HI)"
+   },
+   {
+    "id": "gr-de-31",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/German.vtt",
+    "lang": "German"
+   }
+  ]
+ },
+ {
+  "url": "https://s8.vimeos.net/hls2/03/00004/wp57uobyxe02_,n,h,.urlset/master.m3u8?t=wNtZvkMyIbumIWOWZPamNA19XNrfBIPwhTH_vat256w&s=1789790710&e=43200&v=363441055&i=0.0&sp=0&r=e",
+  "name": "🐦‍🔥 PhoeniX · 1080p · VidSrcSbs · Omen",
+  "title": "Squid Game — S01E01 — Vimeos\n1080p · WebDL · HLS\n🔗 Omen from VidSrcSbs",
+  "behaviorHints": {
+   "bingeGroup": "phoenix-vidsrcsbs-vidking_omen",
+   "notWebReady": true
+  },
+  "subtitles": [
+   {
+    "id": "gr-ar-0",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Arabic.vtt",
+    "lang": "Arabic"
+   },
+   {
+    "id": "gr-Basq-1",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Basque.vtt",
+    "lang": "Basque"
+   },
+   {
+    "id": "gr-bn-2",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bengali.vtt",
+    "lang": "Bengali"
+   },
+   {
+    "id": "gr-bn-3",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bengali2.vtt",
+    "lang": "Bengali 2"
+   },
+   {
+    "id": "gr-bg-4",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian.vtt",
+    "lang": "Bulgarian"
+   },
+   {
+    "id": "gr-bg-5",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian2.vtt",
+    "lang": "Bulgarian 2"
+   },
+   {
+    "id": "gr-bg-6",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian3.vtt",
+    "lang": "Bulgarian 3"
+   },
+   {
+    "id": "gr-Cata-7",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan.vtt",
+    "lang": "Catalan"
+   },
+   {
+    "id": "gr-Cata-8",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan2.vtt",
+    "lang": "Catalan 2"
+   },
+   {
+    "id": "gr-Cata-9",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan3.vtt",
+    "lang": "Catalan 3"
+   },
+   {
+    "id": "gr-zh-cn-10",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Chinese (simplified).vtt",
+    "lang": "Chinese (simplified)"
+   },
+   {
+    "id": "gr-zh-tw-11",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Chinese (traditional).vtt",
+    "lang": "Chinese (traditional)"
+   },
+   {
+    "id": "gr-hr-12",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian.vtt",
+    "lang": "Croatian"
+   },
+   {
+    "id": "gr-hr-13",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian2.vtt",
+    "lang": "Croatian 2"
+   },
+   {
+    "id": "gr-hr-14",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian3.vtt",
+    "lang": "Croatian 3"
+   },
+   {
+    "id": "gr-cs-15",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech Hi.vtt",
+    "lang": "Czech (HI)"
+   },
+   {
+    "id": "gr-cs-16",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech.vtt",
+    "lang": "Czech"
+   },
+   {
+    "id": "gr-cs-17",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech2.vtt",
+    "lang": "Czech 2"
+   },
+   {
+    "id": "gr-da-18",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Danish.vtt",
+    "lang": "Danish"
+   },
+   {
+    "id": "gr-nl-19",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Dutch.vtt",
+    "lang": "Dutch"
+   },
+   {
+    "id": "gr-en-20",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English Hi.vtt",
+    "lang": "English (HI)"
+   },
+   {
+    "id": "gr-en-21",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English2.vtt",
+    "lang": "English 2"
+   },
+   {
+    "id": "gr-en-22",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English3.vtt",
+    "lang": "English 3"
+   },
+   {
+    "id": "gr-en-23",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English4.vtt",
+    "lang": "English 4"
+   },
+   {
+    "id": "gr-et-24",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Estonian.vtt",
+    "lang": "Estonian"
+   },
+   {
+    "id": "gr-et-25",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Estonian2.vtt",
+    "lang": "Estonian 2"
+   },
+   {
+    "id": "gr-fi-26",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Finnish.vtt",
+    "lang": "Finnish"
+   },
+   {
+    "id": "gr-fr-27",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/French Hi2.vtt",
+    "lang": "French (HI)"
+   },
+   {
+    "id": "gr-fr-28",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/French.vtt",
+    "lang": "French"
+   },
+   {
+    "id": "gr-Gali-29",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Galician.vtt",
+    "lang": "Galician"
+   },
+   {
+    "id": "gr-de-30",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/German Hi2.vtt",
+    "lang": "German (HI)"
+   },
+   {
+    "id": "gr-de-31",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/German.vtt",
+    "lang": "German"
+   }
+  ]
+ },
+ {
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FNWJneVBlaTRQYjZYLTZLcHJYa1lLQTpqMkJLQkVfRjVWeVpmVDBCb3hPZFNNaGNmYkVBaHN6U2xFZVgtVnJWLXhv%2Findex-s720p-v1-a1.m3u8&referer=https%3A%2F%2Fwww.vidking.net%2F",
+  "name": "🐦‍🔥 PhoeniX · 720p · VidSrcSbs · Yoru",
+  "title": "Squid Game — S01E01 — 720p\n720p · HLS\n🔗 Yoru from VidSrcSbs",
+  "behaviorHints": {
+   "bingeGroup": "phoenix-vidsrcsbs-vidking_yoru",
+   "notWebReady": true
+  },
+  "subtitles": [
+   {
+    "id": "gr-ar-0",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Arabic.vtt",
+    "lang": "Arabic"
+   },
+   {
+    "id": "gr-Basq-1",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Basque.vtt",
+    "lang": "Basque"
+   },
+   {
+    "id": "gr-bn-2",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bengali.vtt",
+    "lang": "Bengali"
+   },
+   {
+    "id": "gr-bn-3",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bengali2.vtt",
+    "lang": "Bengali 2"
+   },
+   {
+    "id": "gr-bg-4",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian.vtt",
+    "lang": "Bulgarian"
+   },
+   {
+    "id": "gr-bg-5",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian2.vtt",
+    "lang": "Bulgarian 2"
+   },
+   {
+    "id": "gr-bg-6",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian3.vtt",
+    "lang": "Bulgarian 3"
+   },
+   {
+    "id": "gr-Cata-7",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan.vtt",
+    "lang": "Catalan"
+   },
+   {
+    "id": "gr-Cata-8",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan2.vtt",
+    "lang": "Catalan 2"
+   },
+   {
+    "id": "gr-Cata-9",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan3.vtt",
+    "lang": "Catalan 3"
+   },
+   {
+    "id": "gr-zh-cn-10",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Chinese (simplified).vtt",
+    "lang": "Chinese (simplified)"
+   },
+   {
+    "id": "gr-zh-tw-11",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Chinese (traditional).vtt",
+    "lang": "Chinese (traditional)"
+   },
+   {
+    "id": "gr-hr-12",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian.vtt",
+    "lang": "Croatian"
+   },
+   {
+    "id": "gr-hr-13",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian2.vtt",
+    "lang": "Croatian 2"
+   },
+   {
+    "id": "gr-hr-14",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian3.vtt",
+    "lang": "Croatian 3"
+   },
+   {
+    "id": "gr-cs-15",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech Hi.vtt",
+    "lang": "Czech (HI)"
+   },
+   {
+    "id": "gr-cs-16",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech.vtt",
+    "lang": "Czech"
+   },
+   {
+    "id": "gr-cs-17",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech2.vtt",
+    "lang": "Czech 2"
+   },
+   {
+    "id": "gr-da-18",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Danish.vtt",
+    "lang": "Danish"
+   },
+   {
+    "id": "gr-nl-19",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Dutch.vtt",
+    "lang": "Dutch"
+   },
+   {
+    "id": "gr-en-20",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English Hi.vtt",
+    "lang": "English (HI)"
+   },
+   {
+    "id": "gr-en-21",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English2.vtt",
+    "lang": "English 2"
+   },
+   {
+    "id": "gr-en-22",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English3.vtt",
+    "lang": "English 3"
+   },
+   {
+    "id": "gr-en-23",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English4.vtt",
+    "lang": "English 4"
+   },
+   {
+    "id": "gr-et-24",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Estonian.vtt",
+    "lang": "Estonian"
+   },
+   {
+    "id": "gr-et-25",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Estonian2.vtt",
+    "lang": "Estonian 2"
+   },
+   {
+    "id": "gr-fi-26",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Finnish.vtt",
+    "lang": "Finnish"
+   },
+   {
+    "id": "gr-fr-27",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/French Hi2.vtt",
+    "lang": "French (HI)"
+   },
+   {
+    "id": "gr-fr-28",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/French.vtt",
+    "lang": "French"
+   },
+   {
+    "id": "gr-Gali-29",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Galician.vtt",
+    "lang": "Galician"
+   },
+   {
+    "id": "gr-de-30",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/German Hi2.vtt",
+    "lang": "German (HI)"
+   },
+   {
+    "id": "gr-de-31",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/German.vtt",
+    "lang": "German"
+   }
+  ]
+ },
+ {
+  "url": "https://ignatiusphoenix.onrender.com/proxy?url=https%3A%2F%2Fmoon.peakstorm.top%2Fvd%2FNWJneVBlaTRQYjZYLTZLcHJYa1lLQTpqMkJLQkVfRjVWeVpmVDBCb3hPZFNNaGNmYkVBaHN6U2xFZVgtVnJWLXhv%2Findex-s480p-v1-a1.m3u8&referer=https%3A%2F%2Fwww.vidking.net%2F",
+  "name": "🐦‍🔥 PhoeniX · 480p · VidSrcSbs · Yoru",
+  "title": "Squid Game — S01E01 — 480p\n480p · HLS\n🔗 Yoru from VidSrcSbs",
+  "behaviorHints": {
+   "bingeGroup": "phoenix-vidsrcsbs-vidking_yoru",
+   "notWebReady": true
+  },
+  "subtitles": [
+   {
+    "id": "gr-ar-0",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Arabic.vtt",
+    "lang": "Arabic"
+   },
+   {
+    "id": "gr-Basq-1",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Basque.vtt",
+    "lang": "Basque"
+   },
+   {
+    "id": "gr-bn-2",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bengali.vtt",
+    "lang": "Bengali"
+   },
+   {
+    "id": "gr-bn-3",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bengali2.vtt",
+    "lang": "Bengali 2"
+   },
+   {
+    "id": "gr-bg-4",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian.vtt",
+    "lang": "Bulgarian"
+   },
+   {
+    "id": "gr-bg-5",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian2.vtt",
+    "lang": "Bulgarian 2"
+   },
+   {
+    "id": "gr-bg-6",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Bulgarian3.vtt",
+    "lang": "Bulgarian 3"
+   },
+   {
+    "id": "gr-Cata-7",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan.vtt",
+    "lang": "Catalan"
+   },
+   {
+    "id": "gr-Cata-8",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan2.vtt",
+    "lang": "Catalan 2"
+   },
+   {
+    "id": "gr-Cata-9",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Catalan3.vtt",
+    "lang": "Catalan 3"
+   },
+   {
+    "id": "gr-zh-cn-10",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Chinese (simplified).vtt",
+    "lang": "Chinese (simplified)"
+   },
+   {
+    "id": "gr-zh-tw-11",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Chinese (traditional).vtt",
+    "lang": "Chinese (traditional)"
+   },
+   {
+    "id": "gr-hr-12",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian.vtt",
+    "lang": "Croatian"
+   },
+   {
+    "id": "gr-hr-13",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian2.vtt",
+    "lang": "Croatian 2"
+   },
+   {
+    "id": "gr-hr-14",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Croatian3.vtt",
+    "lang": "Croatian 3"
+   },
+   {
+    "id": "gr-cs-15",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech Hi.vtt",
+    "lang": "Czech (HI)"
+   },
+   {
+    "id": "gr-cs-16",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech.vtt",
+    "lang": "Czech"
+   },
+   {
+    "id": "gr-cs-17",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Czech2.vtt",
+    "lang": "Czech 2"
+   },
+   {
+    "id": "gr-da-18",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Danish.vtt",
+    "lang": "Danish"
+   },
+   {
+    "id": "gr-nl-19",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Dutch.vtt",
+    "lang": "Dutch"
+   },
+   {
+    "id": "gr-en-20",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English Hi.vtt",
+    "lang": "English (HI)"
+   },
+   {
+    "id": "gr-en-21",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English2.vtt",
+    "lang": "English 2"
+   },
+   {
+    "id": "gr-en-22",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English3.vtt",
+    "lang": "English 3"
+   },
+   {
+    "id": "gr-en-23",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/English4.vtt",
+    "lang": "English 4"
+   },
+   {
+    "id": "gr-et-24",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Estonian.vtt",
+    "lang": "Estonian"
+   },
+   {
+    "id": "gr-et-25",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Estonian2.vtt",
+    "lang": "Estonian 2"
+   },
+   {
+    "id": "gr-fi-26",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Finnish.vtt",
+    "lang": "Finnish"
+   },
+   {
+    "id": "gr-fr-27",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/French Hi2.vtt",
+    "lang": "French (HI)"
+   },
+   {
+    "id": "gr-fr-28",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/French.vtt",
+    "lang": "French"
+   },
+   {
+    "id": "gr-Gali-29",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/Galician.vtt",
+    "lang": "Galician"
+   },
+   {
+    "id": "gr-de-30",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/German Hi2.vtt",
+    "lang": "German (HI)"
+   },
+   {
+    "id": "gr-de-31",
+    "url": "https://cache.vdrk.site/v1/vtt/tv/93405/1/1/German.vtt",
+    "lang": "German"
+   }
+  ]
+ }
+]
