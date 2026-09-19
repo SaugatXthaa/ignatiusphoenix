@@ -477,22 +477,47 @@ app.get('/proxy', async (req, res) => {
     }
 
     // Non-m3u8 content — stream directly to avoid OOM on Render's 512MB tier
-    const stream = gotScraping.stream(targetUrl.href, {
-      headers: proxyHeaders,
-      timeout: { request: 30000 },
-      throwHttpErrors: false,
-      followRedirect: true,
-      isStream: true,
-      http2: false,  // Avoid GOAWAY errors from HTTP/2 servers
-    });
+    // Task 60: some CDNs (acek-cdn for HDHub4u 4K) intermittently 502/503/504
+    // on SEGMENT requests while the same URL succeeds seconds later. One
+    // idempotent retry (700ms backoff) converts those blips into a brief
+    // pause instead of an mpv stall ("stuck on loading").
+    const streamOnce = () => {
+      const s = gotScraping.stream(targetUrl.href, {
+        headers: proxyHeaders,
+        timeout: { request: 30000 },
+        throwHttpErrors: false,
+        followRedirect: true,
+        isStream: true,
+        http2: false,  // Avoid GOAWAY errors from HTTP/2 servers
+      });
+      return s;
+    };
+    let stream = streamOnce();
 
     // Wait for the response headers
-    const response = await new Promise((resolve, reject) => {
-      stream.on('response', (resp) => resolve(resp));
-      stream.on('error', (err) => reject(err));
+    const awaitResponse = (s) => new Promise((resolve, reject) => {
+      s.on('response', (resp) => resolve(resp));
+      s.on('error', (err) => reject(err));
       // Timeout if no response in 15s
       setTimeout(() => reject(new Error('proxy response timeout')), 15000);
     });
+
+    let response;
+    try {
+      response = await awaitResponse(stream);
+      if (response.statusCode >= 500 && response.statusCode <= 504) {
+        // Retryable upstream blip — destroy and re-issue once.
+        const st = response.statusCode;
+        try { stream.destroy(); } catch {}
+        await new Promise(r => setTimeout(r, 700));
+        stream = streamOnce();
+        response = await awaitResponse(stream);
+        logger.log(`[${ADDON_NAME}] proxy retry after upstream ${st} → ${response.statusCode} for ${targetUrl.hostname}`);
+      }
+    } catch (e) {
+      try { stream.destroy(); } catch {}
+      throw e;
+    }
 
     if (response.statusCode >= 400) {
       logger.error(`[${ADDON_NAME}] proxy upstream ${response.statusCode} for ${targetUrl.hostname}`);
@@ -505,6 +530,41 @@ app.get('/proxy', async (req, res) => {
         return res.status(response.statusCode).send(`Upstream error: ${response.statusCode}`);
       }
       return res.status(response.statusCode).send(`Upstream error: ${response.statusCode}`);
+    }
+
+    // ———— Task 60: subtitle files served through /proxy get NORMALIZED ————
+    // natsuki (hls.lol) SRT files ship malformed cues ("0:00:00,00" — hours
+    // not zero-padded, 2-digit milliseconds) as text/plain; mpv drops or
+    // zero-duration-renders them → "subtitles not working" on every source.
+    // Buffer small .srt/.vtt targets, convert to valid WebVTT, serve as
+    // text/vtt. Already-valid VTT passes through the normalizer unchanged.
+    const subPath = targetUrl.pathname.toLowerCase();
+    if (subPath.endsWith('.srt') || subPath.endsWith('.vtt')) {
+      try { stream.destroy(); } catch {} // release the passthrough connection
+      try {
+        const subRes = await gotScraping.get(targetUrl.href, {
+          headers: proxyHeaders,
+          timeout: { request: 20000 },
+          throwHttpErrors: false,
+          followRedirect: true,
+          http2: false,
+          responseType: 'buffer',
+        });
+        if (subRes.statusCode >= 400) {
+          return res.status(subRes.statusCode).send(`Upstream error: ${subRes.statusCode}`);
+        }
+        const { toWebVtt } = await import('./utils/subtitle-normalize.cjs');
+        const vtt = toWebVtt(subRes.body.toString('utf8'));
+        res.status(200);
+        res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Content-Length', Buffer.byteLength(vtt));
+        return res.send(vtt);
+      } catch (e) {
+        logger.error(`[${ADDON_NAME}] proxy subtitle normalize failed: ${e.message}`);
+        if (!res.headersSent) return res.status(502).send('Subtitle proxy error');
+        return;
+      }
     }
 
     // Forward status code and headers
@@ -748,9 +808,25 @@ app.get('/range-proxy', async (req, res) => {
 
     const contentLength = rangeEnd - rangeStart + 1;
 
-    // Step 3: Fetch the FULL file from upstream (no Range — Google ignores it anyway)
+    // Step 3: Fetch from upstream — WITH the player's Range header first.
+    // Task 60: the old code always fetched the full file and byte-skipped, so
+    // ANY seek deep into a huge file (mpv preloading Matroska Cues near the
+    // end of a 21GB 4K MKV) meant streaming+discarding tens of GB → the player
+    // waited forever = "stuck on loading" for CineFreak/Pantyflix/MoviesDrive
+    // 4K cards. Three cases now:
+    //   a) upstream HONORS Range (206) → transparent pipe (true fast seeking);
+    //   b) upstream ignores Range (200) and the skip is SMALL (≤ budget) →
+    //      byte-skip transform as before (reuses the in-flight stream);
+    //   c) upstream ignores Range and the skip is LARGE → 416 immediately.
+    // Case (c) is the fix: mpv/ffmpeg treats the failed seek exactly like the
+    // google-DIRECT case (which historically played) — it marks the stream
+    // non-seekable, skips Matroska cue preloading and plays linearly. The fake
+    // 206-with-epic-skip previously shipped instead HANGS the player.
+    const RANGE_SKIP_BUDGET = Math.max(0, parseInt(process.env.RANGE_PROXY_SKIP_BUDGET_MB, 10) || 24) * 1048576;
+    const upstreamReqHeaders = { 'User-Agent': UA, 'Accept': '*/*' };
+    if (rangeHeader) upstreamReqHeaders['Range'] = String(rangeHeader);
     const upstreamStream = gotScraping.stream(targetUrl.href, {
-      headers: { 'User-Agent': UA, 'Accept': '*/*' },
+      headers: upstreamReqHeaders,
       timeout: { request: 60000 },
       throwHttpErrors: false,
       followRedirect: true,
@@ -770,6 +846,36 @@ app.get('/range-proxy', async (req, res) => {
       upstreamStream.destroy();
       return res.status(upstreamResp.statusCode).send(`Upstream error: ${upstreamResp.statusCode}`);
     }
+
+    // Case (a): upstream honored the Range → transparent partial-content pipe.
+    if (hasRange && upstreamResp.statusCode === 206) {
+      res.status(206);
+      const ct2 = upstreamResp.headers['content-type'];
+      if (ct2) contentType = ct2;
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Accept-Ranges', 'bytes');
+      for (const h of ['content-length', 'content-range']) {
+        if (upstreamResp.headers[h]) res.setHeader(h, upstreamResp.headers[h]);
+      }
+      if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition);
+      upstreamStream.pipe(res);
+      upstreamStream.on('error', () => { try { res.end(); } catch {} });
+      req.on('close', () => { try { upstreamStream.destroy(); } catch {} });
+      return;
+    }
+
+    // Case (c): upstream ignored the Range (streaming from byte 0) and the
+    // requested offset is beyond what we can cheaply discard → honest 416 so
+    // the player falls back to linear playback instead of hanging.
+    if (hasRange && rangeStart > RANGE_SKIP_BUDGET) {
+      logger.log(`[${ADDON_NAME}] range-proxy: upstream ignores Range, skip ${rangeStart} > budget — 416 (linear-play fallback)`);
+      upstreamStream.destroy();
+      res.status(416);
+      res.setHeader('Content-Range', `bytes */${totalSize}`);
+      return res.end();
+    }
+    // Case (b): falls through to the byte-skip transform below, reusing the
+    // already-open upstream stream (which is streaming from byte 0).
 
     // Use the upstream Content-Type if our HEAD didn't get it
     if (upstreamResp.headers['content-type']) {

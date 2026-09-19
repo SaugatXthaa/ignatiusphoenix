@@ -121,10 +121,16 @@ async function loadWasm(forceRefresh) {
   }
 
   // PRIMARY: fresh download (server rotates key material — embedded B64 goes stale)
+  // Task 60: on a cold Render instance the first download attempt can time out
+  // (12s budget under 0.1-CPU contention) which previously zeroed the whole
+  // source for that request. Retry once before falling back to the embedded copy.
   try {
     return await downloadFreshWasm();
-  } catch (e) {
-    console.log('[CineJoy] Fresh WASM download failed (' + e.message + ')');
+  } catch (e1) {
+    console.log('[CineJoy] Fresh WASM download failed (' + e1.message + ') — retrying once');
+    try { return await downloadFreshWasm(); } catch (e2) {
+      console.log('[CineJoy] Fresh WASM retry failed (' + e2.message + ')');
+    }
   }
 
   // Fallback: embedded base64 (stale keyId → server 404s, but better than nothing)

@@ -183,6 +183,19 @@ export class NuvioExtractor extends Extractor {
     const hls = isHlsUrl(url);
     const videoFile = isVideoFileUrl(url);
 
+    // Task 60: some Nuvio sources (Atlantic) ship ALREADY self-proxied URLs —
+    // the addon's own /proxy with origin/referer/hls baked into the query
+    // (peraspera payload masters need whole-tree header injection, which only
+    // the proxy can do: iOS players never send custom headers). Ship them
+    // unchanged — re-wrapping here would double every Render hop per segment.
+    if (url.hostname === ctx.hostUrl.hostname && url.pathname === '/proxy') {
+      return [{
+        url,
+        format: Format.hls,
+        meta: { ...meta },
+      }];
+    }
+
     // Hub-family hosts (hubcloud/hubdrive/hubcdn/gdflix) are DOWNLOAD PAGES —
     // direct-shipping them is a guaranteed "[mpv] unrecognized file format"
     // (KMMovies' 15 hubcloud.foo/drive pages shipped raw this way). This

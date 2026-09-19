@@ -454,22 +454,42 @@ async function getStreams(tmdbId, mediaType, season, episode, preloaded) {
       withDeadline(aphroditeChain).then(v => timed('aphrodite', v)),
     ]);
 
+    // Task 60: peraspera payload masters 302 → a YouTube trailer whenever the
+    // request lacks Origin/Referer (verified live: browser-UA-only curl → 302
+    // youtube.com/watch; same URL with Origin+Referer → 200 #EXTM3U master;
+    // payload TTL ≥ 40min, far above this source's 10min cache). iOS players
+    // NEVER send custom headers, so the previous direct-with-requestHeaders
+    // shipping hung every artemis card on the trailer redirect = "stuck on
+    // loading". Ship the payload through the addon's OWN /proxy instead: the
+    // proxy injects origin+referer upstream and rewriteM3u8Urls re-attaches
+    // them onto every (absolute) peraspera child URL, so the whole tree
+    // authenticates from Render without any player-side header support.
+    const SELF_ORIGIN = String(preloaded?.hostUrl || '').replace(/\/+$/, '');
+    const wrapArtemis = (u) => {
+      if (!SELF_ORIGIN || !u || !/peraspera\.nbsycfzrpa4\.workers\.dev/.test(u)) return u;
+      return `${SELF_ORIGIN}/proxy?url=${encodeURIComponent(u)}` +
+        `&origin=${encodeURIComponent('https://atlantic.st')}` +
+        `&referer=${encodeURIComponent('https://atlantic.st/')}` +
+        `&hls=1`;
+    };
+
     const streams = [];
     const seen = new Set();
     const push = (url, quality, title, ipGated = false) => {
-      if (!url || !/^https?:\/\//.test(url) || seen.has(url)) return;
-      seen.add(url);
+      if (!url || !/^https?:\/\//.test(url)) return;
+      const finalUrl = wrapArtemis(url);
+      if (seen.has(finalUrl)) return;
+      seen.add(finalUrl);
       streams.push({
-        url,
+        url: finalUrl,
         quality,
         title,
         name: 'Atlantic',
         headers: HEADERS,
-        // peraspera (workers.dev) is Cloudflare-429-gated against datacenter
-        // IPs — the wrapper maps this flag to meta.nuvioDirectWithHeaders so
-        // NuvioExtractor ships the card DIRECT with requestHeaders instead of
-        // routing through /proxy (which cannot fetch from this IP).
-        ...(ipGated && { ipGated: true }),
+        // Task 60: artemis cards now ride the addon /proxy (wrapArtemis) —
+        // the old ipGated→direct-with-headers mapping no longer applies (a
+        // /proxy URL cannot match the raw stream map in the wrapper, and
+        // proxy-injected headers work from any player).
       });
     };
 
